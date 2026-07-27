@@ -4,7 +4,7 @@ from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.docker_install import docker_install_hint, install_docker
 
 
-class LocalEnvironment(EnvironmentSetupOption):
+class LocalDockerEnvironment(EnvironmentSetupOption):
     environment_id = "local"
     display_name = "Local Docker"
     description = "このマシン上のローカル Docker/devcontainer 環境を使います"

@@ -15,7 +15,9 @@ from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.codespace.github_codespaces import (
     GitHubCodespacesEnvironment,
 )
-from scripts.gar_lib.environments.registry.codespace.local import LocalEnvironment
+from scripts.gar_lib.environments.registry.codespace.local_docker import (
+    LocalDockerEnvironment as CodespaceLocalDockerEnvironment,
+)
 from scripts.gar_lib.environments.registry.simulator.aws_ssm import AwsSsmEnvironment
 from scripts.gar_lib.environments.registry.simulator.local_docker import (
     LocalDockerEnvironment,
@@ -92,7 +94,7 @@ class GarDiscoveryTest(unittest.TestCase):
         )
 
     def test_local_development_environment_requires_docker(self) -> None:
-        self.assertEqual(("docker",), LocalEnvironment.required_commands)
+        self.assertEqual(("docker",), CodespaceLocalDockerEnvironment.required_commands)
 
     def test_mujoco_environment_uses_current_python_package(self) -> None:
         with mock.patch(
@@ -287,7 +289,7 @@ class GarDiscoveryTest(unittest.TestCase):
                 return_value=None,
             ),
             mock.patch.object(
-                LocalEnvironment,
+                CodespaceLocalDockerEnvironment,
                 "run_install_command",
                 side_effect=fake_run_subprocess,
             ),
@@ -297,7 +299,7 @@ class GarDiscoveryTest(unittest.TestCase):
             ),
         ):
             with contextlib.redirect_stdout(io.StringIO()):
-                result = LocalEnvironment.install_dependencies(["docker"])
+                result = CodespaceLocalDockerEnvironment.install_dependencies(["docker"])
 
         self.assertEqual(0, result)
         self.assertEqual(
@@ -329,7 +331,7 @@ class GarDiscoveryTest(unittest.TestCase):
                 ),
             ):
                 with contextlib.chdir(tmp_path), contextlib.redirect_stdout(io.StringIO()) as output:
-                    result = LocalEnvironment.install_dependencies(["docker"])
+                    result = CodespaceLocalDockerEnvironment.install_dependencies(["docker"])
 
             self.assertEqual(1, result)
             self.assertIn("Local Docker のインストールには sudo が必要です。", output.getvalue())
