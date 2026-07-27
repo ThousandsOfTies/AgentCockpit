@@ -5,13 +5,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.access.aws import AwsCliChannel
-from scripts.gar_lib.access.base import CommandResult
-from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.aws_ec2 import AwsEc2SimulationHostController
-from scripts.gar_lib.simulation.host_resolver import ConfigSimulationHostControllerResolver
+from scripts.gar_lib.simulation.backends import simulation_host_for
+from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
 
 
 class GarSimulationHostTest(unittest.TestCase):
@@ -71,7 +71,8 @@ class GarSimulationHostTest(unittest.TestCase):
         result = controller.start(update_address=True, update_repository=True)
 
         self.assertTrue(result.state.running)
-        self.assertEqual("203.0.113.5", result.state.public_ip)
+        self.assertEqual("203.0.113.5", result.state.address)
+        self.assertEqual("aws_ec2", result.state.backend)
         self.assertTrue(result.address_updated)
         self.assertTrue(result.repository_updated)
         address_updater.update.assert_called_once_with("sim-host", "203.0.113.5")
@@ -107,7 +108,7 @@ class GarSimulationHostTest(unittest.TestCase):
             },
         )
 
-        controller = ConfigSimulationHostControllerResolver().for_workspace(workspace)
+        controller = simulation_host_for(workspace)
 
         self.assertIsInstance(controller, AwsEc2SimulationHostController)
         self.assertEqual("i-test", controller.instance_id)
@@ -122,4 +123,4 @@ class GarSimulationHostTest(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(GarDomainError, "instance_id, region"):
-            ConfigSimulationHostControllerResolver().for_workspace(workspace)
+            simulation_host_for(workspace)

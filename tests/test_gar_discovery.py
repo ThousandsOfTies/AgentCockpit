@@ -10,13 +10,16 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
-from scripts.gar_lib.environments.discovery import discover_environment_providers
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.codespace.github_codespaces import (
     GitHubCodespacesEnvironment,
 )
 from scripts.gar_lib.environments.registry.codespace.local import LocalEnvironment
 from scripts.gar_lib.environments.registry.simulator.aws_ssm import AwsSsmEnvironment
+from scripts.gar_lib.environments.registry.simulator.local_docker import (
+    LocalDockerEnvironment,
+)
 from scripts.gar_lib.environments.registry.simulator.mujoco import MujocoEnvironment
 from scripts.gar_lib.environments.registry.simulator.renode_mcu import (
     RenodeMcuEnvironment,
@@ -30,68 +33,68 @@ from scripts.gar_lib.simulation.mujoco import MujocoSimulationEnvironment
 
 
 class GarDiscoveryTest(unittest.TestCase):
-    def test_discovers_registry_providers(self) -> None:
-        providers = discover_environment_providers()
-        provider_ids = {provider.provider_id for provider in providers}
+    def test_discovers_registry_environments(self) -> None:
+        environments = discover_environments()
+        environment_ids = {environment.environment_id for environment in environments}
 
-        self.assertIn("github_codespaces", provider_ids)
-        self.assertIn("aws_ssm", provider_ids)
-        self.assertIn("ssh_remote", provider_ids)
-        self.assertIn("renode_mcu", provider_ids)
-        self.assertIn("mujoco", provider_ids)
-        self.assertIn("esp32_qemu_firmware", provider_ids)
-        self.assertIn("wokwi", provider_ids)
-        self.assertIn("local", provider_ids)
-        self.assertIn("adb_usb", provider_ids)
-        self.assertIn("ssh_scp", provider_ids)
-        self.assertIn("esp32_esptool", provider_ids)
+        self.assertIn("github_codespaces", environment_ids)
+        self.assertIn("aws_ssm", environment_ids)
+        self.assertIn("ssh_remote", environment_ids)
+        self.assertIn("renode_mcu", environment_ids)
+        self.assertIn("mujoco", environment_ids)
+        self.assertIn("esp32_qemu_firmware", environment_ids)
+        self.assertIn("wokwi", environment_ids)
+        self.assertIn("local", environment_ids)
+        self.assertIn("adb_usb", environment_ids)
+        self.assertIn("ssh_scp", environment_ids)
+        self.assertIn("esp32_esptool", environment_ids)
         self.assertTrue(
-            all(issubclass(provider, EnvironmentSetupOption) for provider in providers)
+            all(issubclass(environment, EnvironmentSetupOption) for environment in environments)
         )
 
-    def test_discovers_provider_categories_from_directories(self) -> None:
-        providers = discover_environment_providers()
-        categories_by_provider = {
-            provider.provider_id: provider.category_id
-            for provider in providers
+    def test_discovers_environment_categories_from_directories(self) -> None:
+        environments = discover_environments()
+        categories_by_environment = {
+            environment.environment_id: environment.category_id
+            for environment in environments
         }
 
         self.assertEqual(
             "codespace",
-            categories_by_provider["github_codespaces"],
+            categories_by_environment["github_codespaces"],
         )
-        self.assertEqual("simulator", categories_by_provider["aws_ssm"])
-        self.assertEqual("simulator", categories_by_provider["renode_mcu"])
-        self.assertEqual("simulator", categories_by_provider["mujoco"])
-        self.assertEqual("simulator", categories_by_provider["esp32_qemu_firmware"])
-        self.assertEqual("simulator", categories_by_provider["wokwi"])
-        self.assertEqual("target", categories_by_provider["adb_usb"])
-        self.assertEqual("target", categories_by_provider["ssh_scp"])
-        self.assertEqual("target", categories_by_provider["esp32_esptool"])
+        self.assertEqual("simulator", categories_by_environment["aws_ssm"])
+        self.assertEqual("simulator", categories_by_environment["renode_mcu"])
+        self.assertEqual("simulator", categories_by_environment["mujoco"])
+        self.assertEqual("simulator", categories_by_environment["esp32_qemu_firmware"])
+        self.assertEqual("simulator", categories_by_environment["wokwi"])
+        self.assertEqual("target", categories_by_environment["adb_usb"])
+        self.assertEqual("target", categories_by_environment["ssh_scp"])
+        self.assertEqual("target", categories_by_environment["esp32_esptool"])
 
-    def test_provider_ids_are_unique(self) -> None:
-        providers = discover_environment_providers()
-        provider_ids = [provider.provider_id for provider in providers]
+    def test_environment_ids_are_unique(self) -> None:
+        environments = discover_environments()
+        environment_ids = [environment.environment_id for environment in environments]
 
-        self.assertEqual(len(provider_ids), len(set(provider_ids)))
+        self.assertEqual(len(environment_ids), len(set(environment_ids)))
 
-    def test_local_development_provider_is_default_before_github_codespaces(self) -> None:
-        providers = discover_environment_providers()
-        codespace_provider_ids = [
-            provider.provider_id
-            for provider in providers
-            if provider.category_id == "codespace"
+    def test_local_development_environment_is_default_before_github_codespaces(self) -> None:
+        environments = discover_environments()
+        codespace_environment_ids = [
+            environment.environment_id
+            for environment in environments
+            if environment.category_id == "codespace"
         ]
 
         self.assertLess(
-            codespace_provider_ids.index("local"),
-            codespace_provider_ids.index("github_codespaces"),
+            codespace_environment_ids.index("local"),
+            codespace_environment_ids.index("github_codespaces"),
         )
 
-    def test_local_development_provider_requires_docker(self) -> None:
+    def test_local_development_environment_requires_docker(self) -> None:
         self.assertEqual(("docker",), LocalEnvironment.required_commands)
 
-    def test_mujoco_provider_uses_current_python_package(self) -> None:
+    def test_mujoco_environment_uses_current_python_package(self) -> None:
         with mock.patch(
             "scripts.gar_lib.environments.registry.simulator.mujoco._mujoco_is_importable",
             return_value=True,
@@ -122,12 +125,12 @@ class GarDiscoveryTest(unittest.TestCase):
                 channel = channel_type.return_value
                 channel.start.return_value = mock.Mock(pid=12345)
                 channel.is_running.return_value = True
-                provider = MujocoSimulationEnvironment()
-                self.assertEqual(0, provider.start({}))
-                self.assertEqual(0, provider.status({}))
+                environment = MujocoSimulationEnvironment()
+                self.assertEqual(0, environment.start({}))
+                self.assertEqual(0, environment.status({}))
 
             self.assertEqual(12345, json.loads((workspace / "state.json").read_text(encoding="utf-8"))["pid"])
-            self.assertTrue(any(part.endswith("mujoco_bridge.py") for part in channel.start.call_args.args[0]))
+            self.assertTrue(any(part.endswith("examples/mujoco/bridge.py") for part in channel.start.call_args.args[0]))
 
     def test_wokwi_installer_runs_official_install_script(self) -> None:
         with (
@@ -263,7 +266,7 @@ class GarDiscoveryTest(unittest.TestCase):
             commands,
         )
 
-    def test_local_development_provider_installs_docker_with_apt_get(self) -> None:
+    def test_local_development_environment_installs_docker_with_apt_get(self) -> None:
         commands: list[list[str]] = []
 
         def fake_run_subprocess(argv: list[str]) -> int:
@@ -272,15 +275,15 @@ class GarDiscoveryTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.environments.registry.codespace.local._is_wsl_or_linux",
+                "scripts.gar_lib.environments.docker_install.is_wsl_or_linux",
                 return_value=True,
             ),
             mock.patch(
-                "scripts.gar_lib.environments.registry.codespace.local.shutil.which",
+                "scripts.gar_lib.environments.docker_install.shutil.which",
                 return_value="/usr/bin/apt-get",
             ),
             mock.patch(
-                "scripts.gar_lib.environments.registry.codespace.local.sudo_block_reason",
+                "scripts.gar_lib.environments.docker_install.sudo_block_reason",
                 return_value=None,
             ),
             mock.patch.object(
@@ -289,7 +292,7 @@ class GarDiscoveryTest(unittest.TestCase):
                 side_effect=fake_run_subprocess,
             ),
             mock.patch(
-                "scripts.gar_lib.environments.registry.codespace.local.getpass.getuser",
+                "scripts.gar_lib.environments.docker_install.getpass.getuser",
                 return_value="testuser",
             ),
         ):
@@ -308,20 +311,20 @@ class GarDiscoveryTest(unittest.TestCase):
             commands,
         )
 
-    def test_local_development_provider_prints_handoff_when_sudo_is_blocked(self) -> None:
+    def test_local_development_environment_prints_handoff_when_sudo_is_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             with (
                 mock.patch(
-                    "scripts.gar_lib.environments.registry.codespace.local._is_wsl_or_linux",
+                    "scripts.gar_lib.environments.docker_install.is_wsl_or_linux",
                     return_value=True,
                 ),
                 mock.patch(
-                    "scripts.gar_lib.environments.registry.codespace.local.shutil.which",
+                    "scripts.gar_lib.environments.docker_install.shutil.which",
                     return_value="/usr/bin/apt-get",
                 ),
                 mock.patch(
-                    "scripts.gar_lib.environments.registry.codespace.local.sudo_block_reason",
+                    "scripts.gar_lib.environments.docker_install.sudo_block_reason",
                     return_value="sudo: The no new privileges flag is set",
                 ),
             ):
@@ -332,6 +335,52 @@ class GarDiscoveryTest(unittest.TestCase):
             self.assertIn("Local Docker のインストールには sudo が必要です。", output.getvalue())
             requests = list((tmp_path / ".gar" / "terminal-requests").glob("*.json"))
             self.assertEqual(1, len(requests))
+
+    def test_local_docker_simulator_installs_docker_with_apt_get(self) -> None:
+        commands: list[list[str]] = []
+
+        def fake_run_subprocess(argv: list[str]) -> int:
+            commands.append(argv)
+            return 0
+
+        with (
+            mock.patch(
+                "scripts.gar_lib.environments.docker_install.is_wsl_or_linux",
+                return_value=True,
+            ),
+            mock.patch(
+                "scripts.gar_lib.environments.docker_install.shutil.which",
+                return_value="/usr/bin/apt-get",
+            ),
+            mock.patch(
+                "scripts.gar_lib.environments.docker_install.sudo_block_reason",
+                return_value=None,
+            ),
+            mock.patch.object(
+                LocalDockerEnvironment,
+                "run_install_command",
+                side_effect=fake_run_subprocess,
+            ),
+            mock.patch(
+                "scripts.gar_lib.environments.docker_install.getpass.getuser",
+                return_value="testuser",
+            ),
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                result = LocalDockerEnvironment.install_dependencies(["docker"])
+
+        self.assertEqual(0, result)
+        self.assertEqual(
+            [
+                ["sudo", "apt-get", "update"],
+                ["sudo", "apt-get", "install", "-y", "docker.io"],
+                ["sudo", "groupadd", "-f", "docker"],
+                ["sudo", "usermod", "-aG", "docker", "testuser"],
+                ["sudo", "service", "docker", "start"],
+            ],
+            commands,
+        )
+        self.assertIn("gar sim gpio check", output.getvalue())
 
     def test_github_codespaces_installs_sshfs_with_apt_get(self) -> None:
         commands: list[list[str]] = []
@@ -476,7 +525,7 @@ class GarDiscoveryTest(unittest.TestCase):
         )
         self.assertIn(["sudo", "dpkg", "-i", mock.ANY], commands)
 
-    def test_setup_providers_do_not_expose_runtime_operations(self) -> None:
+    def test_setup_environments_do_not_expose_runtime_operations(self) -> None:
         for name in (
             "code_command",
             "run_remote",

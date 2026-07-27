@@ -3,12 +3,12 @@ from __future__ import annotations
 import platform
 import shutil
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
 
 
 class AdbUsbEnvironment(EnvironmentSetupOption):
-    provider_id = "adb_usb"
+    environment_id = "adb_usb"
     display_name = "ADB USB-C"
     description = "adb コマンドで USB-C 接続の実機へ接続します"
     display_order = 10

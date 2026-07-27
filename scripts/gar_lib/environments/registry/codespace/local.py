@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import getpass
-import platform
-import shutil
-
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
-from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.docker_install import docker_install_hint, install_docker
 
 
 class LocalEnvironment(EnvironmentSetupOption):
-    provider_id = "local"
+    environment_id = "local"
     display_name = "Local Docker"
     description = "このマシン上のローカル Docker/devcontainer 環境を使います"
     display_order = 5
@@ -17,76 +13,13 @@ class LocalEnvironment(EnvironmentSetupOption):
 
     @classmethod
     def install_hint(cls, missing: list[str]) -> str:
-        supported_missing = [
-            command
-            for command in missing
-            if command == "docker"
-        ]
-        if not supported_missing:
+        if "docker" not in missing:
             return super().install_hint(missing)
-
-        if _is_wsl_or_linux():
-            return (
-                "不足: docker\n"
-                "Debian/Ubuntu/WSL では次のコマンドを実行してください。\n"
-                "`sudo apt-get update && sudo apt-get install -y docker.io && "
-                "sudo groupadd -f docker && sudo usermod -aG docker $USER`\n"
-                "必要に応じて Docker daemon を起動してください: "
-                "`sudo service docker start`\n"
-                "docker group の反映にはログアウト/再ログインが必要です。"
-            )
-
-        return "不足: docker\nDocker Desktop または Docker Engine をインストールしてください。"
+        return docker_install_hint()
 
     @classmethod
     def install_dependencies(cls, missing: list[str]) -> int:
-        installable = [command for command in missing if command == "docker"]
-        if not installable:
+        if "docker" not in missing:
             print(cls.install_hint(missing))
             return 1
-
-        if not _is_wsl_or_linux() or shutil.which("apt-get") is None:
-            print(cls.install_hint(missing))
-            return 1
-
-        blocked = sudo_block_reason()
-        if blocked:
-            print_user_terminal_handoff(
-                "Local Docker のインストールには sudo が必要です。",
-                [
-                    "sudo apt-get update",
-                    "sudo apt-get install -y docker.io",
-                    "sudo groupadd -f docker",
-                    "sudo usermod -aG docker $USER",
-                    "sudo service docker start || true",
-                ],
-                reason=blocked,
-            )
-            return 1
-
-        print("Local Docker を apt-get でインストールします。")
-        print("sudo のパスワードを求められたら、このターミナルで入力してください。")
-
-        update_result = cls.run_install_command(["sudo", "apt-get", "update"])
-        if update_result != 0:
-            return update_result
-
-        install_result = cls.run_install_command(["sudo", "apt-get", "install", "-y", "docker.io"])
-        if install_result != 0:
-            return install_result
-
-        group_result = cls.run_install_command(["sudo", "groupadd", "-f", "docker"])
-        if group_result != 0:
-            return group_result
-
-        user_result = cls.run_install_command(["sudo", "usermod", "-aG", "docker", getpass.getuser()])
-        if user_result != 0:
-            return user_result
-
-        cls.run_install_command(["sudo", "service", "docker", "start"])
-        print("docker group の反映にはログアウト/再ログインが必要です。")
-        return 0
-
-def _is_wsl_or_linux() -> bool:
-    release = platform.release().lower()
-    return platform.system() == "Linux" or "microsoft" in release
+        return install_docker(cls.run_install_command, purpose="Local Docker")

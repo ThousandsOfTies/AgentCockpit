@@ -7,9 +7,9 @@ from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.aws_ssm import AwsSsmSimulationEnvironment
+from scripts.gar_lib.simulation.backends import simulation_environment_for
 from scripts.gar_lib.simulation.esp32_qemu import Esp32QemuSimulationEnvironment
 from scripts.gar_lib.simulation.renode import RenodeSimulationEnvironment
-from scripts.gar_lib.simulation.resolver import ConfigSimulationEnvironmentResolver
 
 
 def workspace(environment_id: str, *, ec2: dict[str, str] | None = None) -> Workspace:
@@ -38,7 +38,7 @@ class PendingSimulationEnvironmentTest(unittest.TestCase):
 
         for environment_id, expected_type, ec2, requires_runtime_artifact in cases:
             with self.subTest(environment_id=environment_id):
-                environment = ConfigSimulationEnvironmentResolver().for_workspace(
+                environment = simulation_environment_for(
                     workspace(environment_id, ec2=ec2)
                 )
 
@@ -73,7 +73,7 @@ class PendingSimulationEnvironmentTest(unittest.TestCase):
             GarDomainError,
             r"AWS SSM設定が不足しています \(instance_id, region\)",
         ):
-            ConfigSimulationEnvironmentResolver().for_workspace(workspace("aws_ssm"))
+            simulation_environment_for(workspace("aws_ssm"))
 
 
 if __name__ == "__main__":

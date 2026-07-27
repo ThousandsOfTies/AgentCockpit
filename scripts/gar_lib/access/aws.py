@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from typing import Protocol
 
-from scripts.gar_lib.access.base import CommandResult
+from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 
 _AUTH_FAILURE_MARKERS = (

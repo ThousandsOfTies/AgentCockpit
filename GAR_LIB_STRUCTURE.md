@@ -9,14 +9,15 @@
 - **BuildEnvironment**: `TARGET_APP`、`SIM_APP`、`SIM_RUNTIME`をどこでbuildするかを表す実行オブジェクト。
 - **SimulationEnvironment**: simulation artifactの配置とruntimeのstart / stop / status / diag / logを担当する実行オブジェクト。
 - **SimulationHostController**: simulation runtimeを載せるEC2等のhost自体を起動・停止する実行オブジェクト。
-- **SimulationHardwareControl**: GPIOやpanelなど、simulation runtimeのhardware control planeを担当する実行オブジェクト。
+- **SimulationHardwareControl**: GPIOやvirtual H/W I/Oなど、simulation runtimeのhardware control planeを担当する実行オブジェクト。
 - **TargetEnvironment**: artifactを物理targetへ配置・書き込みする実行オブジェクト。
 - **EnvironmentSetupOption**: `gar setup`に表示する選択肢、依存確認、導入方法だけを持つメタデータ。runtime操作は持たない。
 - **TargetManifest**: `gar-tools/targets/*/target.json`から読むboard / target定義。`TargetEnvironment`とは別概念。
 
-設定ファイルには歴史的に `selected_providers` という名前が残っていますが、runtime側では
-`Workspace.selected_environments` として扱っています。この文書では、setupのクラスを
-「setup選択肢」、実行時に生成されるオブジェクトを「environment」と呼び分けます。
+設定ファイルの `selected_environments` は、runtime側では `Workspace.selected_environments`
+として扱います。旧名 `selected_providers` は読み込み時のみ後方互換で受け付けます。
+この文書では、setupのクラスを「setup選択肢」、実行時に生成されるオブジェクトを
+「environment」と呼び分けます。
 
 ## 現在のファイル構成
 
@@ -25,28 +26,25 @@
 ```text
 scripts/gar_lib/
 ├─ __main__.py                 python -m scripts.gar_lib の入口
-├─ cli.py                      全CLI引数定義とtop-level振り分け
-├─ cli_tmp.py                  標準sim/target構造だけを示す実行可能な参照CLI
-├─ application.py              高水準オブジェクトの協調順序
-├─ composition.py              config-backed具体実装の生成と接続
+├─ cli.py                      全CLI引数定義。leaf parserに実行関数を直付けする
 ├─ config.py                   .gar/config.jsonの読み書きとworkspace選択
-├─ hardware.py                 hardware CSV repositoryとtemplate生成
 ├─ gar_tools.py                gar-tools探索・取得・TargetManifest読込み
+├─ hardware.py                 hardware CSV repositoryとtemplate生成
 │
 ├─ core/                       外部I/Oを持たない基本モデル
 │  ├─ workspace.py             Workspace
 │  ├─ artifact.py              Artifact / ArtifactKind
-│  ├─ command.py               GarCommandと標準command定数
+│  ├─ command.py               GarCommandと標準command定数（retry文字列・help表示用）
 │  └─ errors.py                GarDomainError / AccessConnectionError
 │
 ├─ workspaces/                 workspace検索
-│  └─ registry.py              WorkspaceRegistry / ConfigWorkspaceRegistry
+│  └─ registry.py              workspace_for(): --workspace指定から1つ選ぶ
 │
 ├─ build/                      product buildの実行環境
-│  ├─ base.py                  BuildEnvironment / Resolver protocol、artifact種別からproduct hookを選ぶBuildSpec
+│  ├─ _base.py                 BuildEnvironment protocolとBuildSpec
 │  ├─ local.py                 local product hook実行
 │  ├─ codespaces.py            Codespaces上のhook実行とartifact同期
-│  └─ resolver.py              workspace設定から具体BuildEnvironmentを選択
+│  └─ backends.py              build_environment_for(): workspace設定から具体実装を作る
 │
 ├─ artifacts/                  artifact bundleの検証・保管・同期
 │  ├─ store.py                 ArtifactStore / LocalArtifactStore
@@ -55,6 +53,7 @@ scripts/gar_lib/
 ├─ access/                     接続手段ごとの小さなcapability
 │  ├─ base.py                  Command/File/ArtifactInstaller/Console protocol
 │  ├─ ssh.py                   SSH command / scp file channel
+│  ├─ docker.py                docker exec command / docker cp file channelと失敗分類
 │  ├─ adb.py                   ADB shell / file channel
 │  ├─ aws.py                   AWS CLI command channelと認証失敗分類
 │  ├─ local.py                 local background processの起動・停止
@@ -62,10 +61,12 @@ scripts/gar_lib/
 │  └─ codespaces.py            gh codespace list出力の解析だけを共有
 │
 ├─ simulation/                 simulation domainと具体environment
-│  ├─ environment.py           SimulationEnvironment / Resolver protocol
-│  ├─ resolver.py              全setup IDから具体SimulationEnvironmentを組立て
+│  ├─ environment.py           SimulationEnvironment protocol
+│  ├─ backends.py              simulation_environment_for / simulation_host_for /
+│  │                          hardware_control_for: backend idから具体実装を作る
 │  ├─ linux_systemd.py         Linux/systemd runtimeとartifact配置
 │  ├─ linux.py                 Linux runtime command builderとGPIO計画
+│  ├─ io_actions.py            virtual H/W操作の(action, device)→Bridge API解決をCLIとscenarioで共有
 │  ├─ wokwi.py                 Wokwi runtime・project配置・process管理
 │  ├─ mujoco.py                MuJoCo runtimeとHTTP bridge hardware control
 │  ├─ pending.py               未実装操作を明示的なdomain errorにする共通stub
@@ -75,17 +76,17 @@ scripts/gar_lib/
 │  ├─ diagnostic.py            構造化diagnostic結果
 │  ├─ parse.py                 Linux diagnostic / GPIO出力parser
 │  ├─ control.py               hardware control protocolとLinux bridge実装
-│  ├─ control_resolver.py      ssh_remote / mujocoのcontrol実装選択
 │  ├─ host.py                  SimulationHostController protocolと結果
-│  ├─ host_resolver.py         workspaceのEC2設定からhost controllerを生成
 │  ├─ aws_ec2.py               AWS EC2 host lifecycle
+│  ├─ docker_host.py           local containerをsimulation hostとして扱うlifecycle
+│  ├─ docker_spec.py           target定義からcontainerの形(image/device/mount)を組立
 │  ├─ ssh_config.py            EC2 host用SSH configのHostName更新
 │  ├─ session.py               SimulationSessionManager protocolとVS Code adapter
 │  └─ remote_session.py        SSH port forwardとVS Code terminal profileの実処理
 │
 ├─ target/                     物理target domainと具体environment
-│  ├─ environment.py           TargetEnvironment / Resolver protocol
-│  ├─ resolver.py              ADB / SSH / ESP32実装の組立て
+│  ├─ environment.py           TargetEnvironment protocol
+│  ├─ backends.py              target_environment_for(): ADB / SSH / ESP32実装を作る
 │  ├─ file_transfer.py         command + file channelによるartifact配置
 │  ├─ serial.py                ArtifactInstallerによるserial target
 │  ├─ esp32.py                 標準TargetEnvironment用ESP32 installer
@@ -93,18 +94,19 @@ scripts/gar_lib/
 │  └─ esptool.py               ESP32 artifact検証とesptool書込み
 │
 ├─ recovery/                   接続失敗から利用者操作への変換
-│  ├─ access.py                AccessConnectionErrorからRecoveryActionを生成
-│  └─ terminal.py              RecoveryActionをTerminal Bridgeへ渡すadapter
+│  └─ access.py                plan_access_recovery / report_access_failure
 │
 ├─ environments/               setup用選択肢の発見・依存導入
 │  ├─ base.py                  EnvironmentSetupOption / CommandStatus
 │  ├─ discovery.py             registry packageの自動走査とcategory付与
+│  ├─ docker_install.py        dockerを必要とするsetup選択肢共通のapt-get導入
 │  ├─ install.py               sudo判定とvisible terminalへのhandoff
 │  └─ registry/
 │     ├─ codespace/
 │     │  ├─ local.py           Local Dockerの依存確認・導入
 │     │  └─ github_codespaces.py  gh / sshfsの依存確認・導入
 │     ├─ simulator/
+│     │  ├─ local_docker.py    Local Docker simulation hostの依存情報
 │     │  ├─ ssh_remote.py      SSH Remoteの依存情報
 │     │  ├─ wokwi.py           Wokwi CLIの依存確認・導入
 │     │  ├─ mujoco.py          MuJoCo Python packageの依存確認・導入
@@ -117,9 +119,9 @@ scripts/gar_lib/
 │        ├─ ssh_scp.py         SSH / scpの依存情報
 │        └─ esp32_esptool.py   esptoolの依存確認・導入
 │
-├─ commands/                   CLI境界とApplication外の補助command
-│  ├─ executor.py              Application実行と共通接続復旧
-│  ├─ presentation.py          CommandOutcomeのCLI表示
+├─ commands/                   gar コマンド1つにつき関数1つ
+│  ├─ sim.py                   gar sim app / runtime / host / gpio / io の本体
+│  ├─ target.py                gar target app の本体
 │  ├─ setup.py                 workspace / target / setup選択肢の対話設定
 │  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
 │  ├─ infra.py                 Terraformによるsimulation host作成・破棄
@@ -133,35 +135,28 @@ scripts/gar_lib/
    └─ terminal_bridge.py       VS Code extensionの検出・導入
 ```
 
-## 標準Application経路
+## コマンド1本が通る経路
 
-`gar sim`と`gar target`の標準build / deploy / lifecycleは次の依存方向です。
+`gar <group> <subject> <action>` は、CLI表面から実装まで分岐なしで届きます。
+leaf parser が `set_defaults(run=<関数>)` を持つので、parser 自体が dispatch table です。
 
 ```text
-cli.py
-  ↓ GarCommand + workspace selector
-commands/executor.py
-  ├─ composition.pyで具体オブジェクトを生成
-  ├─ application.dispatchを実行
-  ├─ presentation.pyでCommandOutcomeを表示
-  └─ AccessConnectionErrorをrecoveryへ渡す
+cli.py: main()
+  ├─ parser.parse_args() → args.run と args.gar_command が決まる
+  ├─ workspace_for(--workspace) で Workspace を1つ選ぶ
+  ├─ args.run(workspace, args) を呼ぶ            ← commands/sim.py, commands/target.py
+  └─ AccessConnectionError → recovery/access.py: report_access_failure()
           ↓
-application.py
-  ├─ WorkspaceRegistry
-  ├─ BuildEnvironmentResolver
-  ├─ ArtifactStore
-  ├─ SimulationEnvironmentResolver
-  ├─ SimulationHostControllerResolver
-  ├─ SimulationHardwareControlResolver
-  ├─ SimulationSessionManager
-  └─ TargetEnvironmentResolver
-          ↓
-resolver / concrete environment
+commands/sim.py: run_sim_runtime_start(workspace, args)
+  ├─ simulation_environment_for(workspace)      ← simulation/backends.py
+  ├─ environment.start(load_hw_definition())    ← 実処理
+  └─ 結果をその場でprint、exit codeをreturn
           ↓
 access channel / external process
 ```
 
-代表的なシーケンスは `application.py` にそのまま読める形で置いています。
+`gar sim runtime <action>` の action は `SimulationEnvironment` protocol の
+method名と1:1です（deploy / start / stop / status / diag / log）。
 
 ```text
 target build:
@@ -183,22 +178,24 @@ sim host start:
   Workspace → SimulationHostController.start
 ```
 
-`setup`、`code`、`infra`、`usb`、`terminal`、`hw`、`target fetch`、
-`target build-esp32`、`target flash-esp32`は、標準Application経路外の明示的な補助commandです。
+`setup`、`code`、`infra`、`usb`、`terminal`、`hw`は Workspace を必要としないため、
+`main()` から直接呼びます。
 
 ## 設定から実行オブジェクトへの対応
 
 | 保存項目 | 読込み先 | 実行時の用途 |
 |---|---|---|
-| `workspaces[].id/name/branch/connection` | `ConfigWorkspaceRegistry` | Workspaceの識別とlocal / Codespaces / network接続情報 |
-| `selected_providers.codespace` | `Workspace.selected_environments["codespace"]` | `ConfigBuildEnvironmentResolver`と`gar code` |
-| `selected_providers.simulator` | `Workspace.selected_environments["simulator"]` | simulation runtime / hardware control resolver |
-| `selected_providers.target` | `Workspace.selected_environments["target"]` | physical TargetEnvironment resolver |
-| `selected_target` | `commands/setup.py` | gar-toolsのTargetManifest選択とsetup表示 |
+| `workspaces[].id/name/branch/connection` | `workspaces/registry.py: workspace_for()` | Workspaceの識別とlocal / Codespaces / network接続情報 |
+| `selected_environments.codespace` | `Workspace.selected_environments["codespace"]` | `build_environment_for()`と`gar code` |
+| `selected_environments.simulator` | `Workspace.selected_environments["simulator"]` | `simulation_environment_for()` / `hardware_control_for()` |
+| `selected_environments.target` | `Workspace.selected_environments["target"]` | `target_environment_for()` |
+| `selected_target` | `commands/setup.py` / `simulation/backends.py: docker_spec_for()` | TargetManifest選択とsetup表示、`local_docker`のcontainer形状 |
 | `ec2` | Workspace / config helper | simulation host、SSH runtime host、repository更新 |
 | `target` / `adb` / `esp32` | Workspace / config helper | physical targetのhost・dest・serial・port |
 
-`selected_target`は現在の `Workspace` modelに含まれず、標準Applicationのresolverは直接参照しません。
+`selected_target`は `Workspace` modelには含まれません。`simulation/backends.py`の
+`docker_spec_for()`が`active_target_manifest()`経由でTargetManifestを引き、containerの
+image・device・mountを決めます。他のbackendは依然として参照しません。
 
 ## 現在の実装対応表
 
@@ -214,15 +211,17 @@ sim host start:
 
 | setup ID | setup/導入 | runtime | hardware control | 備考 |
 |---|---:|---:|---:|---|
+| `local_docker` | 対応 | 対応 | 対応 | `docker exec` / `docker cp` でLinux/systemd runtimeを操作。GPIOはhost kernel 5.17+が必要 |
 | `ssh_remote` | 対応 | 対応 | 対応 | Linux/systemd runtime。EC2の場合もこのIDを使う |
-| `wokwi` | 対応 | 対応 | 未対応 | runtimeとartifact配置は実装済み。GPIO/panel resolverはない |
+| `wokwi` | 対応 | 対応 | 未対応 | runtimeとartifact配置は実装済み。GPIO/io backendはない |
 | `mujoco` | 対応 | 対応 | 対応 | local processとHTTP bridgeを使用 |
 | `renode_mcu` | 対応 | stub接続 | 未接続 | 具体environmentを生成し、runtime操作時は明示的な未実装エラー |
 | `esp32_qemu_firmware` | 依存情報のみ | stub接続 | 未接続 | 具体environmentを生成し、runtime操作時は明示的な未実装エラー |
 | `aws_ssm` | 対応 | stub接続 | 未接続 | AWS channelまで組み立てるが、runtime操作は明示的な未実装エラー |
 
-`SimulationHostController`は現在AWS EC2だけです。これは`SimulationEnvironment`とは別軸で、
-workspaceの `ec2.host / instance_id / region` から生成されます。
+`SimulationHostController`はAWS EC2とDockerの2実装です。これは`SimulationEnvironment`とは
+別軸で、`local_docker`はtarget定義の`simulation.docker`（workspaceの`docker`で上書き）から、
+それ以外は`ec2.host / instance_id / region`から生成されます。
 
 ### TargetEnvironment
 
@@ -258,7 +257,7 @@ workspaceの `ec2.host / instance_id / region` から生成されます。
 | `commands/infra.py` | TerraformでEC2 resourceを作成・破棄するprovisioning |
 | `SimulationHostController` | 既に存在するEC2 instanceのstart / stop / status |
 | `TargetManifest` / `selected_target` | board・target定義と利用可能backendのsetup情報 |
-| `TargetEnvironment` / `selected_providers.target` | artifactを物理targetへ運ぶアクセス方式 |
+| `TargetEnvironment` / `selected_environments.target` | artifactを物理targetへ運ぶアクセス方式 |
 | `SimulationEnvironment` | simulation runtime本体 |
 | `SimulationSessionManager` | runtimeへ入るterminal profileとport forward |
 | `target/esp32.py` | 標準TargetEnvironmentへesptoolを適合させるinstaller |
@@ -270,29 +269,30 @@ workspaceの `ec2.host / instance_id / region` から生成されます。
 ### 優先度: 高
 
 1. **setup選択肢ごとのruntime成熟度を機械的に判定できない**
-   - `renode_mcu`、`esp32_qemu_firmware`、`aws_ssm`も`ConfigSimulationEnvironmentResolver`から固有のerror-only componentとして生成できるようになった。
+   - `renode_mcu`、`esp32_qemu_firmware`、`aws_ssm`も`simulation_environment_for()`から固有のerror-only componentとして生成できるようになった。
    - ただしsetup metadataから「実装済み」「stub接続」「非対応」を判定できず、現在は説明文と実装クラスに分散している。
-   - setup項目に `runtime_maturity` のような明示的capabilityを持たせ、表示とresolverの対応を検証できるようにする余地がある。
+   - setup項目に `runtime_maturity` のような明示的capabilityを持たせ、表示と`*_for()`の対応を検証できるようにする余地がある。
 
 2. **workspaceの接続種別とBuildEnvironment選択が独立しており、矛盾を作れる**
-   - `connection.type`は `local / codespaces / network`、build側の設定は `selected_providers.codespace`の `local / github_codespaces`。
+   - `connection.type`は `local / codespaces / network`、build側の設定は `selected_environments.codespace`の `local / github_codespaces`。
    - network workspaceは登録できるがNetworkBuildEnvironmentがなく、localまたはCodespacesを選ぶと必要property取得時に失敗する。
    - simulationの`ssh_remote`も`connection.host`ではなく`workspace.ec2.host`を読むため、「任意のnetwork workspace」と「EC2用SSH設定」の境界が曖昧。
-   - Workspace接続とBuildEnvironmentの関係をcomposition時に検証する必要がある。
+   - Workspace接続とBuildEnvironmentの関係を`build_environment_for()`で検証する必要がある。
 
 3. **Terminal Bridge requestの保存実装が二重化している**
    - `commands/terminal.py`はGAR runtime直下の `CONFIG_PATH.parent/terminal-requests`へ保存する。
    - `environments/install.py`は `cwd/.gar/terminal-requests`へ直接保存する。
    - product workspaceからsetupを実行すると別の `.gar` を作る可能性があるため、単一のTerminalRequesterへ統合すべき。
 
-4. **`selected_target`と`selected_providers.target`の関係がruntimeに表現されていない**
+4. **`selected_target`と`selected_environments.target`の関係がruntimeに表現されていない**
    - 前者はboard/TargetManifest、後者はアクセス方式だが、名前が近く利用者・実装者の双方に分かりにくい。
-   - `selected_target`はWorkspace modelやApplication resolverへ渡されず、TargetManifestの制約は主にsetup時だけ有効。
-   - `TargetDefinition`と`TargetEnvironment`を明示的に別モデルとしてcompositionで結合する余地がある。
+   - `local_docker`のhost生成は`active_target_manifest()`でTargetManifestを参照するようになったが、
+     他のbackendはsetup時の制約しか受け取らない。WorkspaceとTargetManifestの紐づけも暗黙のまま。
+   - `TargetDefinition`と`TargetEnvironment`を明示的に別モデルとして結合する余地がある。
 
 5. **product固有のEC2 host既定値がconfig層に残っている**
    - `config.py`の `load_config()` / `default_config()` / `default_ec2_host()`は、未設定時に `DEFAULT_EC2_HOST = "vibecode-graviton"`を返す。
-   - 標準Workspace resolverはraw entryを使う一方、setupや補助commandはこのfallbackを使うため、同じ未設定状態の扱いも経路で異なる。
+   - `workspace_for()`はraw entryを使う一方、setupや補助commandはこのfallbackを使うため、同じ未設定状態の扱いも経路で異なる。
    - 複数workspace構成ではhost未設定を明示的に扱い、setupで入力させる方が一貫する。
 
 ### 優先度: 中
@@ -327,30 +327,26 @@ workspaceの `ec2.host / instance_id / region` から生成されます。
 ### 優先度: 低 / 整理候補
 
 12. **大きなCLI実装が残っている**
-    - `cli.py` 約976行、`commands/setup.py` 約1072行、`commands/code.py` 約712行、`simulation/linux.py` 約590行、`commands/usb.py` 約382行。
+    - `cli.py` 約853行、`commands/setup.py` 約1072行、`commands/code.py` 約721行、`simulation/linux.py` 約562行、`commands/usb.py` 約382行。
     - 標準Application経路は分離済みだが、parser定義、setupのworkspace/target/environment設定、Codespaces mount処理、Linux command builderはさらに分割可能。
 
-13. **`cli_tmp.py`の終了条件が曖昧**
-    - 正式CLIも既に同じ`application.dispatch`を使っているため、「次期CLI」ではなく構造説明用sampleになっている。
-    - documentation sampleとして残すか、テストとともに削除するかを決める必要がある。
-
-14. **package re-exportが未使用かつ一部古い**
+13. **package re-exportが未使用かつ一部古い**
     - `core/__init__.py`等のre-exportを内部実装・テストは使っていない。
     - `core/__init__.py`は新しいclean / lifecycle / host command定数をexportしておらず、公開surfaceとして不完全。
     - re-exportを正式APIとして更新するか、単なるpackage markerへ縮小する必要がある。
 
-15. **setup discoveryに不要な明示importが残る**
+14. **setup discoveryに不要な明示importが残る**
     - `commands/setup.py`は自動discoveryを使いながら`WokwiEnvironment`を`# noqa: F401`付きで明示importしている。
     - discoveryに必要でないことを確認して削除できる。
 
 ## 今後の依存方向
 
 ```text
-CLI parser / presentation
+CLI parser（leaf parserがそのまま実行関数を持つ）
         ↓
-Application use cases
+commands/sim.py, commands/target.py（コマンド1本 = 関数1つ）
         ↓
-domain protocols + composition
+*/backends.py の *_for(workspace)（設定 → 具体オブジェクト）
         ↓
 concrete build / simulation / target implementations
         ↓
@@ -360,6 +356,6 @@ external systems
 ```
 
 `environments/registry`はこのruntime依存列とは別に、setup時の選択肢と依存導入だけを
-提供します。全setup IDはruntime resolverから具体environmentへ接続されましたが、実装済みか
+提供します。全setup IDは`*_for()`から具体environmentへ接続されましたが、実装済みか
 error-only stubかという成熟度は、今後明示的な登録表またはcapabilityで検証できるようにするのが
 次の整理点です。

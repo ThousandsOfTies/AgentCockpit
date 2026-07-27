@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Protocol
 
 from scripts.gar_lib.core.artifact import Artifact
-from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.diagnostic import SimulationDiagnosticReport
 
 
@@ -27,7 +26,3 @@ class SimulationEnvironment(Protocol):
     def diag(self, hardware: dict[str, list[dict[str, str]]]) -> SimulationDiagnosticReport: ...
 
     def log(self) -> int: ...
-
-
-class SimulationEnvironmentResolver(Protocol):
-    def for_workspace(self, workspace: Workspace) -> SimulationEnvironment: ...

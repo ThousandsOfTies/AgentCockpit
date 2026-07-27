@@ -11,7 +11,7 @@
 
 ## 0. 結論サマリ
 
-- **GAR のコア = シミュレータではなく「接続先(provider)の抽象化 + コマンド実行 + ファイル運搬 + 端末ブリッジ + `--json`」** という *接続と運搬の統一層*。シミュレーション機能はその上に乗る応用。
+- **GAR のコア = シミュレータではなく「接続先(environment)の抽象化 + コマンド実行 + ファイル運搬 + 端末ブリッジ + `--json`」** という *接続と運搬の統一層*。シミュレーション機能はその上に乗る応用。
 - **市場観**: 出荷「個数」は MCU が当面圧勝。だが **ソフトの価値・複雑性・AI が触る価値の総量は組み込み Linux が急成長**。ツールビジネスは個数でなく価値に追従するため、**GAR は価値側（Linux エッジ）を主戦場に取る**。
 - **GAR が今・強い**: Linux 系エッジの shift-left（**EC2 Graviton = 同 aarch64 実機 → Raspberry Pi 5 = HIL**）。エミュ不要で実速・高忠実。
 - **GAR のフロンティア**: MCU/RTOS の CPU エミュ統合（ESP-IDF linux target / STM32・Pico の Renode など）。現状ほぼ未配線。
@@ -65,7 +65,7 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 
 ## 3. GAR の現在地：できる / できない（コード実測ベース）
 
-### コア機能（provider に依らず常にある = GAR の不変の骨格）
+### コア機能（environment に依らず常にある = GAR の不変の骨格）
 
 | 操作 | CLI | 実装 |
 |---|---|---|
@@ -78,7 +78,7 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 
 ### Linux 系シミュレーション（実装済み・GAR の主戦場）
 
-- `LinuxSystemdSimProvider` が実体。**systemd サービス / カーネル `gpio-sim` / CUSE(i2c・spi) / `/dev/*` / web-bridge** で実機互換の周辺を提供。
+- `LinuxSystemdSimulationEnvironment` が実体。**systemd サービス / カーネル `gpio-sim` / CUSE(i2c・spi) / `/dev/*` / web-bridge** で実機互換の周辺を提供。
 - **EC2 Graviton 上で同 aarch64 Linux バイナリを実速で動かし、Raspi5 へそのまま deploy** という shift-left が成立している。
 
 ### 現状できないこと / 未実装（フロンティア）
@@ -87,7 +87,7 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 |---|---|---|
 | **Renode runtime 操作が未実装** | setupは`environments/registry/simulator/renode_mcu.py`、runtime stubは`simulation/renode.py`（resolver接続済み、操作は明示的に失敗） | Cortex-M/RISC-V MCU の②エミュ |
 | **ESP32 esptool target** | `target/esptool.py` | ESP32 実機シリアル / firmware flash |
-| **STM32 / Pico 専用 provider が存在しない** | registry に無し | これらの MCU 実機 deploy/flash |
+| **STM32 / Pico 専用 environment が存在しない** | registry に無し | これらの MCU 実機 deploy/flash |
 
 > 整理すると、3 バックエンドのうち **GAR が実装済みなのは ①(Linux sim / Graviton) と ③(adb/ssh/esp32 flash) の一部**。**②(CPU エミュ) はほぼ空白**。これが現在地である。
 

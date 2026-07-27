@@ -5,8 +5,7 @@ from unittest import mock
 
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.recovery.access import AccessRecoveryPlanner, RecoveryAction
-from scripts.gar_lib.recovery.terminal import TerminalBridgeRecoveryExecutor
+from scripts.gar_lib.recovery.access import plan_access_recovery, report_access_failure
 
 
 class GarAccessRecoveryTest(unittest.TestCase):
@@ -27,17 +26,17 @@ class GarAccessRecoveryTest(unittest.TestCase):
             returncode=255,
         )
 
-        action = AccessRecoveryPlanner().plan(
+        action = plan_access_recovery(
             error,
             workspace=self.workspace,
-            retry_command="gar sim deploy --workspace Local/Product",
+            retry_command="gar sim app deploy --workspace Local/Product",
         )
 
         self.assertEqual(
             ("aws", "login", "--remote", "--region", "ap-northeast-1"),
             action.terminal_command,
         )
-        self.assertTrue(any("gar sim start" in instruction for instruction in action.instructions))
+        self.assertTrue(any("gar sim host start" in instruction for instruction in action.instructions))
 
     def test_adb_failure_does_not_request_cloud_login(self) -> None:
         error = AccessConnectionError(
@@ -47,7 +46,9 @@ class GarAccessRecoveryTest(unittest.TestCase):
             returncode=1,
         )
 
-        action = AccessRecoveryPlanner().plan(error, workspace=self.workspace, retry_command="gar sim deploy")
+        action = plan_access_recovery(
+            error, workspace=self.workspace, retry_command="gar sim app deploy"
+        )
 
         self.assertIsNone(action.terminal_command)
         self.assertTrue(any("gar usb attach" in instruction for instruction in action.instructions))
@@ -60,29 +61,36 @@ class GarAccessRecoveryTest(unittest.TestCase):
             returncode=255,
         )
 
-        action = AccessRecoveryPlanner().plan(
+        action = plan_access_recovery(
             error,
             workspace=self.workspace,
-            retry_command="gar sim start --workspace Local/Product",
+            retry_command="gar sim host start --workspace Local/Product",
         )
 
         self.assertEqual(
             ("aws", "login", "--remote", "--region", "ap-northeast-1"),
             action.terminal_command,
         )
-        self.assertTrue(any("gar sim start" in instruction for instruction in action.instructions))
+        self.assertTrue(any("gar sim host start" in instruction for instruction in action.instructions))
 
-    def test_terminal_executor_receives_planned_command_by_injection(self) -> None:
-        requester = mock.Mock(return_value=0)
-        action = RecoveryAction(
-            title="AWS login",
-            terminal_command=("aws", "login", "--remote", "--region", "ap-northeast-1"),
-            instructions=(),
+    def test_planned_command_is_handed_to_the_visible_terminal(self) -> None:
+        error = AccessConnectionError(
+            channel="aws",
+            endpoint="ap-northeast-1",
+            reason="authentication",
+            returncode=255,
         )
 
-        created = TerminalBridgeRecoveryExecutor(requester).execute(action)
+        with mock.patch(
+            "scripts.gar_lib.recovery.access.run_terminal_request", return_value=0
+        ) as requester:
+            exit_code = report_access_failure(
+                error,
+                workspace=self.workspace,
+                retry_command="gar sim host start --workspace Local/Product",
+            )
 
-        self.assertTrue(created)
+        self.assertEqual(1, exit_code)
         requester.assert_called_once()
         self.assertEqual(
             "aws login --remote --region ap-northeast-1",

@@ -36,12 +36,12 @@ def normalize_esp32_serial_port(port: str | None) -> str | None:
 
 def validate_esp32_artifact(artifact_dir: Path) -> bool:
     if not artifact_dir.is_dir():
-        print(f"gar target flash-esp32: artifact dir not found: {artifact_dir}", file=sys.stderr)
+        print(f"gar target app deploy: artifact dir not found: {artifact_dir}", file=sys.stderr)
         return False
     missing = [name for _, name in FLASH_LAYOUT if not (artifact_dir / name).is_file()]
     if missing:
         print(
-            "gar target flash-esp32: missing artifact file(s): " + ", ".join(missing),
+            "gar target app deploy: missing artifact file(s): " + ", ".join(missing),
             file=sys.stderr,
         )
         return False
@@ -164,16 +164,15 @@ def run_esp32_flash_command(
     resolved_artifact_dir = resolve_esp32_artifact_dir(artifact_dir)
     if resolved_artifact_dir is None:
         print(
-            f"gar target flash-esp32: no artifact found under {DEFAULT_ESP32_ARTIFACT_ROOT}",
+            f"gar target app deploy: no artifact found under {DEFAULT_ESP32_ARTIFACT_ROOT}",
             file=sys.stderr,
         )
         return 1
     resolved_port = normalize_esp32_serial_port(port)
     if not resolved_port:
         print(
-            "gar target flash-esp32: ESP32 serial port is not configured.\n"
-            "Run: gar setup\n"
-            "or:  gar target flash-esp32 --port COM3",
+            "gar target app deploy: ESP32 serial port is not configured.\n"
+            "Run: gar setup",
             file=sys.stderr,
         )
         return 1
@@ -181,7 +180,7 @@ def run_esp32_flash_command(
         return 1
     port_error = esp32_serial_port_access_error(resolved_port)
     if port_error:
-        print(f"gar target flash-esp32: {port_error}", file=sys.stderr)
+        print(f"gar target app deploy: {port_error}", file=sys.stderr)
         return 1
     if verify and not verify_esp32_artifact_checksums(resolved_artifact_dir):
         return 1
@@ -189,7 +188,7 @@ def run_esp32_flash_command(
     esptool_python = ensure_esptool_python(install=install_esptool)
     if esptool_python is None:
         print(
-            "gar target flash-esp32: esptool not found. "
+            "gar target app deploy: esptool not found. "
             "Re-run without --no-install-esptool or install esptool manually.",
             file=sys.stderr,
         )

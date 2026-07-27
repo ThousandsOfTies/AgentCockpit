@@ -6,8 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Protocol
 
-from scripts.gar_lib.access.base import CommandChannel, CommandResult
-from scripts.gar_lib.core.workspace import Workspace
+from scripts.gar_lib.access._base import CommandChannel, CommandResult
 from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder, gpio_sim_plan
 from scripts.gar_lib.simulation.parse import parse_gpio_runtime_status, parse_gpio_sim_check
 
@@ -39,11 +38,7 @@ class SimulationHardwareControl(Protocol):
         hardware: dict[str, list[dict[str, str]]],
     ) -> HardwareControlResult: ...
 
-    def panel(self, action: str, params: dict[str, object]) -> HardwareControlResult: ...
-
-
-class SimulationHardwareControlResolver(Protocol):
-    def for_workspace(self, workspace: Workspace) -> SimulationHardwareControl: ...
+    def io(self, action: str, params: dict[str, object]) -> HardwareControlResult: ...
 
 
 class LinuxBridgeHardwareControl:
@@ -106,8 +101,8 @@ class LinuxBridgeHardwareControl:
             )
         return HardwareControlResult(1, {"ok": False, "error": f"unknown gpio action: {action}"})
 
-    def panel(self, action: str, params: dict[str, object]) -> HardwareControlResult:
-        result = self.command_channel.run(self.command_builder.build_panel(action, params))
+    def io(self, action: str, params: dict[str, object]) -> HardwareControlResult:
+        result = self.command_channel.run(self.command_builder.build_io(action, params))
         if action != "state":
             return HardwareControlResult(result.returncode, stdout=result.stdout, stderr=result.stderr)
         try:

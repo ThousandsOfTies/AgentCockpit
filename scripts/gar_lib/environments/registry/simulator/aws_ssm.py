@@ -5,12 +5,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
 
 
 class AwsSsmEnvironment(EnvironmentSetupOption):
-    provider_id = "aws_ssm"
+    environment_id = "aws_ssm"
     display_name = "AWS SSM (非推奨)"
     description = (
         "runtime componentは接続済みですが、各操作は現在stubです。"

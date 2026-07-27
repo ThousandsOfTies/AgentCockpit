@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from scripts.gar_lib.access.base import CommandResult
+from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.simulation.control import LinuxBridgeHardwareControl
 
 
@@ -70,16 +70,16 @@ class GarHardwareControlTest(unittest.TestCase):
         self.assertEqual("sim-host", result.payload["host"])
         channel.run.assert_called_once_with("gpio status")
 
-    def test_panel_state_uses_same_command_channel(self) -> None:
+    def test_io_state_uses_same_command_channel(self) -> None:
         channel = mock.Mock()
         channel.run.return_value = CommandResult(("ssh",), 0, '{"led18": 1}', "")
         builder = mock.Mock()
-        builder.build_panel.return_value = "curl state"
+        builder.build_io.return_value = "curl state"
         control = LinuxBridgeHardwareControl(channel, builder)
 
-        result = control.panel("state", {})
+        result = control.io("state", {})
 
         self.assertEqual(0, result.exit_code)
         self.assertEqual({"led18": 1}, result.payload)
-        builder.build_panel.assert_called_once_with("state", {})
+        builder.build_io.assert_called_once_with("state", {})
         channel.run.assert_called_once_with("curl state")

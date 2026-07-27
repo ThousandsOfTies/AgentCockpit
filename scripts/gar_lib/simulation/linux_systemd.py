@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shlex
 
-from scripts.gar_lib.access.base import CommandChannel, FileChannel
+from scripts.gar_lib.access._base import CommandChannel, FileChannel
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError

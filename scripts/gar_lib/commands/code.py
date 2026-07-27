@@ -32,7 +32,15 @@ def run_code_command(
     shutdown: bool = False,
     gh_timeout: int | None = None,
 ) -> int:
-    environment_id = load_config().get("selected_providers", {}).get("codespace", "local")
+    # ``gar code`` は build hub（エディタ / ビルド環境）への接続 plumbing であり、
+    # product の build/deploy artifact graph は扱わない「メタ系」command。したがって
+    # workspace を解決せず、グローバルの ``selected_environments.codespace`` を直接読む。
+    #
+    # TODO(code-workspace): codespace 名 / remote_path は workspace.connection
+    # （codespace_name / remote_root）と情報が重複している。単一 source of truth に
+    # するなら、--workspace を受けて workspace.connection から既定値を解決する薄い層を
+    # 足す。
+    environment_id = load_config().get("selected_environments", {}).get("codespace", "local")
     if environment_id == "local":
         return run_local_code_command(command)
     if environment_id == "github_codespaces":

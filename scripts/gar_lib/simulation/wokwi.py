@@ -64,7 +64,7 @@ class WokwiSimulationEnvironment:
             raise GarDomainError("wokwi-cliが見つかりません。gar setupでWokwiを設定してください。")
         firmware = self._resolve_project_path(self._firmware_path())
         if not firmware.is_file():
-            raise GarDomainError(f"Wokwi firmwareがありません。先にgar sim buildを実行してください: {firmware}")
+            raise GarDomainError(f"Wokwi firmwareがありません。先にgar sim app buildを実行してください: {firmware}")
 
         timeout = self._timeout_ms()
         argv = (
@@ -147,7 +147,7 @@ class WokwiSimulationEnvironment:
     def _require_project(self) -> None:
         if not self.project_dir.is_dir() or not (self.project_dir / "wokwi.toml").is_file():
             raise GarDomainError(
-                f"Wokwi projectがありません。先にgar sim buildを実行してください: {self.project_dir}"
+                f"Wokwi projectがありません。先にgar sim app buildを実行してください: {self.project_dir}"
             )
 
     def _project_destination(self, value: str) -> Path:

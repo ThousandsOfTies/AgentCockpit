@@ -1,5 +1,5 @@
 """Workspace lookup implementations."""
 
-from scripts.gar_lib.workspaces.registry import ConfigWorkspaceRegistry, WorkspaceRegistry
+from scripts.gar_lib.workspaces.registry import workspace_for
 
-__all__ = ["ConfigWorkspaceRegistry", "WorkspaceRegistry"]
+__all__ = ["workspace_for"]

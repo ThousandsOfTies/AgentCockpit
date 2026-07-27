@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import shlex
 
+from scripts.gar_lib.access._base import CommandChannel, CommandResult
 from scripts.gar_lib.access.aws import AwsCommandChannel
-from scripts.gar_lib.access.base import CommandChannel, CommandResult
-from scripts.gar_lib.simulation.ssh_config import HostAddressUpdater
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.simulation.host import SimulationHostStartResult, SimulationHostState
+from scripts.gar_lib.simulation.ssh_config import HostAddressUpdater
 
 
 class AwsEc2SimulationHostController:
@@ -48,10 +48,10 @@ class AwsEc2SimulationHostController:
         state = self.status()
         if not state.running:
             raise GarDomainError(f"EC2 instanceがrunningではありません: {state.state}")
-        if state.public_ip is None:
+        if state.address is None:
             raise GarDomainError("EC2 instanceのpublic IPを取得できませんでした。")
 
-        address_updated = update_address and self.address_updater.update(self.host, state.public_ip)
+        address_updated = update_address and self.address_updater.update(self.host, state.address)
         repository_updated = False
         repository_update_skipped = False
         if update_repository:
@@ -90,10 +90,11 @@ class AwsEc2SimulationHostController:
         )
         return SimulationHostState(
             host=self.host,
-            instance_id=self.instance_id,
-            region=self.region,
+            backend="aws_ec2",
+            id=self.instance_id,
             state=state,
-            public_ip=public_ip,
+            address=public_ip,
+            details={"region": self.region},
         )
 
     def _query(self, query: str, message: str, *, allow_none: bool = False) -> str | None:

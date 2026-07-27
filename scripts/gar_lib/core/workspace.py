@@ -18,6 +18,7 @@ class Workspace:
     connection: Mapping[str, Any]
     selected_environments: Mapping[str, str] = field(default_factory=dict)
     ec2: Mapping[str, Any] = field(default_factory=dict)
+    docker: Mapping[str, Any] = field(default_factory=dict)
     target: Mapping[str, Any] = field(default_factory=dict)
     adb: Mapping[str, Any] = field(default_factory=dict)
     esp32: Mapping[str, Any] = field(default_factory=dict)

@@ -27,11 +27,11 @@ AI / Codex
   - 開発環境
   - シミュレート環境
   - 実機環境
-- 設定済みカテゴリは選択済み provider だけを表示する。
+- 設定済みカテゴリは選択済み environment だけを表示する。
 - 選択状態は `.gar/config.json` に保存する。
 - `.gar/` は git 管理しない。
 - `gar terminal run` は `.gar/terminal-requests/*.json` を作る。
-- provider が sudo/auth handoff を必要とした場合は、visible terminal request も作る。
+- environment が sudo/auth handoff を必要とした場合は、visible terminal request も作る。
 - `gar setup` は VSCode Terminal Bridge の導入状況を表示する。
 - `tools/vscode-gar/` に最小 VSCode extension プロトタイプがある。
   - `.gar/terminal-requests/*.json` を監視する。

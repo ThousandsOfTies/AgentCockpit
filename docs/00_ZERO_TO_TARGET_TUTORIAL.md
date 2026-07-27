@@ -28,7 +28,7 @@ RasPi5
 |---|---|
 | Windows / WSL2 | WSL2 Ubuntu から `git`, `python3`, `make` が使える |
 | GitHub | Codespaces を使える。`gh auth login` 済み、または途中でログインできる |
-| EC2 simulation host | `gar sim start` で起動できる EC2 設定がある |
+| EC2 simulation host | `gar sim host start` で起動できる EC2 設定がある |
 | RasPi5 | Raspberry Pi OS が起動し、実 H/W 配線済み |
 | 実機接続 | 既定は USB-C + adb。ネットワーク接続できる場合は SSH/scp でもよい |
 | ビルド成果物 | Codespace 側で artifact bundle を作れる target repo がある |
@@ -75,7 +75,7 @@ make init
 make start
 ```
 
-## 2. target / provider / 既定 host を設定する
+## 2. target / environment / 既定 host を設定する
 
 まず `gar setup` を実行します。
 
@@ -83,7 +83,7 @@ make start
 gar setup
 ```
 
-最初に target（何を動かしたいか）を選びます。target ごとの推奨 backend が表示され、その後に接続 provider を選びます。
+最初に target（何を動かしたいか）を選びます。target ごとの推奨 backend が表示され、その後に接続 environment を選びます。
 
 基本の選択は次です。
 
@@ -98,7 +98,7 @@ ESP32 / M5Stack を扱う場合は Target で `ESP32 / M5Stack` を選びます�
 
 ネットワーク越しに RasPi5 へ SSH できる場合は、実機環境で `SSH / scp` を選んでもよいです。
 
-ここでの `SSH Remote` は「シミュレータ種別」ではなく、EC2 simulation runtime host へ `ssh` / `scp` で入るための接続 provider です。`AWS SSM` は現状の runtime 操作では非推奨なproviderです。
+ここでの `SSH Remote` は「シミュレータ種別」ではなく、EC2 simulation runtime host へ `ssh` / `scp` で入るための接続 environment です。`AWS SSM` は現状の runtime 操作では非推奨な environment です。
 
 EC2 の既定 host を明示する場合:
 
@@ -109,7 +109,7 @@ gar setup --ec2-host vibecode-graviton
 チェック:
 
 ```bash
-gar sim status
+gar sim host status
 gar code ?
 gar target ?
 ```
@@ -151,7 +151,7 @@ bash scripts/post-create.sh
 
 その後は target software ごとの README / build script に従ってビルドします。
 
-ビルド後、artifact bundle ができていることを確認します。既定では次の場所を `gar target fetch` / `gar sim env deploy` が見に行きます。
+ビルド後、artifact bundle ができていることを確認します。既定では次の場所を `gar target app fetch` / `gar sim runtime deploy` が見に行きます。
 
 ```bash
 ls -la /workspaces/gar-build-env/artifacts/from-codespace
@@ -167,18 +167,18 @@ cat /workspaces/gar-build-env/artifacts/from-codespace/artifact.json
 WSL Hub 側で:
 
 ```bash
-gar sim start
-gar sim env deploy
-gar sim env start
-gar sim env diag --json
+gar sim host start
+gar sim runtime deploy
+gar sim runtime start
+gar sim runtime diag --json
 ```
 
 `diag --json` の `"ok": true` が目安です。失敗したら次を確認します。
 
 ```bash
-gar sim env diag --json
-gar sim env gpio status --json
-gar sim env log
+gar sim runtime diag --json
+gar sim gpio status --json
+gar sim runtime log
 ```
 
 EC2 にログインしてアプリを起動します。
@@ -201,22 +201,22 @@ GAR共通のJSONシナリオとして定義します。Linux bridge向けの既�
 
 ```bash
 python scripts/run_scenario.py path/to/scenario.json
-gar sim env diag --json
+gar sim runtime diag --json
 ```
 
 期待:
 
 ```text
-`button_press` action で system_on 相当の状態が変わる
-`rfid_tap` action で UID が bridge state / OLED 表示へ反映される
+`press` / `device: button` action で system_on 相当の状態が変わる
+`set` / `device: rfid` action で UID が bridge state / OLED 表示へ反映される
 sensor_demo が EC2 上で落ちない
 ```
 
 simulation を止める場合:
 
 ```bash
-gar sim env stop
-gar sim stop
+gar sim runtime stop
+gar sim host stop
 ```
 
 ## 6. RasPi5 実機を準備する
@@ -266,7 +266,7 @@ sudo systemctl enable --now adbd
 
 ## 7. adb USB-C 経路で実機を WSL2 に見せる
 
-既定の実機 provider は `ADB USB-C` です。
+既定の実機 environment は `ADB USB-C` です。
 
 まず WSL Hub 側で確認します。
 
@@ -291,35 +291,35 @@ adb devices
 
 `device` と表示されれば OK です。
 
-`gar target deploy` はADB接続失敗を分類し、Terminal Bridge経由で`gar usb list` / `gar usb attach`の復旧手順を案内します。ただし初回の`usbipd bind`だけは管理者PowerShellが必要です。
+`gar target app deploy` はADB接続失敗を分類し、Terminal Bridge経由で`gar usb list` / `gar usb attach`の復旧手順を案内します。ただし初回の`usbipd bind`だけは管理者PowerShellが必要です。
 
 ## 8. 実機へ deploy する
 
-選択したworkspaceの最新target artifactを、`gar setup`で設定した実機へ配置します。先にartifactを作る場合は`gar target build`を実行します。
+選択したworkspaceの最新target artifactを、`gar setup`で設定した実機へ配置します。先にartifactを作る場合は`gar target app build`を実行します。
 
 ```bash
-gar target build
-gar target deploy
+gar target app build
+gar target app deploy
 ```
 
 特定ADB deviceを利用する場合は`gar setup`でserialをworkspaceへ保存します。確認にはADBを直接利用できます。
 
 ```bash
 adb devices
-gar target deploy --workspace Local/Product
+gar target app deploy --workspace Local/Product
 ```
 
 ネットワーク越しSSH/scpでは、`gar setup`でhostをworkspaceへ保存して実行します。
 
 ```bash
-gar target deploy --workspace Network/Product
+gar target app deploy --workspace Network/Product
 ```
 
 deploy だけやり直す場合:
 
 ```bash
-gar target fetch
-gar target deploy
+gar target app fetch
+gar target app deploy
 ```
 
 チェック:
@@ -381,18 +381,18 @@ gh codespace list
 gar code start --codespace <codespace-name>
 ```
 
-### `gar sim env diag --json` が `"ok": false`
+### `gar sim runtime diag --json` が `"ok": false`
 
 ```bash
-gar sim env diag --json
-gar sim env gpio status --json
-gar sim env log
+gar sim runtime diag --json
+gar sim gpio status --json
+gar sim runtime log
 ssh vibecode-graviton 'systemctl --no-pager --full status gar-sim.target gar-bridge.service gar-gpio-sim.service'
 ```
 
 出力を貼って「どこが悪い？」と聞けばよいです。
 
-### `gar target deploy` が artifact を見つけられない
+### `gar target app deploy` が artifact を見つけられない
 
 Codespace 側で artifact bundle の場所を確認します。
 
@@ -401,11 +401,11 @@ ls -la /workspaces/gar-build-env/artifacts/from-codespace
 cat /workspaces/gar-build-env/artifacts/from-codespace/artifact.json
 ```
 
-WSL Hub 側で取得元を明示します。
+WSL Hub 側で取得し直します（取得元は workspace の build environment 設定から解決されます）。
 
 ```bash
-gar target fetch --remote-root /workspaces/gar-build-env/artifacts/from-codespace
-gar target deploy
+gar target app fetch
+gar target app deploy
 ```
 
 ### adb device が見えない
@@ -441,7 +441,7 @@ chmod +x ~/sensor_demo
 ~/sensor_demo
 ```
 
-`gar target deploy` の manifest に `mode: "0755"` が入っているかも確認します。
+`gar target app deploy` の manifest に `mode: "0755"` が入っているかも確認します。
 
 
 
@@ -459,13 +459,13 @@ gar code start
 
 # Codespace 側で target repo をビルドし artifact bundle を作る
 
-gar sim start
-gar sim env deploy
-gar sim env start
-gar sim env diag --json
+gar sim host start
+gar sim runtime deploy
+gar sim runtime start
+gar sim runtime diag --json
 ssh vibecode-graviton '~/sensor_demo'
 
-gar target deploy
+gar target app deploy
 adb shell
 ~/sensor_demo
 ```
@@ -474,6 +474,6 @@ SSH/scp 実機経路の場合:
 
 ```bash
 gar setup                 # 実機環境で SSH / scp を選ぶ
-gar target deploy --workspace Network/Product
+gar target app deploy --workspace Network/Product
 ssh raspi5 '~/sensor_demo'
 ```

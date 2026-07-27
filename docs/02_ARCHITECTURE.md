@@ -17,7 +17,7 @@
 ## コマンドモデル
 
 GAR のコマンドは make の target に近い考え方に寄せる。ユーザーが入力するのは
-`gar sim build` / `gar sim deploy` / `gar target build` / `gar target deploy` のような
+`gar sim app build` / `gar sim app deploy` / `gar target app build` / `gar target app deploy` のような
 抽象 target であり、個別の実行方法（PlatformIO、Codespaces、esptool、adb、scp など）は
 `gar setup` で選ばれた target 定義と接続設定から解決する。
 
@@ -25,8 +25,8 @@ GAR のコマンドは make の target に近い考え方に寄せる。ユー�
 依存 target を再帰的にたどって必要な build / package を先に実行し、その最新 artifact を
 対象 runtime へ反映する。低レベルコマンドは互換・診断用に残すが、日常操作の文法には出さない。
 
-Codespace は build target の実行場所のひとつ。ユーザーは通常 `gar sim build` /
-`gar sim deploy` / `gar target build` / `gar target deploy` から間接的に使う。
+Codespace は build target の実行場所のひとつ。ユーザーは通常 `gar sim app build` /
+`gar sim app deploy` / `gar target app build` / `gar target app deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。
 
 実機操作も make 的な依存 target として扱う。
@@ -66,23 +66,23 @@ Gapless Agent Runtimeでは、VSCodeを、開発者と AI エージェントが�
 
 この役割変更を実現するために、Gapless Agent Runtime では Make ターゲット、JSON シナリオ、ログ、状態取得を整備し、ビルド、デプロイ、シミュレータ起動、仮想 H/W 操作、ログ確認、診断までを AI が再現可能な手順として実行できる形にします。
 
-### Simulation Control Plane — provider をまたぐ不変条件
+### Simulation Control Plane — environment をまたぐ不変条件
 
-シミュレータの物理実装（CUSE/gpio-sim、Wokwi、MuJoCo、Renode など）は provider ごとに異なってよい。しかし **操作と観察の入口は Bridge を通す**。Bridge は状態取得と操作命令を JSON で受け、実際の simulator API / SDK / 仮想デバイス操作へ変換する control plane である。
+シミュレータの物理実装（CUSE/gpio-sim、Wokwi、MuJoCo、Renode など）は environment ごとに異なってよい。しかし **操作と観察の入口は Bridge を通す**。Bridge は状態取得と操作命令を JSON で受け、実際の simulator API / SDK / 仮想デバイス操作へ変換する control plane である。
 
 ```text
 Human panel / AI agent / CI scenario
               │  HTTP + JSON
               ▼
        Simulator Bridge
-              │  provider-specific adapter
+              │  environment-specific adapter
               ▼
 CUSE/gpio-sim / Wokwi / MuJoCo SDK / Renode
 ```
 
-このため、Web Panel は Linux 仮想デバイス runtime だけの付属機能ではない。人間向け panel と AI / CI 向け scenario は、同じ Bridge のクライアントである。新しい simulator provider を追加するとき、標準 viewer や provider 固有 UI だけで完結させてはならない。必ず Bridge を持つか、provider 固有の操作 API を GAR の JSON command/state 契約へ変換する adapter を実装する。
+このため、Web Panel は Linux 仮想デバイス runtime だけの付属機能ではない。人間向け panel と AI / CI 向け scenario は、同じ Bridge のクライアントである。新しい simulator environment を追加するとき、標準 viewer や environment 固有 UI だけで完結させてはならない。必ず Bridge を持つか、environment 固有の操作 API を GAR の JSON command/state 契約へ変換する adapter を実装する。
 
-現在の Wokwi は Wokwi CLI scenario を使う移行中の例外である。共通 JSON scenario からの起動は長期的な統一対象であり、provider 固有 UI を共通 control plane の代わりと見なさない。
+現在の Wokwi は Wokwi CLI scenario を使う移行中の例外である。共通 JSON scenario からの起動は長期的な統一対象であり、environment 固有 UI を共通 control plane の代わりと見なさない。
 
 ---
 
@@ -130,7 +130,7 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 * **JSON シナリオ試験**: ボタン押下・RFID タップ・センサー値変更・状態確認を JSON シナリオとして定義し、AI や CI が同じ手順を再現可能なテストとして実行できる。
 * **HTTP API（bridge）**: Linux / RasPi-compatible simulation の内部受け口。Web UI と JSON シナリオ実行系が同じ仮想 H/W 操作ロジックを通るため、UI 変更時のメンテ漏れが起きにくい。
 
-物理的な検証実装は simulation provider ごとに分かれるが、上記 control plane の観点では、いずれも Bridge の背後に置く。
+物理的な検証実装は simulation environment ごとに分かれるが、上記 control plane の観点では、いずれも Bridge の背後に置く。
 
 | 対象 | 入口 |
 |---|---|
@@ -138,7 +138,7 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 | Linux Bridge シナリオ | `python scripts/run_scenario.py path/to/scenario.json` |
 | Wokwi 手動確認 | VS Code Wokwi 拡張 / Diagram Editor |
 | Wokwi シナリオ | `wokwi-cli --scenario button.test.yaml .` |
-| MuJoCo | `gar sim env build` / `gar sim env start --no-port-forward` |
+| MuJoCo | `gar sim runtime build` / `gar sim runtime start --no-port-forward` |
 | ESP32 QEMU | `gar-esp32-flash-image` / `gar-esp32-qemu-run` |
 | Renode | `renode` / `renode-test` |
 | Vibe Remote smoke | `npm run smoke:protocol` |
@@ -153,4 +153,4 @@ Gapless Agent Runtime では、AI が実機へ到達するための接続経路�
 
 既定は USB-C を用いた adb です。社内ネットワークなどで作業 PC が複数の NIC を自由に使えない環境でも、USB ケーブル一本で実機にアクセスできるためです（[scripts/gar_lib/environments/registry/target/adb_usb.py](../scripts/gar_lib/environments/registry/target/adb_usb.py)）。
 
-ネットワーク越しに実機へ到達できる環境では、SSH/scp 経路も選択できます。`gar setup` の実機環境カテゴリで `SSH / scp` を選び、SSH configのhostをworkspaceへ保存すると、`gar target deploy` が `ScpFileChannel` と `SshCommandChannel` を組み合わせてartifactを転送します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、AIも人間も同じ設定で動作します。
+ネットワーク越しに実機へ到達できる環境では、SSH/scp 経路も選択できます。`gar setup` の実機環境カテゴリで `SSH / scp` を選び、SSH configのhostをworkspaceへ保存すると、`gar target app deploy` が `ScpFileChannel` と `SshCommandChannel` を組み合わせてartifactを転送します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、AIも人間も同じ設定で動作します。

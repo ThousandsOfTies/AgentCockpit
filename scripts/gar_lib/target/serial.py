@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from scripts.gar_lib.access.base import ArtifactInstaller
+from scripts.gar_lib.access._base import ArtifactInstaller
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
+from scripts.gar_lib.target.environment import TargetEnvironment
 
 
-class SerialTargetEnvironment:
+class SerialTargetEnvironment(TargetEnvironment):
     def __init__(self, installer: ArtifactInstaller):
         self.installer = installer
 

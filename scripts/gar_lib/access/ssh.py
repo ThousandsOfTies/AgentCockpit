@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from scripts.gar_lib.access.base import CommandResult, TransferResult
+from scripts.gar_lib.access._base import CommandResult, TransferResult
 from scripts.gar_lib.core.errors import AccessConnectionError
 
 SSH_CONNECTION_OPTIONS = (

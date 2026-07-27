@@ -6,7 +6,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from scripts.gar_lib.access.base import CommandResult, TransferResult
+from scripts.gar_lib.access._base import CommandResult, TransferResult
 from scripts.gar_lib.core.errors import AccessConnectionError
 
 

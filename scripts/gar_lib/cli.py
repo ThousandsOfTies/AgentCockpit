@@ -1,74 +1,39 @@
-"""`gar` CLI entry point. Argument parsing and dispatch only.
+"""`gar` CLI entry point. 引数解析と、対応する関数の呼び出しだけを行う。
 
-Implementation lives in sibling submodules:
-- :mod:`scripts.gar_lib.vscode.terminal_ui` — color / safe_input helpers
-- :mod:`scripts.gar_lib.config` — config IO, paths, EC2 host helpers
-- :mod:`scripts.gar_lib.vscode.profile_manage` — VSCode terminal profile write/remove
-- :mod:`scripts.gar_lib.vscode.terminal_bridge` — VSCode Terminal Bridge extension install
-- :mod:`scripts.gar_lib.commands.code` — ``gar code``
-- :mod:`scripts.gar_lib.artifacts.manifest` — artifact.json 共通基盤・Codespace fetch（CLI引数に対応しないドメインロジック）
-- :mod:`scripts.gar_lib.application` — workspace-based ``gar sim/target`` use cases
-- :mod:`scripts.gar_lib.commands.hw` — ``gar hw``
-- :mod:`scripts.gar_lib.commands.infra` — ``gar sim infra``
-- :mod:`scripts.gar_lib.commands.executor` — application execution/recovery
-- :mod:`scripts.gar_lib.commands.presentation` — application result rendering
-- :mod:`scripts.gar_lib.commands.terminal` — ``gar terminal``
-- :mod:`scripts.gar_lib.commands.usb` — ``gar usb``
-- :mod:`scripts.gar_lib.commands.setup` — ``gar setup``
+`gar <group> <subject> <action>` の leaf parser には、実行する関数そのものを
+``set_defaults(run=...)`` で結び付けてある。つまり parser 自体が dispatch table であり、
+コマンド名を分岐で振り分ける層は存在しない。実体は以下にある:
+
+- :mod:`scripts.gar_lib.commands.sim` — ``gar sim app/runtime/host/gpio/io``
+- :mod:`scripts.gar_lib.commands.target` — ``gar target app``
+
+コマンド1本を実行する関数は、どの層にあっても ``run_`` で始める。
+実装手段（execute / dispatch / handle など）を名前に持ち込まない。
+
+workspace 非依存の plumbing コマンド（``setup`` / ``code`` / ``terminal`` / ``usb`` /
+``hw`` / ``sim infra`` / ``completion``）は :func:`main` から直接呼ぶ。
 """
 
 from __future__ import annotations
 
 import argparse
-import contextlib
-import json
 import sys
-from collections.abc import Sequence
-from pathlib import Path
+from collections.abc import Callable, Sequence
 
-from scripts.gar_lib.artifacts.manifest import (
-    DEFAULT_CODESPACE_ARTIFACT_ROOT,
-    default_artifacts_dir,
-    fetch_codespace_artifacts,
-)
+from scripts.gar_lib.commands import sim, target
 from scripts.gar_lib.commands.code import run_code_command
-from scripts.gar_lib.commands.executor import execute_application_command
 from scripts.gar_lib.commands.hw import run_hw_command
 from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.setup import run_setup
 from scripts.gar_lib.commands.terminal import run_terminal_gc, run_terminal_request
 from scripts.gar_lib.commands.usb import run_usb_command
-from scripts.gar_lib.core.command import (
-    SIM_BUILD,
-    SIM_CLEAN,
-    SIM_DEPLOY,
-    SIM_HOST_START,
-    SIM_HOST_STATUS,
-    SIM_HOST_STOP,
-    SIM_RUNTIME_BUILD,
-    SIM_RUNTIME_DEPLOY,
-    SIM_RUNTIME_DIAG,
-    SIM_RUNTIME_LOG,
-    SIM_RUNTIME_START,
-    SIM_RUNTIME_STATUS,
-    SIM_RUNTIME_STOP,
-    TARGET_BUILD,
-    TARGET_DEPLOY,
-    GarCommand,
-)
-from scripts.gar_lib.target.esp32_firmware import (
-    DEFAULT_ESP32_ARTIFACT_ROOT,
-    DEFAULT_ESP32_CODESPACE_PROJECT_ROOT,
-    DEFAULT_ESP32_PIO_ENV,
-    run_esp32_build_command,
-)
-from scripts.gar_lib.target.esptool import run_esp32_flash_command
+from scripts.gar_lib.core.command import GarCommand
+from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
+from scripts.gar_lib.core.workspace import Workspace
+from scripts.gar_lib.recovery.access import report_access_failure
+from scripts.gar_lib.workspaces.registry import workspace_for
 
-SIM_VM_COMMAND_MAP = {
-    "start": SIM_HOST_START,
-    "stop": SIM_HOST_STOP,
-    "status": SIM_HOST_STATUS,
-}
+CommandBody = Callable[[Workspace, argparse.Namespace], int]
 
 CODE_COMMAND_MAP = {
     "boot": "boot",
@@ -156,24 +121,6 @@ def parser_completion_words(cword: int, words: Sequence[str]) -> list[str]:
     return sorted(candidate for candidate in candidates if candidate.startswith(current))
 
 
-def _run_with_json_summary(command_label: str, json_output: bool, func) -> int:
-    """``func`` (終了コードを返す) を実行する。``json_output`` 時は人間向けの
-    進捗出力を stderr へ退避し、最後に機械可読な結果サマリ JSON を stdout へ
-    1 個だけ出力する（AI / CI 向け）。"""
-    if not json_output:
-        return func()
-    with contextlib.redirect_stdout(sys.stderr):
-        exit_code = func()
-    print(
-        json.dumps(
-            {"command": command_label, "ok": exit_code == 0, "exit_code": exit_code},
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-    return exit_code
-
-
 def add_code_start_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--target",
@@ -194,13 +141,53 @@ def add_code_start_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _shared_option(*args: object, **kwargs: object) -> argparse.ArgumentParser:
+    """複数のleaf parserで共有するoptionを1回だけ定義する。"""
+
+    option = argparse.ArgumentParser(add_help=False)
+    option.add_argument(*args, **kwargs)  # type: ignore[arg-type]
+    return option
+
+
+def add_actions(
+    subparsers: argparse._SubParsersAction,
+    group: str,
+    subject: str,
+    actions: dict[str, tuple[str, CommandBody]],
+    *,
+    parents: Sequence[argparse.ArgumentParser] = (),
+) -> dict[str, argparse.ArgumentParser]:
+    """`gar <group> <subject> <action>` の action parser を作り、実行する関数を結び付ける。"""
+
+    created: dict[str, argparse.ArgumentParser] = {}
+    for action, (help_text, body) in actions.items():
+        leaf = subparsers.add_parser(action, help=help_text, parents=list(parents))
+        leaf.set_defaults(gar_command=GarCommand(group, subject, action), run=body)
+        created[action] = leaf
+    return created
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gar")
     subparsers = parser.add_subparsers(dest="command", metavar="command")
 
+    workspace_option = _shared_option(
+        "--workspace",
+        default=None,
+        metavar="NAME",
+        help="gar setup で登録した workspace 名。登録が1件なら省略できます",
+    )
+    json_option = _shared_option(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="結果を機械可読な JSON で出力します（AI / CI 向け）",
+    )
+    workspace_json = (workspace_option, json_option)
+
     setup_parser = subparsers.add_parser(
         "setup",
-        help="接続環境プロバイダを選択して依存コマンドを確認します",
+        help="接続環境を選択して依存コマンドを確認します",
     )
     setup_parser.add_argument(
         "--no-install",
@@ -215,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--esp32-port",
         default=None,
-        help="ESP32 esptool provider が使う serial port を保存します（例: COM3, /dev/ttyUSB0）",
+        help="ESP32 esptool environment が使う serial port を保存します（例: COM3, /dev/ttyUSB0）",
     )
     code_parser = subparsers.add_parser(
         "code",
@@ -331,296 +318,202 @@ def build_parser() -> argparse.ArgumentParser:
     completion_words_parser.add_argument("--cword", type=int, required=True)
     completion_words_parser.add_argument("words", nargs=argparse.REMAINDER)
 
-    sim_parser = subparsers.add_parser("sim", help="simulation VM / services / virtual H/W を操作します")
-    sim_subparsers = sim_parser.add_subparsers(dest="sim_command", metavar="command")
-    sim_build_parser = sim_subparsers.add_parser(
-        "build",
-        help="選択した product workspace の simulation build hook を実行します",
+    sim_parser = subparsers.add_parser(
+        "sim", help="simulation の host / runtime / application / virtual H/W を操作します"
     )
-    sim_build_parser.add_argument(
-        "--workspace",
-        default=None,
-        metavar="NAME",
-        help="gar setup に表示される workspace名でビルド対象を指定します",
-    )
-    sim_build_parser.add_argument(
-        "action",
-        nargs="?",
-        choices=("clean",),
-        help="clean を指定すると product の simulation build artifact を削除します",
-    )
-    for sim_vm_command_name in SIM_VM_COMMAND_MAP:
-        help_text = {
-            "start": "simulation VM を起動します",
-            "stop": "simulation VM を停止します",
-            "status": "simulation VM の状態を確認します",
-        }[sim_vm_command_name]
-        sim_vm_command_parser = sim_subparsers.add_parser(
-            sim_vm_command_name,
-            help=help_text,
-        )
-        sim_vm_command_parser.add_argument(
-            "--workspace",
-            default=None,
-            metavar="NAME",
-            help="gar setup に表示される workspace名の EC2 設定を使います",
-        )
-        if sim_vm_command_name == "status":
-            sim_vm_command_parser.add_argument(
-                "--json",
-                dest="json_output",
-                action="store_true",
-                help="結果を機械可読な JSON で出力します（AI / CI 向け）",
-            )
-        if sim_vm_command_name == "start":
-            sim_vm_command_parser.add_argument(
-                "--no-update-ssh",
-                action="store_true",
-                help="起動後に ~/.ssh/config の HostName を更新しません",
-            )
-            sim_vm_command_parser.add_argument(
-                "--pull",
-                action="store_true",
-                help="起動後に ec2.repo_dir で git pull を実行します",
-            )
+    sim_parser.set_defaults(help_target="sim")
+    sim_subparsers = sim_parser.add_subparsers(dest="sim_subject", metavar="subject")
 
-    sim_env_parser = sim_subparsers.add_parser(
-        "env",
-        help="simulation services を配置・起動・停止・診断します",
+    sim_app_parser = sim_subparsers.add_parser(
+        "app", help="product application を simulation 向けに build / deploy します"
     )
-    sim_env_subparsers = sim_env_parser.add_subparsers(dest="sim_env_command", metavar="command")
-    sim_env_build_parser = sim_env_subparsers.add_parser(
-        "build",
-        help="仮想デバイススタブ（CUSE I2C/SPI など）や Wokwi firmware をビルドします",
+    sim_app_parser.set_defaults(help_target="sim_app")
+    add_actions(
+        sim_app_parser.add_subparsers(dest="action", metavar="action"),
+        "sim",
+        "app",
+        {
+            "build": ("product の simulation build hook を実行します", sim.run_sim_app_build),
+            "clean": ("product の simulation build artifact を削除します", sim.run_sim_app_clean),
+            "deploy": ("product application を simulation runtime へ配置します", sim.run_sim_app_deploy),
+        },
+        parents=(workspace_option,),
     )
-    sim_env_build_parser.add_argument(
-        "--workspace",
-        default=None,
-        metavar="NAME",
-        help="gar setup に表示される workspace名でビルド対象を指定します",
+
+    sim_runtime_parser = sim_subparsers.add_parser(
+        "runtime", help="simulation runtime（device stub / bridge）を操作します"
     )
-    sim_deploy_parser = sim_env_subparsers.add_parser(
-        "deploy",
-        help="simulation 環境インフラ（CUSE stubs / web-bridge）を VM へ配置します（artifact.json の deploy.sim_env セクション）",
+    sim_runtime_parser.set_defaults(help_target="sim_runtime")
+    sim_runtime_subparsers = sim_runtime_parser.add_subparsers(dest="action", metavar="action")
+    sim_runtime_actions = add_actions(
+        sim_runtime_subparsers,
+        "sim",
+        "runtime",
+        {
+            "build": (
+                "仮想デバイス stub（CUSE I2C/SPI など）や Wokwi firmware をビルドします",
+                sim.run_sim_runtime_build,
+            ),
+            "deploy": ("simulation runtime を host へ配置します", sim.run_sim_runtime_deploy),
+            "start": ("simulation runtime を起動します", sim.run_sim_runtime_start),
+            "stop": ("simulation runtime を停止します", sim.run_sim_runtime_stop),
+            "status": ("simulation runtime の状態を確認します", sim.run_sim_runtime_status),
+            "log": ("simulation runtime のログを表示します", sim.run_sim_runtime_log),
+        },
+        parents=(workspace_option,),
     )
-    sim_deploy_parser.add_argument(
-        "--workspace",
-        default=None,
-        metavar="NAME",
-        help="gar setup に表示される workspace名の artifact bundle を配置します",
+    add_actions(
+        sim_runtime_subparsers,
+        "sim",
+        "runtime",
+        {"diag": ("simulation runtime を診断します", sim.run_sim_runtime_diag)},
+        parents=workspace_json,
     )
-    sim_env_gpio_parser = sim_env_subparsers.add_parser(
+    sim_runtime_actions["start"].add_argument(
+        "--settings", default=None, help="VS Code settings.json path"
+    )
+    sim_runtime_actions["start"].add_argument(
+        "--profile-name", default=None, help="VS Code terminal profile 名"
+    )
+    sim_runtime_actions["start"].add_argument(
+        "--no-port-forward",
+        action="store_true",
+        help="Hardware Panel 用の 8080/8765 port forward を開始しません",
+    )
+    sim_runtime_actions["stop"].add_argument(
+        "--keep-port-forward",
+        action="store_true",
+        help="Hardware Panel 用の port forward を停止しません",
+    )
+    sim_host_parser = sim_subparsers.add_parser(
+        "host",
+        help="simulation を載せる host（container / EC2 など）を操作します",
+    )
+    sim_host_parser.set_defaults(help_target="sim_host")
+    sim_host_subparsers = sim_host_parser.add_subparsers(dest="action", metavar="action")
+    sim_host_actions = add_actions(
+        sim_host_subparsers,
+        "sim",
+        "host",
+        {
+            "start": ("simulation host を起動します", sim.run_sim_host_start),
+            "stop": ("simulation host を停止します", sim.run_sim_host_stop),
+        },
+        parents=(workspace_option,),
+    )
+    add_actions(
+        sim_host_subparsers,
+        "sim",
+        "host",
+        {"status": ("simulation host の状態を確認します", sim.run_sim_host_status)},
+        parents=workspace_json,
+    )
+    sim_host_actions["start"].add_argument(
+        "--no-update-ssh",
+        action="store_true",
+        help="起動後に ~/.ssh/config の HostName を更新しません",
+    )
+    sim_host_actions["start"].add_argument(
+        "--pull",
+        action="store_true",
+        help="起動後に repo_dir で git pull を実行します",
+    )
+
+    sim_gpio_parser = sim_subparsers.add_parser(
         "gpio",
-        help="GPIO dummy runtime を個別に生成・配置・確認します",
+        help="GPIO dummy runtime を生成・配置・確認します",
     )
-    sim_env_gpio_subparsers = sim_env_gpio_parser.add_subparsers(dest="gpio_command", metavar="command")
-    for gpio_command_name in ("plan", "install", "start", "stop", "status"):
-        gpio_command_parser = sim_env_gpio_subparsers.add_parser(
-            gpio_command_name,
-            help=f"GPIO runtime: {gpio_command_name}",
-        )
-        gpio_command_parser.add_argument(
-            "--workspace",
-            default=None,
-            metavar="NAME",
-            help="gar setupに表示されるworkspace名のhardware controlを使います",
-        )
-        if gpio_command_name in ("plan", "status"):
-            gpio_command_parser.add_argument(
-                "--json",
-                dest="json_output",
-                action="store_true",
-                help="結果を機械可読な JSON で出力します（AI / CI 向け）",
-            )
+    sim_gpio_parser.set_defaults(help_target="sim_gpio")
+    sim_gpio_subparsers = sim_gpio_parser.add_subparsers(dest="action", metavar="action")
+    add_actions(
+        sim_gpio_subparsers,
+        "sim",
+        "gpio",
+        {
+            "install": ("GPIO dummy runtime を host へ配置します", sim.run_sim_gpio),
+            "start": ("GPIO dummy runtime を起動します", sim.run_sim_gpio),
+            "stop": ("GPIO dummy runtime を停止します", sim.run_sim_gpio),
+        },
+        parents=(workspace_option,),
+    )
+    add_actions(
+        sim_gpio_subparsers,
+        "sim",
+        "gpio",
+        {
+            "plan": ("hardware 定義から生成する GPIO runtime の内容を表示します", sim.run_sim_gpio),
+            "status": ("GPIO dummy runtime の状態を確認します", sim.run_sim_gpio),
+            "check": ("GPIO dummy runtime の kernel 側前提条件を確認します", sim.run_sim_gpio),
+        },
+        parents=workspace_json,
+    )
 
-    sim_app_deploy_parser = sim_subparsers.add_parser(
-        "deploy",
-        help="target app を VM へ転送します（artifact.json の deploy.app セクション）",
+    sim_io_parser = sim_subparsers.add_parser(
+        "io",
+        help="共通 Bridge control plane 経由で virtual H/W を操作します（AI / CI 向け）",
     )
-    sim_app_deploy_parser.add_argument(
-        "--workspace",
+    sim_io_parser.set_defaults(help_target="sim_io")
+    io_option = _shared_option(
+        "--device",
         default=None,
         metavar="NAME",
-        help="gar setup に表示される workspace名の artifact bundle を配置します",
+        help="操作対象の device 種別（button / rfid / range など）",
     )
-    for command_name in ("start", "stop", "status", "diag", "log", "gpio-sim-check"):
-        command_parser = sim_env_subparsers.add_parser(
-            command_name,
-            help=f"simulation services: {command_name}",
-        )
-        command_parser.add_argument(
-            "--workspace",
-            default=None,
-            metavar="NAME",
-            help="gar setupに表示されるworkspace名のsimulation設定を使います",
-        )
-        if command_name == "start":
-            command_parser.add_argument("--settings", default=None, help="VS Code settings.json path")
-            command_parser.add_argument("--profile-name", default=None, help="VS Code terminal profile 名")
-            command_parser.add_argument(
-                "--no-port-forward",
-                action="store_true",
-                help="Hardware Panel 用の 8080/8765 port forward を開始しません",
-            )
-        if command_name == "stop":
-            command_parser.add_argument(
-                "--keep-port-forward",
-                action="store_true",
-                help="Hardware Panel 用の port forward を停止しません",
-            )
-        if command_name in ("diag", "gpio-sim-check"):
-            command_parser.add_argument(
-                "--json",
-                dest="json_output",
-                action="store_true",
-                help="結果を機械可読な JSON で出力します（AI / CI 向け）",
-            )
-
-    sim_panel_parser = sim_env_subparsers.add_parser(
-        "panel",
-        help="共通Bridge control planeへ状態取得・操作を送ります",
+    for name, kwargs in (
+        ("--button", {"default": None}),
+        ("--line", {"default": None}),
+        ("--duration-ms", {"type": int, "default": 150}),
+        ("--value", {"default": None}),
+        ("--uid", {"default": None}),
+    ):
+        io_option.add_argument(name, **kwargs)  # type: ignore[arg-type]
+    add_actions(
+        sim_io_parser.add_subparsers(dest="action", metavar="action"),
+        "sim",
+        "io",
+        {
+            "state": ("virtual H/W の現在値を取得します", sim.run_sim_io),
+            "press": ("button を押下します（--device 必須）", sim.run_sim_io),
+            "set": ("device の値を設定します（--device 必須）", sim.run_sim_io),
+            "clear": ("device の値を解除します（--device 必須）", sim.run_sim_io),
+        },
+        parents=(*workspace_json, io_option),
     )
-    sim_panel_parser.add_argument(
-        "action",
-        choices=("state", "button-press", "button-set", "rfid-tap", "rfid-remove", "range-set"),
-    )
-    sim_panel_parser.add_argument("--workspace", default=None, metavar="NAME")
-    sim_panel_parser.add_argument("--button", default=None)
-    sim_panel_parser.add_argument("--line", default=None)
-    sim_panel_parser.add_argument("--duration-ms", type=int, default=150)
-    sim_panel_parser.add_argument("--value", default=None)
-    sim_panel_parser.add_argument("--uid", default=None)
-    sim_panel_parser.add_argument("--json", dest="json_output", action="store_true")
 
     sim_infra_parser = sim_subparsers.add_parser(
         "infra", help="simulation host インフラを Terraform で管理します"
     )
-    sim_infra_subparsers = sim_infra_parser.add_subparsers(dest="infra_command", metavar="command")
-    for _infra_cmd in ("setup", "apply", "destroy"):
-        _p = sim_infra_subparsers.add_parser(_infra_cmd, help=f"terraform {_infra_cmd}")
+    sim_infra_parser.set_defaults(help_target="sim_infra")
+    sim_infra_subparsers = sim_infra_parser.add_subparsers(dest="infra_action", metavar="action")
+    for _infra_action in ("setup", "apply", "destroy"):
+        _p = sim_infra_subparsers.add_parser(_infra_action, help=f"terraform {_infra_action}")
         _p.add_argument("--key-name", default=None, help="EC2 SSH key pair name")
         _p.add_argument("--region", default=None, help="AWS region")
         _p.add_argument("--auto-approve", action="store_true", help="--auto-approve を terraform に渡します")
 
     target_parser = subparsers.add_parser(
         "target",
-        help="接続先が提供する I/O を使う runtime を操作します",
+        help="接続先が提供する I/O を使う実機 target を操作します",
     )
-    target_subparsers = target_parser.add_subparsers(dest="target_command", metavar="command")
-    target_build_parser = target_subparsers.add_parser(
-        "build",
-        help="setup 済み target の実機用 artifact をビルドします",
+    target_parser.set_defaults(help_target="target")
+    target_subparsers = target_parser.add_subparsers(dest="target_subject", metavar="subject")
+    target_app_parser = target_subparsers.add_parser(
+        "app", help="product application を実機 target 向けに build / deploy します"
     )
-    target_build_parser.add_argument(
-        "--workspace",
-        default=None,
-        help="gar setupで登録したworkspace名。登録が1件なら省略できます",
-    )
-    target_deploy_parser = target_subparsers.add_parser(
-        "deploy",
-        help="target runtime へ成果物を配置します",
-    )
-    target_deploy_parser.add_argument(
-        "--workspace",
-        default=None,
-        help="gar setupで登録したworkspace名。登録が1件なら省略できます",
-    )
-    target_fetch_parser = target_subparsers.add_parser(
-        "fetch",
-        help="Codespace の artifact bundle を WSL hub へ取得します",
-    )
-    target_fetch_parser.add_argument(
-        "--codespace",
-        default=None,
-        help="取得元 Codespace 名。省略時は GAR_CODESPACE_NAME / CODESPACE_NAME / gh list",
-    )
-    target_fetch_parser.add_argument(
-        "--remote-root",
-        default=None,
-        help=f"Codespace 上の artifact bundle root（既定: {DEFAULT_CODESPACE_ARTIFACT_ROOT}）",
-    )
-    target_fetch_parser.add_argument(
-        "--artifacts-dir",
-        default=None,
-        help="WSL hub 側に保存する artifact bundle root",
-    )
-    target_build_esp32_parser = target_subparsers.add_parser(
-        "build-esp32",
-        help="Codespaces で ESP32/M5Stack firmware をビルドし artifact を取得します",
-    )
-    target_build_esp32_parser.add_argument(
-        "--codespace",
-        default=None,
-        help="ビルド元 Codespace 名。省略時は GAR_CODESPACE_NAME / CODESPACE_NAME / gh list",
-    )
-    target_build_esp32_parser.add_argument(
-        "--remote-project-root",
-        default=DEFAULT_ESP32_CODESPACE_PROJECT_ROOT,
-        help=f"Codespace 上の PlatformIO project root（既定: {DEFAULT_ESP32_CODESPACE_PROJECT_ROOT}）",
-    )
-    target_build_esp32_parser.add_argument(
-        "--pio-env",
-        default=DEFAULT_ESP32_PIO_ENV,
-        help=f"PlatformIO environment（既定: {DEFAULT_ESP32_PIO_ENV}）",
-    )
-    target_build_esp32_parser.add_argument(
-        "--artifact-root",
-        default=None,
-        help=f"WSL 側に保存する artifact root（既定: {DEFAULT_ESP32_ARTIFACT_ROOT}）",
-    )
-    target_build_esp32_parser.add_argument(
-        "--flash",
-        action="store_true",
-        help="artifact 取得後にそのまま flash-esp32 を実行します",
-    )
-    target_build_esp32_parser.add_argument(
-        "--port",
-        default=None,
-        help="--flash 時の serial port。例: /dev/ttyACM0, /dev/ttyUSB0, COM3",
-    )
-    target_build_esp32_parser.add_argument("--baud", type=int, default=921600, help="--flash 時の baud rate")
-    target_build_esp32_parser.add_argument("--chip", default="esp32", help="--flash 時の esptool --chip 値")
-    target_build_esp32_parser.add_argument(
-        "--no-verify",
-        action="store_true",
-        help="--flash 時に SHA256SUMS 検証を省略します",
-    )
-    target_build_esp32_parser.add_argument(
-        "--no-install-esptool",
-        action="store_true",
-        help="--flash 時に esptool 不在でも GAR 管理 venv へ自動導入しません",
-    )
-    target_flash_esp32_parser = target_subparsers.add_parser(
-        "flash-esp32",
-        help="ESP32/M5Stack firmware artifact を esptool で実機へ書き込みます",
-    )
-    target_flash_esp32_parser.add_argument(
-        "--artifact-dir",
-        default=None,
-        help=f"書き込む artifact directory（省略時は {DEFAULT_ESP32_ARTIFACT_ROOT} の最新）",
-    )
-    target_flash_esp32_parser.add_argument(
-        "--port",
-        default=None,
-        help="serial port。WSL では COM3 を /dev/ttyS3 に自動変換します",
-    )
-    target_flash_esp32_parser.add_argument("--baud", type=int, default=921600, help="書き込み baud rate")
-    target_flash_esp32_parser.add_argument("--chip", default="esp32", help="esptool --chip 値")
-    target_flash_esp32_parser.add_argument(
-        "--no-verify",
-        action="store_true",
-        help="SHA256SUMS があっても checksum 検証を省略します",
-    )
-    target_flash_esp32_parser.add_argument(
-        "--no-install-esptool",
-        action="store_true",
-        help="esptool 不在時に GAR 管理 venv へ自動導入しません",
-    )
-    target_flash_esp32_parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-        help="結果を機械可読な JSON で出力します（進捗は stderr / AI ・ CI 向け）",
+    target_app_parser.set_defaults(help_target="target_app")
+    add_actions(
+        target_app_parser.add_subparsers(dest="action", metavar="action"),
+        "target",
+        "app",
+        {
+            "build": ("setup 済み target の実機用 artifact をビルドします", target.run_target_app_build),
+            "deploy": ("target runtime へ成果物を配置します", target.run_target_app_deploy),
+            "fetch": (
+                "build environment から artifact bundle を WSL hub へ取得します",
+                target.run_target_app_fetch,
+            ),
+        },
+        parents=(workspace_option,),
     )
 
     usb_parser = subparsers.add_parser(
@@ -683,13 +576,46 @@ def build_parser() -> argparse.ArgumentParser:
         "terminal": terminal_parser,
         "completion": completion_parser,
         "sim": sim_parser,
-        "sim_env": sim_env_parser,
+        "sim_app": sim_app_parser,
+        "sim_runtime": sim_runtime_parser,
+        "sim_host": sim_host_parser,
+        "sim_gpio": sim_gpio_parser,
+        "sim_io": sim_io_parser,
         "sim_infra": sim_infra_parser,
         "target": target_parser,
+        "target_app": target_app_parser,
         "usb": usb_parser,
         "hw": hw_parser,
     }
     return parser
+
+
+def run_gar_command(command: GarCommand, args: argparse.Namespace) -> int:
+    """`gar <group> <subject> <action>` を実行する唯一の経路。"""
+
+    workspace_selector = getattr(args, "workspace", None)
+    try:
+        workspace = workspace_for(workspace_selector)
+    except GarDomainError as error:
+        print(f"gar: {error}", file=sys.stderr)
+        return 1
+
+    try:
+        return args.run(workspace, args)
+    except AccessConnectionError as error:
+        device = getattr(args, "device", None)
+        return report_access_failure(
+            error,
+            workspace=workspace,
+            retry_command=command.to_cli(
+                workspace=workspace_selector,
+                options=("--device", str(device)) if device else (),
+            ),
+            purpose="target" if command.group == "target" else "simulation",
+        )
+    except GarDomainError as error:
+        print(f"gar: {error}", file=sys.stderr)
+        return 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -731,225 +657,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "terminal":
         subcommand_parsers["terminal"].print_help()
         return 1
-    if args.command == "completion":
-        if args.completion_shell == "bash":
-            print(completion_bash_script(), end="")
-            return 0
-        if args.completion_shell == "words":
-            words = args.words[1:] if args.words[:1] == ["--"] else args.words
-            print("\n".join(parser_completion_words(args.cword, words)))
-            return 0
-        subcommand_parsers["completion"].print_help()
+    command = getattr(args, "gar_command", None)
+    if command is not None:
+        return run_gar_command(command, args)
+
+    if args.command == "sim" and getattr(args, "sim_subject", None) == "infra":
+        if args.infra_action is None:
+            subcommand_parsers["sim_infra"].print_help()
+            return 1
+        return run_sim_infra_command(
+            args.infra_action,
+            key_name=getattr(args, "key_name", None),
+            region=getattr(args, "region", None),
+            auto_approve=getattr(args, "auto_approve", False),
+        )
+
+    if args.command in {"sim", "target"}:
+        subcommand_parsers[getattr(args, "help_target", args.command)].print_help()
         return 1
-    if args.command == "sim":
-        if args.sim_command is None:
-            subcommand_parsers["sim"].print_help()
-            return 1
-        if args.sim_command in SIM_VM_COMMAND_MAP:
-            workspace = getattr(args, "workspace", None)
-            retry = f"gar sim {args.sim_command}" + (
-                f" --workspace {workspace}" if workspace else ""
-            )
-            return execute_application_command(
-                SIM_VM_COMMAND_MAP[args.sim_command],
-                workspace_selector=workspace,
-                retry_command=retry,
-                update_address=not getattr(args, "no_update_ssh", False),
-                update_repository=getattr(args, "pull", False),
-                json_output=getattr(args, "json_output", False),
-            )
-        if args.sim_command == "deploy":
-            workspace = getattr(args, "workspace", None)
-            retry = "gar sim deploy" + (f" --workspace {workspace}" if workspace else "")
-            return execute_application_command(
-                SIM_DEPLOY,
-                workspace_selector=workspace,
-                retry_command=retry,
-            )
-        if args.sim_command == "build":
-            workspace_root = getattr(args, "workspace", None)
-            clean = getattr(args, "action", None) == "clean"
-            retry = "gar sim build" + (" clean" if clean else "") + (
-                f" --workspace {workspace_root}" if workspace_root else ""
-            )
-            return execute_application_command(
-                SIM_CLEAN if clean else SIM_BUILD,
-                workspace_selector=workspace_root,
-                retry_command=retry,
-            )
-        if args.sim_command == "env":
-            if args.sim_env_command is None:
-                subcommand_parsers["sim_env"].print_help()
-                return 1
-            if args.sim_env_command == "build":
-                workspace_root = getattr(args, "workspace", None)
-                retry = "gar sim env build" + (f" --workspace {workspace_root}" if workspace_root else "")
-                return execute_application_command(
-                    SIM_RUNTIME_BUILD,
-                    workspace_selector=workspace_root,
-                    retry_command=retry,
-                )
-            if args.sim_env_command == "deploy":
-                workspace = getattr(args, "workspace", None)
-                retry = "gar sim env deploy" + (f" --workspace {workspace}" if workspace else "")
-                return execute_application_command(
-                    SIM_RUNTIME_DEPLOY,
-                    workspace_selector=workspace,
-                    retry_command=retry,
-                )
-            if args.sim_env_command == "gpio":
-                if args.gpio_command is None:
-                    subcommand_parsers["sim_env"].print_help()
-                    return 1
-                workspace = getattr(args, "workspace", None)
-                retry = f"gar sim env gpio {args.gpio_command}" + (
-                    f" --workspace {workspace}" if workspace else ""
-                )
-                return execute_application_command(
-                    GarCommand("sim", "gpio", args.gpio_command),
-                    workspace_selector=workspace,
-                    retry_command=retry,
-                    json_output=getattr(args, "json_output", False),
-                )
-            if args.sim_env_command == "diag":
-                workspace = getattr(args, "workspace", None)
-                retry = "gar sim env diag" + (
-                    " --json" if getattr(args, "json_output", False) else ""
-                ) + (f" --workspace {workspace}" if workspace else "")
-                return execute_application_command(
-                    SIM_RUNTIME_DIAG,
-                    workspace_selector=workspace,
-                    retry_command=retry,
-                    json_output=getattr(args, "json_output", False),
-                )
-            if args.sim_env_command == "gpio-sim-check":
-                workspace = getattr(args, "workspace", None)
-                retry = "gar sim env gpio-sim-check" + (
-                    " --json" if getattr(args, "json_output", False) else ""
-                ) + (f" --workspace {workspace}" if workspace else "")
-                return execute_application_command(
-                    GarCommand("sim", "gpio", "check"),
-                    workspace_selector=workspace,
-                    retry_command=retry,
-                    json_output=getattr(args, "json_output", False),
-                )
-            if args.sim_env_command == "panel":
-                workspace = getattr(args, "workspace", None)
-                params = {
-                    key: value
-                    for key, value in {
-                        "button": getattr(args, "button", None),
-                        "line": getattr(args, "line", None),
-                        "duration_ms": getattr(args, "duration_ms", None),
-                        "value": getattr(args, "value", None),
-                        "uid": getattr(args, "uid", None),
-                    }.items()
-                    if value is not None
-                }
-                retry = f"gar sim env panel {args.action}" + (
-                    f" --workspace {workspace}" if workspace else ""
-                )
-                return execute_application_command(
-                    GarCommand("sim", "panel", args.action),
-                    workspace_selector=workspace,
-                    retry_command=retry,
-                    json_output=getattr(args, "json_output", False),
-                    params=params,
-                )
-            if args.sim_env_command in {"start", "stop", "status", "log"}:
-                workspace = getattr(args, "workspace", None)
-                retry = f"gar sim env {args.sim_env_command}" + (
-                    f" --workspace {workspace}" if workspace else ""
-                )
-                lifecycle_command = {
-                    "start": SIM_RUNTIME_START,
-                    "stop": SIM_RUNTIME_STOP,
-                    "status": SIM_RUNTIME_STATUS,
-                    "log": SIM_RUNTIME_LOG,
-                }[args.sim_env_command]
-                return execute_application_command(
-                    lifecycle_command,
-                    workspace_selector=workspace,
-                    retry_command=retry,
-                    settings=getattr(args, "settings", None),
-                    profile_name=getattr(args, "profile_name", None),
-                    manage_session=(
-                        not getattr(args, "no_port_forward", False)
-                        if args.sim_env_command == "start"
-                        else not getattr(args, "keep_port_forward", False)
-                    ),
-                )
-            subcommand_parsers["sim_env"].print_help()
-            return 1
-        if args.sim_command == "infra":
-            if args.infra_command is None:
-                subcommand_parsers["sim_infra"].print_help()
-                return 1
-            return run_sim_infra_command(
-                args.infra_command,
-                key_name=getattr(args, "key_name", None),
-                region=getattr(args, "region", None),
-                auto_approve=getattr(args, "auto_approve", False),
-            )
-        subcommand_parsers["sim"].print_help()
-        return 1
-    if args.command == "target":
-        if args.target_command is None:
-            subcommand_parsers["target"].print_help()
-            return 1
-        if args.target_command == "deploy":
-            workspace = getattr(args, "workspace", None)
-            retry = "gar target deploy" + (f" --workspace {workspace}" if workspace else "")
-            return execute_application_command(
-                TARGET_DEPLOY,
-                workspace_selector=workspace,
-                retry_command=retry,
-            )
-        if args.target_command == "fetch":
-            root = (
-                default_artifacts_dir()
-                if args.artifacts_dir is None
-                else Path(args.artifacts_dir).expanduser()
-            )
-            return fetch_codespace_artifacts(
-                root.resolve(),
-                codespace=args.codespace,
-                remote_root=args.remote_root,
-            )
-        if args.target_command == "build":
-            workspace = getattr(args, "workspace", None)
-            retry = "gar target build" + (f" --workspace {workspace}" if workspace else "")
-            return execute_application_command(
-                TARGET_BUILD,
-                workspace_selector=workspace,
-                retry_command=retry,
-            )
-        if args.target_command == "build-esp32":
-            return run_esp32_build_command(
-                codespace=args.codespace,
-                remote_project_root=args.remote_project_root,
-                pio_env=args.pio_env,
-                local_artifact_root=args.artifact_root,
-                flash=args.flash,
-                port=args.port,
-                baud=args.baud,
-                chip=args.chip,
-                verify=not args.no_verify,
-                install_esptool=not args.no_install_esptool,
-            )
-        if args.target_command == "flash-esp32":
-            return _run_with_json_summary(
-                "target flash-esp32",
-                getattr(args, "json_output", False),
-                lambda: run_esp32_flash_command(
-                    artifact_dir=args.artifact_dir,
-                    port=args.port,
-                    baud=args.baud,
-                    chip=args.chip,
-                    verify=not args.no_verify,
-                    install_esptool=not args.no_install_esptool,
-                ),
-            )
 
     if args.command == "usb":
         if args.usb_command is None:
@@ -972,6 +697,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_dir=args.output_dir,
             force=args.force,
         )
+
+    if args.command == "completion":
+        if args.completion_shell == "bash":
+            print(completion_bash_script(), end="")
+            return 0
+        if args.completion_shell == "words":
+            words = args.words[1:] if args.words[:1] == ["--"] else args.words
+            print("\n".join(parser_completion_words(args.cword, words)))
+            return 0
+        subcommand_parsers["completion"].print_help()
+        return 1
 
     parser.print_help()
     return 0

@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable, Sequence
 
-from scripts.gar_lib.access.base import CommandResult, ConsoleSession
+from scripts.gar_lib.access._base import CommandResult, ConsoleSession
 from scripts.gar_lib.core.artifact import Artifact
 
 

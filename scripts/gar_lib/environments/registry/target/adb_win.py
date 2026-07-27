@@ -1,4 +1,4 @@
-"""Windows-native ADB device provider (called from WSL via interop).
+"""Windows-native ADB device environment (called from WSL via interop).
 
 方式2: USB-C 実機は Windows がネイティブ認識し、WSL からは Windows の
 ``adb.exe`` を直接呼ぶ。``usbipd-win`` による attach/bind は不要。
@@ -21,14 +21,14 @@ from scripts.gar_lib.config import (
     saved_adb_exe,
     set_saved_adb_exe,
 )
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 
 # winget の Android Platform Tools パッケージ ID。
 WINGET_PACKAGE_ID = "Google.PlatformTools"
 
 
 class AdbWinEnvironment(EnvironmentSetupOption):
-    provider_id = "adb_win"
+    environment_id = "adb_win"
     display_name = "ADB (Windows native)"
     description = (
         "Windows ネイティブの adb.exe を WSL から呼び出して USB-C 実機へ接続します"

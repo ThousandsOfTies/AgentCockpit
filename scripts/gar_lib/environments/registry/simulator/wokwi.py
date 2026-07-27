@@ -1,4 +1,4 @@
-"""Wokwi simulation environment provider."""
+"""Wokwi simulation environment."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import os
 import shutil
 from pathlib import Path
 
-from scripts.gar_lib.environments.base import CommandStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments._base import CommandStatus, EnvironmentSetupOption
 
 
 class WokwiEnvironment(EnvironmentSetupOption):
-    provider_id = "wokwi"
+    environment_id = "wokwi"
     display_name = "Wokwi"
     description = "ローカルCLIから Wokwi CI のクラウドESP32/M5StackCシミュレーションを実行します"
     display_order = 16

@@ -1,7 +1,6 @@
 """Capability-oriented access channels."""
 
-from scripts.gar_lib.access.adb import AdbFileChannel, AdbShellChannel
-from scripts.gar_lib.access.base import (
+from scripts.gar_lib.access._base import (
     ArtifactInstaller,
     CommandChannel,
     CommandResult,
@@ -10,6 +9,7 @@ from scripts.gar_lib.access.base import (
     FileChannel,
     TransferResult,
 )
+from scripts.gar_lib.access.adb import AdbFileChannel, AdbShellChannel
 from scripts.gar_lib.access.serial import SerialArtifactInstaller, SerialConsoleChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
 

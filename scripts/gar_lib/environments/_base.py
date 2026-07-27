@@ -24,7 +24,7 @@ class EnvironmentSetupOption(ABC):
     access layers. Registry entries intentionally do not execute GAR commands.
     """
 
-    provider_id: ClassVar[str]
+    environment_id: ClassVar[str]
     display_name: ClassVar[str]
     description: ClassVar[str]
     category_id: ClassVar[str] = "uncategorized"

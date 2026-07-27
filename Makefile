@@ -69,20 +69,20 @@ port-forward-status:
 	tools/forward_ec2_ports.sh --host $(or $(EC2),vibecode-graviton) --status
 
 sim-test:
-ifndef EC2
-	$(error EC2 変数を指定してください: make sim-test EC2=vibecode-graviton)
+ifndef WORKSPACE
+	$(error WORKSPACE 変数を指定してください: make sim-test WORKSPACE=Local/Product)
 endif
-	scripts/gar sim ui button press 17 --duration-ms 150 --host $(EC2)
+	scripts/gar sim io press --device button --line 17 --duration-ms 150 --workspace $(WORKSPACE)
 	@sleep 1
-	scripts/gar sim ui rfid tap $(UID) --host $(EC2)
+	scripts/gar sim io set --device rfid --uid $(UID) --workspace $(WORKSPACE)
 	@sleep 1
-	scripts/gar sim env status --host $(EC2)
-	scripts/gar sim env log --host $(EC2)
+	scripts/gar sim runtime status --workspace $(WORKSPACE)
+	scripts/gar sim runtime log --workspace $(WORKSPACE)
 
 sim-scenario:
 ifndef EC2
 	$(error EC2 変数を指定してください: make sim-scenario EC2=vibecode-graviton SCENARIO=$(APP_REPO)/scenarios/sensor_demo_rfid.json)
 endif
 	$(SSH) $(SSH_DST) 'mkdir -p ~/gar-scenarios'
-	$(SCP) scripts/run_scenario.py $(SCENARIO) $(SSH_DST):~/gar-scenarios/
+	$(SCP) scripts/run_scenario.py scripts/gar_lib/simulation/io_actions.py $(SCENARIO) $(SSH_DST):~/gar-scenarios/
 	$(SSH) $(SSH_DST) 'python3 ~/gar-scenarios/run_scenario.py ~/gar-scenarios/$(notdir $(SCENARIO)) --base-url http://127.0.0.1:8080'

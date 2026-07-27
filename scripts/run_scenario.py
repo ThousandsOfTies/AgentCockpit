@@ -4,18 +4,30 @@ Run an Gapless Agent Runtime hardware scenario against bridge.py.
 
 The scenario format is intentionally small JSON so AI agents and CI jobs can
 generate and execute it without a dedicated test framework.
+
+virtual H/W への操作 step は ``gar sim io`` と同じ語彙（``action`` +
+``device``）を使い、endpoint 解決は
+:mod:`scripts.gar_lib.simulation.io_actions` を共有する。
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+try:
+    from scripts.gar_lib.simulation import io_actions  # noqa: E402
+except ImportError:  # simulation host へは run_scenario.py と io_actions.py だけを配る
+    import io_actions  # type: ignore[no-redef]  # noqa: E402
 
 
 def request_json(method: str, url: str, payload: dict[str, Any] | None = None) -> Any:
@@ -53,36 +65,6 @@ def run_step(base_url: str, step: dict[str, Any]) -> None:
         time.sleep(float(step.get("seconds", 1)))
         return
 
-    if action == "button_press":
-        post(base_url, "/api/button/press", {
-            "line": int(step.get("line", 17)),
-            "duration_ms": int(step.get("duration_ms", 150)),
-        })
-        return
-
-    if action == "button_set":
-        post(base_url, "/api/button", {
-            "line": int(step.get("line", 17)),
-            "value": int(bool(step.get("value", True))),
-        })
-        return
-
-    if action == "rfid_tap":
-        post(base_url, "/api/rfid/tap", {
-            "uid": step.get("uid", "04:AB:CD:EF:01:23"),
-        })
-        return
-
-    if action == "rfid_remove":
-        post(base_url, "/api/rfid/remove")
-        return
-
-    if action == "range_set":
-        post(base_url, "/api/range", {
-            "value": int(step.get("value", 300)),
-        })
-        return
-
     if action == "bridge-command":
         command = step.get("command")
         if not isinstance(command, str) or not command:
@@ -94,13 +76,21 @@ def run_step(base_url: str, step: dict[str, Any]) -> None:
         return
 
     if action == "expect":
-        state = request_json("GET", f"{base_url}/api/state")
+        state = request_json("GET", f"{base_url}{io_actions.STATE_PATH}")
         actual = get_path(state, step["path"])
         expected = step["equals"]
         if actual != expected:
             raise AssertionError(
                 f"expect failed: {step['path']} == {expected!r}, got {actual!r}"
             )
+        return
+
+    if action in io_actions.IO_ACTIONS:
+        request = io_actions.resolve(action, step.get("device"), step)
+        if request.method == "GET":
+            request_json("GET", f"{base_url}{request.path}")
+        else:
+            post(base_url, request.path, dict(request.fields))
         return
 
     raise ValueError(f"unknown action: {action}")

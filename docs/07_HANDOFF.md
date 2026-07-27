@@ -104,12 +104,12 @@ WSL へ取得済み artifact:
 
 ```bash
 cd /home/user/Yurufuwa/GaplessAgentRuntime
-gar target flash-esp32 --port COM3
+gar target app deploy
 ```
 
-`COM3` は WSL 上で `/dev/ttyS3` に変換される。artifact は省略時に
-`gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/` 配下の最新を選ぶ。
-`esptool` が無い場合は `~/.local/share/gar/esptool-venv` に自動導入する。
+`COM3` は WSL 上で `/dev/ttyS3` に変換される。serial port は workspace 設定
+（`gar setup`）から解決する。`esptool` が無い場合は
+`~/.local/share/gar/esptool-venv` に自動導入する。
 
 Local bridge の利用例:
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.gar_lib.access.base import CommandResult
+from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
 from scripts.gar_lib.core.artifact import Artifact
 from scripts.gar_lib.core.errors import GarDomainError

@@ -11,8 +11,9 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from scripts.gar_lib.artifacts.manifest import gh_env, select_codespace
-from scripts.gar_lib.config import PROJECT_ROOT, load_config
+from scripts.gar_lib.artifacts.manifest import gh_env
+from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.core.errors import GarDomainError
 
 DEFAULT_ESP32_ARTIFACT_ROOT = (
     PROJECT_ROOT.parent / "gar-vibe-ui" / "vibe-remote" / "m5stickc-client" / "artifacts"
@@ -119,7 +120,7 @@ def fetch_esp32_codespace_artifact(
         )
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", "replace").strip()
-        print(f"gar target build-esp32: failed to fetch {remote_artifact_dir}", file=sys.stderr)
+        print(f"gar target app build: failed to fetch {remote_artifact_dir}", file=sys.stderr)
         if stderr:
             print(stderr, file=sys.stderr)
         tmp_path.unlink(missing_ok=True)
@@ -132,7 +133,7 @@ def fetch_esp32_codespace_artifact(
     try:
         _safe_extract_tar(tmp_path, local_artifact_root)
     except (tarfile.TarError, OSError, ValueError) as exc:
-        print(f"gar target build-esp32: failed to extract artifact: {exc}", file=sys.stderr)
+        print(f"gar target app build: failed to extract artifact: {exc}", file=sys.stderr)
         tmp_path.unlink(missing_ok=True)
         return None
     finally:
@@ -141,109 +142,54 @@ def fetch_esp32_codespace_artifact(
     return local_artifact_dir.resolve()
 
 
-def run_esp32_build_command(
+def build_esp32_firmware_codespace(
     *,
-    codespace: str | None = None,
+    codespace_name: str,
     remote_project_root: str = DEFAULT_ESP32_CODESPACE_PROJECT_ROOT,
     pio_env: str = DEFAULT_ESP32_PIO_ENV,
-    local_artifact_root: str | None = None,
-    flash: bool = False,
-    port: str | None = None,
-    baud: int = 921600,
-    chip: str = "esp32",
-    verify: bool = True,
-    install_esptool: bool = True,
-) -> int:
-    config = load_config()
-    development_provider = config.get("selected_providers", {}).get("codespace")
-
-    if development_provider == "local":
-        return run_esp32_build_local(
-            pio_env=pio_env,
-            local_artifact_root=local_artifact_root,
-            flash=flash,
-            port=port,
-            baud=baud,
-            chip=chip,
-            verify=verify,
-            install_esptool=install_esptool,
-        )
-
-    if development_provider not in (None, "github_codespaces"):
-        print(
-            "gar target build: 現在の setup では対応する build が見つかりません。\n"
-            f"  development: {development_provider}\n"
-            "  Run `gar setup` and choose Local or GitHub Codespaces.",
-            file=sys.stderr,
-        )
-        return 1
-
-    selected_codespace = select_codespace(codespace)
-    if not selected_codespace:
-        print("gar target build-esp32: pass --codespace NAME or set GAR_CODESPACE_NAME", file=sys.stderr)
-        return 1
-
+    artifact_root: Path = DEFAULT_ESP32_ARTIFACT_ROOT,
+) -> Path:
+    """Build ESP32 firmware in a Codespace and fetch the artifact locally."""
     remote_project = remote_project_root.rstrip("/")
     remote_command = (
         f"cd {shlex.quote(remote_project)} && "
         'PATH="$HOME/.venvs/platformio/bin:$PATH" '
         f"./scripts/vm_build_and_package.sh {shlex.quote(pio_env)}"
     )
-    print(f"Codespace: {selected_codespace}")
+    print(f"Codespace: {codespace_name}")
     print(f"Remote project: {remote_project}")
     print(f"PIO env: {pio_env}")
     returncode, build_output = run_streaming_command(
-        ["gh", "codespace", "ssh", "-c", selected_codespace, "--", remote_command],
+        ["gh", "codespace", "ssh", "-c", codespace_name, "--", remote_command],
         env=gh_env(),
     )
     if returncode != 0:
-        return returncode
+        raise GarDomainError(f"ESP32 firmware の Codespaces build に失敗しました (exit {returncode})")
 
     remote_artifact_dir = parse_esp32_build_artifact_path(build_output)
     if not remote_artifact_dir:
-        print("gar target build-esp32: build output did not include an Artifact path", file=sys.stderr)
-        return 1
+        raise GarDomainError("ESP32 build 出力に Artifact パスが含まれていません。")
 
-    root = Path(local_artifact_root).expanduser() if local_artifact_root else DEFAULT_ESP32_ARTIFACT_ROOT
     local_artifact_dir = fetch_esp32_codespace_artifact(
         remote_artifact_dir,
-        codespace=selected_codespace,
-        local_artifact_root=root,
+        codespace=codespace_name,
+        local_artifact_root=artifact_root,
     )
     if local_artifact_dir is None:
-        return 1
-    print(f"Artifact: {local_artifact_dir}")
-
-    if flash:
-        from scripts.gar_lib.target.esptool import run_esp32_flash_command
-
-        return run_esp32_flash_command(
-            artifact_dir=str(local_artifact_dir),
-            port=port,
-            baud=baud,
-            chip=chip,
-            verify=verify,
-            install_esptool=install_esptool,
-        )
-    return 0
+        raise GarDomainError(f"ESP32 artifact の取得に失敗しました: {remote_artifact_dir}")
+    return local_artifact_dir
 
 
-def run_esp32_build_local(
+def build_esp32_firmware_local(
     *,
     pio_env: str = DEFAULT_ESP32_PIO_ENV,
-    local_artifact_root: str | None = None,
-    flash: bool = False,
-    port: str | None = None,
-    baud: int = 921600,
-    chip: str = "esp32",
-    verify: bool = True,
-    install_esptool: bool = True,
-) -> int:
+    artifact_root: Path | None = None,
+) -> Path:
+    """Build ESP32 firmware locally with PlatformIO and return the artifact dir."""
     project_root = DEFAULT_ESP32_LOCAL_PROJECT_ROOT
     build_script = project_root / "scripts" / "vm_build_and_package.sh"
     if not build_script.is_file():
-        print(f"gar target build: build script not found: {build_script}", file=sys.stderr)
-        return 1
+        raise GarDomainError(f"ESP32 build script が見つかりません: {build_script}")
 
     env = os.environ.copy()
     platformio_bin = Path.home() / ".venvs" / "platformio" / "bin"
@@ -257,16 +203,15 @@ def run_esp32_build_local(
         cwd=project_root,
     )
     if returncode != 0:
-        return returncode
+        raise GarDomainError(f"ESP32 firmware の local build に失敗しました (exit {returncode})")
 
     artifact_dir = parse_esp32_build_artifact_path(build_output)
     if not artifact_dir:
-        print("gar target build: build output did not include an Artifact path", file=sys.stderr)
-        return 1
+        raise GarDomainError("ESP32 build 出力に Artifact パスが含まれていません。")
     local_artifact_dir = Path(artifact_dir).expanduser().resolve()
 
-    if local_artifact_root:
-        root = Path(local_artifact_root).expanduser().resolve()
+    if artifact_root is not None:
+        root = artifact_root.expanduser().resolve()
         if root != local_artifact_dir.parent:
             import shutil
 
@@ -277,17 +222,4 @@ def run_esp32_build_local(
             shutil.copytree(local_artifact_dir, dest)
             local_artifact_dir = dest
 
-    print(f"Artifact: {local_artifact_dir}")
-
-    if flash:
-        from scripts.gar_lib.target.esptool import run_esp32_flash_command
-
-        return run_esp32_flash_command(
-            artifact_dir=str(local_artifact_dir),
-            port=port,
-            baud=baud,
-            chip=chip,
-            verify=verify,
-            install_esptool=install_esptool,
-        )
-    return 0
+    return local_artifact_dir

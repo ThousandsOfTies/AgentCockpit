@@ -61,8 +61,8 @@ OLED にリアルタイムで状態が描画され、`Tap Card` ボタン押下�
 - `panel/` — HTML/CSS/JS の Virtual Hardware Panel
 
 ### 開発インフラ
-- 旧 Windows PowerShell EC2 helper → **`gar sim start/shutdown/status`** に移植。WSL2 の AWS CLI で EC2 起動・停止・SSH config 自動更新
-- 旧 Windows PowerShell RasPi helper → **`gar target deploy`** に統合。Codespaces から artifact bundle を取得し RasPi5 に ADB push / SSH 配送
+- 旧 Windows PowerShell EC2 helper → **`gar sim host start/stop/status`** に移植。WSL2 の AWS CLI で EC2 起動・停止・SSH config 自動更新
+- 旧 Windows PowerShell RasPi helper → **`gar target app deploy`** に統合。Codespaces から artifact bundle を取得し RasPi5 に ADB push / SSH 配送
 - 各種 Makefile — ARM ビルド / デプロイ
 
 ---

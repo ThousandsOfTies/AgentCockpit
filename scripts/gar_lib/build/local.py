@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 from scripts.gar_lib.artifacts.store import ArtifactStore
-from scripts.gar_lib.build.base import ProductBuildSpecResolver
+from scripts.gar_lib.build._base import ProductBuildSpecResolver
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
@@ -24,6 +25,7 @@ class LocalBuildEnvironment:
         result = subprocess.run(
             [str(script)],
             cwd=workspace.local_root,
+            env={**os.environ, **spec.variables},
             check=False,
         )
         if result.returncode != 0:
@@ -38,7 +40,12 @@ class LocalBuildEnvironment:
         result = subprocess.run(
             [str(script), "clean"],
             cwd=workspace.local_root,
+            env={**os.environ, **spec.variables},
             check=False,
         )
         if result.returncode != 0:
             raise GarDomainError(f"{kind.value} clean が失敗しました (exit {result.returncode})")
+
+    def fetch(self, workspace: Workspace) -> None:
+        # local build の成果物は既に WSL 側（workspace.local_root）にあるため取得は不要。
+        del workspace

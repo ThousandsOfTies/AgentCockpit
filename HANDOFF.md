@@ -8,7 +8,7 @@
 
 ## 総評
 
-プロジェクトの **設計思想は明確で一貫している**。「異種環境間の文脈の載せ替えコストをエージェントが吸収する」というコアバリューが、README・info/・AGENT.md まで貫かれている。CLI の構造（`gar setup` → `gar code/sim/target`）は make-target 的な抽象として筋が通っており、provider discovery パターンでの拡張性設計も適切。テストカバレッジは 144 tests、ruff は green、CI は Python 3.11〜3.13 で回っている。
+プロジェクトの **設計思想は明確で一貫している**。「異種環境間の文脈の載せ替えコストをエージェントが吸収する」というコアバリューが、README・info/・AGENT.md まで貫かれている。CLI の構造（`gar setup` → `gar code/sim/target`）は make-target 的な抽象として筋が通っており、environment discovery パターンでの拡張性設計も適切。テストカバレッジは 144 tests、ruff は green、CI は Python 3.11〜3.13 で回っている。
 
 以下、**今の完成度を踏まえたうえで次のステップに進むための改善点**を、優先度順に整理する。
 
@@ -161,7 +161,7 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
                                │
                     ┌──────────┴──────────┐
                     │  environments/base  │  ← EnvironmentSetupOption
-                    │  environments/      │     provider discovery
+                    │  environments/      │     environment discovery
                     │    registry/        │     (pkgutil.walk_packages)
                     └──────────┬──────────┘
                                │
@@ -177,11 +177,11 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 ```
 
 **良い点**:
-- Provider discovery が `pkgutil.walk_packages` ＋ クラス検査で自動的に動く。新しい provider を追加するのにレジストリを手で更新する必要がない。
+- Environment discovery が `pkgutil.walk_packages` ＋ クラス検査で自動的に動く。新しい environment を追加するのにレジストリを手で更新する必要がない。
 - `simulation/` レイヤーでコマンド生成（`SimCommandBuilder`）と実行（`SimEnvProcessor`）が分離されており、テスタビリティが高い。
 
 **改善すべき点**:
-- `gar_tools.py`（target manifest discovery）と `environments/discovery.py`（provider discovery）が似た仕組みだが独立している。将来的に target manifest と provider を紐付ける場合に統合が必要。
+- `gar_tools.py`（target manifest discovery）と `environments/discovery.py`（environment discovery）が似た仕組みだが独立している。将来的に target manifest と environment を紐付ける場合に統合が必要。
 
 ---
 
@@ -223,10 +223,10 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 - `environments/registry/target/esp32_esptool.py` — setup用の依存確認と導入
 - `environments/registry/simulator/wokwi.py`（115行）+ `simulation/wokwi.py`（613行）— Wokwi simulation
 - `scripts/gar_lib/target/esp32_firmware.py` — ESP32 ビルド・artifact 管理
-- `gar target build-esp32` / `gar target flash-esp32` コマンド
+- `scripts/gar_lib/build/esp32.py` — `gar target app build` に統合された ESP32 build environment
 - `docs/07_HANDOFF.md` の vibe-remote 作業記録
 
-**Linux SBC（RasPi5 + EC2 CUSE sim）** と **ESP32 MCU（M5StickC + Wokwi sim）** という、アーキテクチャが全く異なる 2 つのターゲットが、同じ `gar` CLI + provider 選択で通っている。これは provider 抽象が設計通りに機能している証拠であり、「たまたま 1 パターンに最適化しただけ」という反論が効かない。
+**Linux SBC（RasPi5 + EC2 CUSE sim）** と **ESP32 MCU（M5StickC + Wokwi sim）** という、アーキテクチャが全く異なる 2 つのターゲットが、同じ `gar` CLI + environment 選択で通っている。これは environment 抽象が設計通りに機能している証拠であり、「たまたま 1 パターンに最適化しただけ」という反論が効かない。
 
 #### 修正後の成熟度評価
 
@@ -260,7 +260,7 @@ CLI 設計            ████████████████░░░�
 #### GAR アーキテクチャへの影響
 
 - **ビルド**: `artifact.json` に `deploy.tx` / `deploy.rx` のようなセクションが生えるか、target.json を 2 つ定義するか
-- **deploy**: `gar target deploy` が 2 つのポートに別々の firmware を流す必要
+- **deploy**: `gar target app deploy` が 2 つのポートに別々の firmware を流す必要
 - **sim**: TX が送ったデータを RX が受け取る通信路をどう再現するか（Wokwi なら `diagram.json` に 2 チップ + 配線）
 
 #### これが通ると証明されること
@@ -279,7 +279,7 @@ Phase 2:  RX 単体で動かす（受信 → 表示/保存まで）
 Phase 3:  繋ぐ（← ここで初めて 2 台協調の問題が出る）
 ```
 
-Phase 1・2 は今の GAR がそのまま使える（`gar target build` → `gar target flash-esp32` の 1 対 1 モデル）。GAR の拡張が要るのは Phase 3。そのときに初めて「TX を焼いて、RX も焼いて、通信を確認する」という 1 セッション内マルチターゲットの需要が実際の痛みとして出る。その痛みを感じてから抽象を引き直すのが YAGNI の正しい使い方。
+Phase 1・2 は今の GAR がそのまま使える（`gar target app build` → `gar target app deploy` の 1 対 1 モデル）。GAR の拡張が要るのは Phase 3。そのときに初めて「TX を焼いて、RX も焼いて、通信を確認する」という 1 セッション内マルチターゲットの需要が実際の痛みとして出る。その痛みを感じてから抽象を引き直すのが YAGNI の正しい使い方。
 
 setup候補とruntime environmentの分離は完了済み。Phase 3でマルチターゲットの需要が
 具体化した場合は、現在の`TargetEnvironment`を土台にセッション単位の構成を検討する。

@@ -77,8 +77,8 @@ GAR は **開発環境・操作面・検証足場** であり、完成させた�
 | 役割 | 人間 | AI エージェント |
 |---|---|---|
 | **操作** | AI への指示、結果の確認・判断 | ビルド・デプロイ・H/W 操作・ログ収集・診断・結果整理 |
-| **観察** | Web Panel で LED / ボタン / RFID / OLED を見る | `gar sim env panel ...` と `gar sim env diag --json` で操作・観察 |
-| **ログ** | SSH でログを見る | `gar sim env log` / `gar sim env diag --json` で観察 |
+| **観察** | Web Panel で LED / ボタン / RFID / OLED を見る | `gar sim io ...` と `gar sim runtime diag --json` で操作・観察 |
+| **ログ** | SSH でログを見る | `gar sim runtime log` / `gar sim runtime diag --json` で観察 |
 
 ### Agent 体験の磨き込み方針
 
@@ -86,15 +86,15 @@ Gapless Agent Runtime の主戦場は **VSCode Agent モード**。独自プロ�
 
 MCP server (`tools/gar-mcp`) は VSCode 以外の Agent（Claude Desktop / Cursor 等）向けの補助的な互換口として最小限維持し、機能の主役にはしない。
 
-### Simulation Bridge の契約（provider 追加時は必読）
+### Simulation Bridge の契約（environment 追加時は必読）
 
 **Bridge は simulation 共通の control plane である。** Linux CUSE / gpio-sim の専用機能、あるいは Web UI の飾りとして扱ってはならない。
 
 * 人間向け疑似操作パネル、AI agent、CI scenario は、同じ Bridge の JSON command/state 契約を使うクライアントである。
-* simulator provider ごとの物理実装・SDK・標準 viewer は Bridge の背後にある adapter として扱う。
-* 新しい provider を追加するとき、標準 viewer や provider 固有 UI だけで完結させない。Bridge を起動するか、その操作 API を JSON command/state に変換する adapter を実装する。
-* `build / start / stop / status / log` は lifecycle、`command / state / scenario` は Bridge の責務として分けて考える。GPIO、RFID、レンジセンサなどは Linux provider が Bridge の背後で実現する具体的な仮想デバイスであり、Bridge 自体の代替ではない。
-* Wokwi の provider 固有 scenario は移行中の例外である。新しい provider の設計根拠にせず、共通 JSON scenario への統一を前提にする。
+* simulator environment ごとの物理実装・SDK・標準 viewer は Bridge の背後にある adapter として扱う。
+* 新しい environment を追加するとき、標準 viewer や environment 固有 UI だけで完結させない。Bridge を起動するか、その操作 API を JSON command/state に変換する adapter を実装する。
+* `build / start / stop / status / log` は lifecycle、`command / state / scenario` は Bridge の責務として分けて考える。GPIO、RFID、レンジセンサなどは Linux environment が Bridge の背後で実現する具体的な仮想デバイスであり、Bridge 自体の代替ではない。
+* Wokwi の environment 固有 scenario は移行中の例外である。新しい environment の設計根拠にせず、共通 JSON scenario への統一を前提にする。
 
 MuJoCo を例にすると、Bridge が HTTP/JSON を受けて MuJoCo Python SDK の `data.ctrl` と `mj_step()` を呼び、標準 viewer はその物理状態を人間が観察・外乱操作するために並走する。
 
@@ -123,7 +123,7 @@ Vibe Remote MCP がツール一覧に無いセッションでは、通常のチ�
 
 | 改善項目 | 内容 |
 |---|---|
-| `--json` 出力モード | `gar sim env diag --json` 実装済み。他コマンドへも順次展開 |
+| `--json` 出力モード | `gar sim runtime diag --json` 実装済み。他コマンドへも順次展開 |
 | 構造化ログ + 末尾 summary | diag 系の最後に "OK / FAIL: 理由" の 1 行 summary を出し、AI が 1 ターンで判断できるようにする |
 | `.vscode/tasks.json` テンプレート | `gar setup` で代表タスクを仕込み、AI の `run_task` から呼べるようにする |
 | `gar terminal run` の活用 | 長時間実行やインタラクティブ操作は可視 terminal に出して人間が割り込めるようにする |
@@ -132,7 +132,7 @@ Vibe Remote MCP がツール一覧に無いセッションでは、通常のチ�
 
 - **生コマンド連打を避ける** — 生 `ssh` / 生 `aws` / 生シェルを直接叩くと、筋の悪い解（例: GPIO を CUSE 単独で解こうとする）に逃げやすい。まず `gar` のサブコマンドで表現できないか探す。
 - **`gar` に無い操作は「生で叩く」のではなく「`gar` に足す」** — 不足を見つけたら、その場で生コマンドに逃げず、`gar` のサブコマンド追加を TODO 化する。`gar` = 人の操作面 ＋ AI が参照する実コマンドのドキュメント。
-- **機械可読モードを使う** — AI が状態を判断するときは `--json` を付ける（例: `gar sim env diag --json`）。人間向けの整形出力をパースしない。
+- **機械可読モードを使う** — AI が状態を判断するときは `--json` を付ける（例: `gar sim runtime diag --json`）。人間向けの整形出力をパースしない。
 - **exit code を必ず見る** — 0 = 成功、非0 = 失敗。出力の体裁だけ見て「できた」と報告しない。実機能（例: LED トグルがパネルに反映）が確認できるまで done としない。
 
 ### Terminal 操作の原則
@@ -181,7 +181,7 @@ find .gar -maxdepth 3 -type f | sort
 
 各環境の接続先は `.gar/config.json` に保存される（`gar setup` で設定）。現在の設定値は `gar setup` または `cat .gar/config.json` で確認すること。
 
-- **SSH 設定**: `gar sim boot` / `gar sim infra apply` が `~/.ssh/config` の HostName を更新する
+- **SSH 設定**: `gar sim host start` / `gar sim infra apply` が `~/.ssh/config` の HostName を更新する
 - **Codespaces 名**: `gh codespace list` で確認
 - **RasPi5**: `gar target status` で確認
 
@@ -213,7 +213,7 @@ find .gar -maxdepth 3 -type f | sort
 **target app を VM に転送する（実行テスト用）:**
 
 ```bash
-gar sim deploy
+gar sim app deploy
 ```
 
 経路: Codespaces でビルド → WSL に成果物コピー → WSL から VM へ転送  
@@ -222,7 +222,7 @@ gar sim deploy
 **VM の仮想 H/W 環境（CUSE stubs, web-bridge）を更新する:**
 
 ```bash
-gar sim env deploy
+gar sim runtime deploy
 ```
 
 （`artifact.json` の `deploy.sim_env` セクション）
@@ -246,7 +246,7 @@ gar sim env deploy
    ```
 2. WSL hub から実機へ転送:
    ```bash
-   gar target deploy
+   gar target app deploy
    ```
    経路: Codespaces でビルド → WSL に成果物コピー → adb push → RasPi5
 
@@ -256,11 +256,11 @@ gar sim env deploy
 
 ### VM でシミュレーション起動
 
-bridge / CUSE スタブ（I2C・SPI）/ gpio-sim は systemd unit で管理されており、`gar sim env start` で一括起動する。
+bridge / CUSE スタブ（I2C・SPI）/ gpio-sim は systemd unit で管理されており、`gar sim runtime start` で一括起動する。
 
 ```bash
 # WSL から: runtime サービス起動 + port forward 開始
-gar sim env start
+gar sim runtime start
 
 # EC2 に SSH してアプリ本体を起動
 ssh vibecode-graviton
@@ -274,22 +274,22 @@ Hardware Panel の確認: VSCode の PORTS タブで 8080 のリンクをクリ�
 `gar sim` の接続先host は `gar setup` で `.gar/config.json` に保存する。
 
 ```bash
-gar sim env start
-gar sim env panel button-press --button 17
-gar sim env panel rfid-tap --uid 04:AB:CD:EF:01:23
-gar sim env panel range-set --value 300
-gar sim env diag --json
-gar sim env status
-gar sim env log
-gar sim env diag --json
-gar sim env stop
+gar sim runtime start
+gar sim io press --device button --button 17
+gar sim io set --device rfid --uid 04:AB:CD:EF:01:23
+gar sim io set --device range --value 300
+gar sim runtime diag --json
+gar sim runtime status
+gar sim runtime log
+gar sim runtime diag --json
+gar sim runtime stop
 ```
 
 詳細: [docs/06_SIMULATION.md](docs/06_SIMULATION.md)
 
 ### RasPi5 で実機実行
 
-実機接続は adb を既定としている（社内環境で複数 NIC が使えない構成に合わせるため）。ネットワーク越しに到達できる環境では、`gar setup` の実機環境カテゴリで `SSH / scp` を選び、workspaceへhostを保存して `gar target deploy --workspace <name>` で転送できる（詳細: [docs/01_COMMAND_REFERENCE.md](docs/01_COMMAND_REFERENCE.md)）。
+実機接続は adb を既定としている（社内環境で複数 NIC が使えない構成に合わせるため）。ネットワーク越しに到達できる環境では、`gar setup` の実機環境カテゴリで `SSH / scp` を選び、workspaceへhostを保存して `gar target app deploy --workspace <name>` で転送できる（詳細: [docs/01_COMMAND_REFERENCE.md](docs/01_COMMAND_REFERENCE.md)）。
 
 ```powershell
 adb shell
@@ -304,9 +304,9 @@ adb shell
 ## Simulation 環境の起動・停止
 
 ```bash
-gar sim boot       # 起動 + SSH config 自動更新（--pull で git pull も実行）
-gar sim shutdown   # 停止
-gar sim status  # 状態確認
+gar sim host start     # 起動 + SSH config 自動更新（--pull で git pull も実行）
+gar sim host stop      # 停止
+gar sim host status    # 状態確認
 ```
 
 ---

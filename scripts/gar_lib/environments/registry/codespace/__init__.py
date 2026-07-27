@@ -1,1 +1,1 @@
-"""Development environment providers."""
+"""Development (codespace) environments."""

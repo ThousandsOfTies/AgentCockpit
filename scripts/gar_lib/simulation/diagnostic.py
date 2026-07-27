@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from scripts.gar_lib.access.base import CommandResult
+from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.simulation.parse import parse_sim_diag
 
 

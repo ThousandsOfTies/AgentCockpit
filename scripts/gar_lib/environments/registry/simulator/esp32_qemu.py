@@ -1,4 +1,4 @@
-"""ESP32 firmware QEMU runner provider.
+"""ESP32 firmware QEMU runner environment.
 
 GAR の tool list から、gar-tools 側に置いた ESP32 firmware runner を呼ぶ。
 Renode の .repl/.resc はボード定義を育てる場所として残しつつ、今日
@@ -7,11 +7,11 @@ Renode の .repl/.resc はボード定義を育てる場所として残しつつ
 
 from __future__ import annotations
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 
 
 class Esp32QemuFirmwareEnvironment(EnvironmentSetupOption):
-    provider_id = "esp32_qemu_firmware"
+    environment_id = "esp32_qemu_firmware"
     display_name = "ESP32 QEMU Firmware"
     description = (
         "bootloader/partition/firmware artifact を flash image にまとめ、"

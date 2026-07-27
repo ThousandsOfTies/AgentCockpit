@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.access.base import CommandResult, TransferResult
+from scripts.gar_lib.access._base import CommandResult, TransferResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.linux_systemd import LinuxSystemdSimulationEnvironment

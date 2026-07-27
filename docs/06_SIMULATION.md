@@ -12,12 +12,12 @@ I2C/SPI を CUSE、GPIO を `gpio-sim` + GPIO chardev v2 で実現するこの�
 
 GAR において Bridge は、疑似操作パネル、AI agent、CI scenario が simulator を操作・観察するための共通 control plane である。Linux の `bridge.py` はその最初の実装であって、Linux 固有の補助機能ではない。
 
-新しい provider は、次のいずれかで Bridge を実現する。
+新しい environment は、次のいずれかで Bridge を実現する。
 
 1. simulator と同じプロセスまたは近傍プロセスに HTTP/JSON Bridge を起動する。
-2. provider 固有 API / CLI を、GAR の JSON command/state 契約へ変換する adapter を実装する。
+2. environment 固有 API / CLI を、GAR の JSON command/state 契約へ変換する adapter を実装する。
 
-人間が標準 viewer や provider 独自 UI を使うことはできるが、それは観察・手動デバッグの補助である。AI / CI が再現可能に操作する入口の代わりにはならない。例えば MuJoCo では Bridge が Python SDK を呼び、MuJoCo viewer は Bridge と同じ物理状態を表示する。
+人間が標準 viewer や environment 独自 UI を使うことはできるが、それは観察・手動デバッグの補助である。AI / CI が再現可能に操作する入口の代わりにはならない。例えば MuJoCo では Bridge が Python SDK を呼び、MuJoCo viewer は Bridge と同じ物理状態を表示する。
 
 現時点で Wokwi scenario は Wokwi CLI 固有の形式を使用する移行中の例外である。これを一般原則と取り違えず、共通 JSON scenario から同じ操作を実行できるように揃える。
 
@@ -75,65 +75,65 @@ gar sim infra apply  # インスタンスを作成・SSH config 更新
 ```
 
 `gar sim infra setup` は `.gar/config.json` と Terraform output から現在値を表示したうえで、Terraform plan を実行する。
-`gar sim infra apply` は apply 後に instance_id / public_ip を `.gar/config.json` へ保存し、`~/.ssh/config` の HostName を自動更新する（`gar sim start` 相当の後処理も含む）。
+`gar sim infra apply` は apply 後に instance_id / public_ip を `.gar/config.json` へ保存し、`~/.ssh/config` の HostName を自動更新する（`gar sim host start` 相当の後処理も含む）。
 
 ### 起動・停止（既存インスタンス）
 
-インスタンス作成後の日常的な起動停止は `gar sim start` / `gar sim stop` を使う。
+インスタンス作成後の日常的な起動停止は `gar sim host start` / `gar sim host stop` を使う。
 
 ```bash
-gar sim start     # 起動 + SSH config 更新
-gar sim stop      # 停止
+gar sim host start     # 起動 + SSH config 更新
+gar sim host stop      # 停止
 ```
 
 ### アプリ・runtime のデプロイ
 
-インスタンスが起動したら、アプリ成果物と runtime の配置は `gar sim env deploy` / `gar sim env start` が担う。Terraform には持たせない。
+インスタンスが起動したら、アプリ成果物と runtime の配置は `gar sim runtime deploy` / `gar sim runtime start` が担う。Terraform には持たせない。
 
 ```bash
-gar sim env deploy   # CUSE stubs / web-bridge を配置
-gar sim deploy       # target app を転送
-gar sim env start    # systemd services + port forward 起動
+gar sim runtime deploy   # CUSE stubs / web-bridge を配置
+gar sim app deploy       # target app を転送
+gar sim runtime start    # systemd services + port forward 起動
 ```
 
 ### SSH/scp 接続エラーからの復旧
 
-AWS EC2 用の SSH Remote provider を使う `gar sim env deploy` / `gar sim deploy`、および将来の EC2 上の build などが SSH/scp 接続エラーで終了した場合、GAR は無限に待機・再試行しません。接続処理を持つ provider 共通の復旧処理が、VS Code Terminal Bridge を通じて、見える terminal に次のログイン要求を送ります。
+AWS EC2 用の SSH Remote environment を使う `gar sim runtime deploy` / `gar sim app deploy`、および将来の EC2 上の build などが SSH/scp 接続エラーで終了した場合、GAR は無限に待機・再試行しません。接続処理を持つ environment 共通の復旧処理が、VS Code Terminal Bridge を通じて、見える terminal に次のログイン要求を送ります。
 
 ```bash
 aws login --remote --region <設定済みの region>
 ```
 
-表示された URL はブラウザで開き、認証コードは **その terminal にのみ**入力します。チャットや AI に貼り付けません。認証後、エラー表示に出た `gar sim start --workspace ...` で EC2 を起動して Public IP を更新し、同じ deploy コマンドを再実行します。
+表示された URL はブラウザで開き、認証コードは **その terminal にのみ**入力します。チャットや AI に貼り付けません。認証後、エラー表示に出た `gar sim host start --workspace ...` で EC2 を起動して Public IP を更新し、同じ deploy コマンドを再実行します。
 
 ### 確認
 
 ```bash
-gar sim env diag --json   # プロセス・デバイス・API 状態
+gar sim runtime diag --json   # プロセス・デバイス・API 状態
 ```
 
 ---
 
 ## MuJoCo / Sim2Real シミュレーション
 
-二足歩行など、関節・接触・摩擦を含むロボット物理は **MuJoCo** provider で扱う。GAR は MuJoCo を置き換えず、モデル検証・実行・ログ・実機実験の往復を共通の操作面に載せる。
+二足歩行など、関節・接触・摩擦を含むロボット物理は **MuJoCo** environment で扱う。GAR は MuJoCo を置き換えず、モデル検証・実行・ログ・実機実験の往復を共通の操作面に載せる。
 
-`gar setup` で simulation provider に `MuJoCo（ロボット物理）` を選択すると、必要に応じて現在の Python 環境へ `mujoco` package を導入する。標準では動作確認用の振り子モデルを使う。`gar sim env start` は MuJoCo Python SDK を駆動するローカル JSON bridge を起動し、標準 viewer はその bridge と同じ物理状態を表示する。
+`gar setup` で simulation environment に `MuJoCo（ロボット物理）` を選択すると、必要に応じて現在の Python 環境へ `mujoco` package を導入する。標準では動作確認用の振り子モデルを使う。`gar sim runtime start` は MuJoCo Python SDK を駆動するローカル JSON bridge を起動し、標準 viewer はその bridge と同じ物理状態を表示する。
 
 ```bash
-gar sim env build                         # MJCF を読み込めるか検証
-gar sim env start --no-port-forward       # MuJoCo viewer をローカルで起動
-gar sim env diag --json
-gar sim env log
-gar sim env stop --no-port-forward
+gar sim runtime build                         # MJCF を読み込めるか検証
+gar sim runtime start --no-port-forward       # MuJoCo viewer をローカルで起動
+gar sim runtime diag --json
+gar sim runtime log
+gar sim runtime stop --no-port-forward
 ```
 
 実ロボットではプロダクト側の MJCF/URDF を指定する。
 
 ```bash
 export GAR_MUJOCO_MODEL=/path/to/biped.xml
-gar sim env build
-gar sim env start --no-port-forward
+gar sim runtime build
+gar sim runtime start --no-port-forward
 ```
 
 単なる viewer ではなく、制御ポリシー・サーボ同定・実機ログ比較を行う場合は、プロダクトリポジトリに runner を置き、`GAR_MUJOCO_RUNNER` で指定する。GAR は `runner --mjcf /path/to/biped.xml --bridge-url http://127.0.0.1:8081` として起動する。この runner に、サーボ遅れ・トルク制限・摩擦・質量などの同定値、学習済み方策、実機トレースの入出力を持たせる。
@@ -141,10 +141,10 @@ gar sim env start --no-port-forward
 ```bash
 export GAR_MUJOCO_MODEL=/path/to/biped.xml
 export GAR_MUJOCO_RUNNER=/path/to/product/sim/run_mujoco.py
-gar sim env start --no-port-forward
+gar sim runtime start --no-port-forward
 ```
 
-GUI のない CI では viewer を起動せず、headless 対応の runner を使う。MuJoCo provider は Linux の `/dev/*` 互換 runtime を模倣するものではなく、ロボット力学の Sim2Real ループを担当する。
+GUI のない CI では viewer を起動せず、headless 対応の runner を使う。MuJoCo environment は Linux の `/dev/*` 互換 runtime を模倣するものではなく、ロボット力学の Sim2Real ループを担当する。
 
 ### MuJoCo Bridge の JSON 契約
 
@@ -180,7 +180,7 @@ python scripts/run_scenario.py scenario.json --base-url http://127.0.0.1:8081
 
 ## Wokwi / M5StackC シミュレーション
 
-ESP32 / M5StackC 系ターゲットでは simulation backend に `wokwi` を選ぶと、`gar sim env start` が `gar-tools` のテンプレートとアプリリポジトリのソースを合成し、ローカルに Wokwi workspace を生成します。シミュレーション実行そのものは、ローカルの `wokwi-cli` または VS Code Wokwi 拡張から Wokwi CI のクラウドシミュレーションを呼び出します。
+ESP32 / M5StackC 系ターゲットでは simulation backend に `wokwi` を選ぶと、`gar sim runtime start` が `gar-tools` のテンプレートとアプリリポジトリのソースを合成し、ローカルに Wokwi workspace を生成します。シミュレーション実行そのものは、ローカルの `wokwi-cli` または VS Code Wokwi 拡張から Wokwi CI のクラウドシミュレーションを呼び出します。
 
 テンプレートは `gar-tools` 側に置きます。
 
@@ -229,19 +229,19 @@ export WOKWI_CLI_TOKEN=...
 wokwi-cli .
 ```
 
-`make wokwi-workspace` は `m5stickc-client` 側の生成ルールです。内部では GAR の Wokwi provider を呼び、
+`make wokwi-workspace` は `m5stickc-client` 側の生成ルールです。内部では GAR の Wokwi environment を呼び、
 `gar-tools` の template とアプリ自身の `src/` から `GaplessAgentRuntime/.gar/wokwi/m5stackc` を再展開します。
-`gar sim env start --no-port-forward` も同じ workspace を準備しますが、CLI/token/firmware が揃っている場合は
+`gar sim runtime start --no-port-forward` も同じ workspace を準備しますが、CLI/token/firmware が揃っている場合は
 Wokwi CLI 起動まで進めます。workspace 生成だけを明示したい場合はアプリ側 Makefile target を使います。
 
-`wokwi-cli`、`WOKWI_CLI_TOKEN`、firmware が揃っている場合、`gar sim env start --no-port-forward` は Wokwi CLI をバックグラウンド起動し、Wokwi CI のクラウドシミュレーションへ送信します。PID とログは `.gar/wokwi/m5stackc/state.json` / `wokwi.log` に記録します。まだ CLI や firmware がない場合も、workspace 生成までは成功として扱い、次に必要な手順を表示します。
+`wokwi-cli`、`WOKWI_CLI_TOKEN`、firmware が揃っている場合、`gar sim runtime start --no-port-forward` は Wokwi CLI をバックグラウンド起動し、Wokwi CI のクラウドシミュレーションへ送信します。PID とログは `.gar/wokwi/m5stackc/state.json` / `wokwi.log` に記録します。まだ CLI や firmware がない場合も、workspace 生成までは成功として扱い、次に必要な手順を表示します。
 
 Wokwi CI はクラウド上で実行されるため、完全なローカル/オフライン実行ではありません。無料プランでも CI simulation の月間枠がありますが、長時間・商用・オフライン用途では有料プランの確認が必要です。
 
 ### Wokwi の手動確認と自動確認
 
 Wokwi は「workspace 生成」「firmware build」「シミュレータ起動」を分けて扱います。
-VS Code 拡張で手動確認する場合、`gar sim env start` は毎回必要ではありません。
+VS Code 拡張で手動確認する場合、`gar sim runtime start` は毎回必要ではありません。
 一度 `.gar/wokwi/m5stackc/` が生成され、`firmware.bin` / `firmware.elf` が存在していれば、
 `diagram.json` を Wokwi Diagram Editor で開き、Editor ペイン左上の再生ボタンを押して確認します。
 
@@ -352,10 +352,10 @@ GAR が作成する launcher は既定で
 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` を設定する。`libicu` を入れて通常の
 globalization mode で動かしたい場合は、実行前に環境変数を明示的に上書きする。
 
-現時点の Renode setup provider は install / 検証入口までを担当する。runtime側は
+現時点の Renode setup environment は install / 検証入口までを担当する。runtime側は
 `RenodeSimulationEnvironment`としてresolverへ接続済みだが、`.resc`生成やペリフェラル
-model起動は未実装のため、`gar sim env start`などは固有componentから明示的な未実装エラーを返す。
-Linux runtimeでCUSE/gpio-simを動かす既存経路には`SSH Remote` providerを使う。
+model起動は未実装のため、`gar sim runtime start`などは固有componentから明示的な未実装エラーを返す。
+Linux runtimeでCUSE/gpio-simを動かす既存経路には`SSH Remote` environmentを使う。
 
 確認例:
 
@@ -378,7 +378,7 @@ renode-test tests/platforms/xtensa.robot
 
 シミュレーション開始は 2 段階に分けます。
 
-1. **runtime 配置** — `gar sim env start` で bridge と dummy device runtime を起動し、runtime host 上にテスト用 `/dev/*` を用意する。
+1. **runtime 配置** — `gar sim runtime start` で bridge と dummy device runtime を起動し、runtime host 上にテスト用 `/dev/*` を用意する。
 2. **アプリ起動** — VS Code terminal profile "EC2 Simulation" などから EC2 にログインし、本番と同じ `~/sensor_demo` でアプリを起動する。
 
 この分離により、sim/device でアプリ起動スクリプトを分けず、違いを `/dev/*` を用意する runtime 側に閉じ込めます。
@@ -386,8 +386,8 @@ renode-test tests/platforms/xtensa.robot
 ### runtime 配置
 
 ```bash
-gar sim env deploy
-gar sim env start
+gar sim runtime deploy
+gar sim runtime start
 ```
 
 主な配置先:
@@ -414,14 +414,14 @@ gar-cuse-i2c@i2c-1.service
 gar-cuse-spi@spidev0.0.service
 ```
 
-GPIO dummy runtime だけを確認・更新したい場合は、full runtime の生コマンドを直接打たずに `gar sim env gpio` を使います。
+GPIO dummy runtime だけを確認・更新したい場合は、full runtime の生コマンドを直接打たずに `gar sim gpio` を使います。
 
 ```bash
-gar sim env gpio plan --json
-gar sim env gpio install
-gar sim env gpio start
-gar sim env gpio status --json
-gar sim env gpio stop
+gar sim gpio plan --json
+gar sim gpio install
+gar sim gpio start
+gar sim gpio status --json
+gar sim gpio stop
 ```
 
 `plan` はローカルの `hardware/gpio.csv` から生成される gpio-sim chip / line / label / service 配置の契約を表示します。ローカル `hardware/` が未作成の場合は `gar-tools/targets/linux-device/hardware/` の target 標準テンプレートを参照します。`start` は `modprobe gpio-sim`、configfs chip 作成、必要な bind mount までを `gar-gpio-sim.service` 経由で行います。
@@ -525,22 +525,29 @@ python scripts/run_scenario.py path/to/scenario.json
 {
   "name": "sensor_demo system-on rfid flow",
   "steps": [
-    { "action": "button_press", "line": 17, "duration_ms": 150 },
+    { "action": "press", "device": "button", "line": 17, "duration_ms": 150 },
     { "action": "wait", "seconds": 0.5 },
-    { "action": "rfid_tap", "uid": "04:AB:CD:EF:01:23" },
+    { "action": "set", "device": "rfid", "uid": "04:AB:CD:EF:01:23" },
     { "action": "expect", "path": "spi.mfrc522.present", "equals": true }
   ]
 }
 ```
 
-| action | 用途 |
-|---|---|
-| `button_press` | GPIO ボタンを押して離す |
-| `button_set` | GPIO ボタン状態を直接セット |
-| `rfid_tap` / `rfid_remove` | RFID カードを置く / 外す |
-| `range_set` | VL53L0X の距離値をセット |
-| `wait` | 指定秒数待つ |
-| `expect` | `/api/state` の値を検証する |
+virtual H/W への操作 step は `gar sim io` と同じ語彙（`action` + `device`）を使う。
+endpoint 解決は `scripts/gar_lib/simulation/io_actions.py` を両者が共有するため、
+シナリオと CLI で語彙が割れることはない。
+
+| action | device | 用途 |
+|---|---|---|
+| `press` | `button` | GPIO ボタンを押して離す |
+| `set` | `button` | GPIO ボタン状態を直接セット |
+| `set` | `rfid` | RFID カードを置く |
+| `clear` | `rfid` | RFID カードを外す |
+| `set` | `range` | VL53L0X の距離値をセット |
+| `state` | 不要 | `/api/state` を取得する |
+| `wait` | — | 指定秒数待つ |
+| `expect` | — | `/api/state` の値を検証する |
+| `bridge-command` | — | `/api/command` へ environment 固有の命令を送る |
 
 ---
 
@@ -550,8 +557,8 @@ python scripts/run_scenario.py path/to/scenario.json
 |------|------|------|
 | `bridge not available` | bridge.py が未起動 | ターミナル1 を確認 |
 | `/dev/fuse: Permission denied` | sudo なしで CUSE 起動 | `sudo` で起動 |
-| sensor_demo が `/dev/gpiochip0: No such file` | simulation runtime 未起動 | `gar sim env start` 後に fake `/dev/gpiochip0` 起動状態を確認 |
-| `Tap Card しても OLED に UID 出ない` | cuse_spi / bridge / system_on のいずれかが未接続 | `gar sim env diag --json`、`gar sim env log`、`sensor_demo` ログを確認 |
+| sensor_demo が `/dev/gpiochip0: No such file` | simulation runtime 未起動 | `gar sim runtime start` 後に fake `/dev/gpiochip0` 起動状態を確認 |
+| `Tap Card しても OLED に UID 出ない` | cuse_spi / bridge / system_on のいずれかが未接続 | `gar sim runtime diag --json`、`gar sim runtime log`、`sensor_demo` ログを確認 |
 | パネルが Disconnected のまま | ポート 8765 未転送 | PORTS タブで 8765 を Add Port |
 | OLED に表示が出ない | I2C アドレス 0x3C 未認識 | `i2cdetect -y 1` で 0x3C があるか確認 |
 | `Last UID` が更新されない | system_on が OFF | パネルの GPIO17 PUSH で ON に切替 |

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 
 
 class SshScpEnvironment(EnvironmentSetupOption):
-    provider_id = "ssh_scp"
+    environment_id = "ssh_scp"
     display_name = "SSH / scp"
     description = (
         "ssh / scp でネットワーク越しに実機へ接続します"

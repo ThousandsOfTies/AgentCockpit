@@ -144,9 +144,10 @@ def load_config() -> dict:
         return default_config(workspaces=entries)
     data = selected_entry
 
-    selected_providers = data.get("selected_providers")
-    if not isinstance(selected_providers, dict):
-        selected_providers = {}
+    # ``selected_providers`` は旧名。既存の config.json を壊さないため読み込みだけ受ける。
+    selected_environments = data.get("selected_environments", data.get("selected_providers"))
+    if not isinstance(selected_environments, dict):
+        selected_environments = {}
 
     selected_target = data.get("selected_target")
     if not isinstance(selected_target, str) or not selected_target:
@@ -202,9 +203,9 @@ def load_config() -> dict:
         "workspace_branch": data["branch"],
         "workspaces": entries,
         **({"selected_target": selected_target} if selected_target else {}),
-        "selected_providers": {
-            str(category_id): str(provider_id)
-            for category_id, provider_id in selected_providers.items()
+        "selected_environments": {
+            str(category_id): str(environment_id)
+            for category_id, environment_id in selected_environments.items()
         },
         "ec2": {
             "host": ec2_host or DEFAULT_EC2_HOST,
@@ -288,7 +289,7 @@ def save_config(config: dict) -> None:
 def default_config(*, workspaces: list[dict] | None = None) -> dict:
     return {
         "workspaces": workspaces or [],
-        "selected_providers": {},
+        "selected_environments": {},
         "ec2": {
             "host": DEFAULT_EC2_HOST,
         },

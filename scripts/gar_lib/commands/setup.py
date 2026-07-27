@@ -1,4 +1,4 @@
-"""`gar setup` subcommand: interactive provider selection + dependency check."""
+"""`gar setup` subcommand: interactive environment selection + dependency check."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from scripts.gar_lib.config import (
     set_saved_target_setting,
     set_saved_workspaces,
 )
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
-from scripts.gar_lib.environments.discovery import discover_environment_providers
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.simulator.wokwi import WokwiEnvironment  # noqa: F401
 from scripts.gar_lib.gar_tools import (
     TargetManifest,
@@ -53,9 +53,9 @@ TARGET_MENU_ENTRY = "__target_board__"
 
 
 def run_setup(no_install: bool = False, ec2_host: str | None = None, esp32_port: str | None = None) -> int:
-    providers = discover_environment_providers()
-    if not providers:
-        print("接続環境プロバイダが見つかりません。", file=sys.stderr)
+    environments = discover_environments()
+    if not environments:
+        print("接続環境が見つかりません。", file=sys.stderr)
         return 1
 
     print(style("Gapless Agent Runtime の環境を設定します。", BOLD, CYAN))
@@ -66,7 +66,7 @@ def run_setup(no_install: bool = False, ec2_host: str | None = None, esp32_port:
         print()
     targets = discover_target_manifests()
     config = load_config()
-    config.setdefault("selected_providers", {})
+    config.setdefault("selected_environments", {})
     active_workspace_root: str | None = None
     if sys.stdin.isatty():
         active_workspace_root = configure_workspace_root(config)
@@ -74,7 +74,7 @@ def run_setup(no_install: bool = False, ec2_host: str | None = None, esp32_port:
     if active_workspace_root:
         set_active_workspace_root(active_workspace_root)
         config = load_config()
-        config.setdefault("selected_providers", {})
+        config.setdefault("selected_environments", {})
     optional_categories = optional_setup_categories(config, targets)
     redraw_notice: str | None = None
     while True:
@@ -85,9 +85,9 @@ def run_setup(no_install: bool = False, ec2_host: str | None = None, esp32_port:
             print(style(redraw_notice, GREEN))
             print()
             redraw_notice = None
-        configure_target(config, targets, providers)
+        configure_target(config, targets, environments)
         print()
-        categories = print_provider_overview(providers, config, optional_categories=optional_categories, start_index=2)
+        categories = print_environment_overview(environments, config, optional_categories=optional_categories, start_index=2)
         category = select_setup_category(
             categories,
             config,
@@ -98,7 +98,7 @@ def run_setup(no_install: bool = False, ec2_host: str | None = None, esp32_port:
         if category is None:
             break
         if category[0] == TARGET_MENU_ENTRY:
-            selected = select_target(targets, providers)
+            selected = select_target(targets, environments)
             if selected is None:
                 break
             save_selected_target(config, selected)
@@ -106,29 +106,29 @@ def run_setup(no_install: bool = False, ec2_host: str | None = None, esp32_port:
             optional_categories = optional_setup_categories(config, targets)
             continue
 
-        provider = select_provider_for_category(category, config)
-        if provider is SKIP_CATEGORY:
-            if category[0] == "simulator" and config["selected_providers"].get("simulator") == "ssh_remote":
+        environment = select_environment_for_category(category, config)
+        if environment is SKIP_CATEGORY:
+            if category[0] == "simulator" and config["selected_environments"].get("simulator") == "ssh_remote":
                 configure_default_ec2_host(config, ec2_host=ec2_host)
             continue
-        if provider is None:
+        if environment is None:
             break
 
-        result = ensure_provider_dependencies(provider, no_install=no_install)
+        result = ensure_environment_dependencies(environment, no_install=no_install)
         if result == 0:
-            config["selected_providers"][provider.category_id] = provider.provider_id
-            if provider.category_id == "simulator" and provider.provider_id == "ssh_remote":
+            config["selected_environments"][environment.category_id] = environment.environment_id
+            if environment.category_id == "simulator" and environment.environment_id == "ssh_remote":
                 configure_default_ec2_host(config, ec2_host=ec2_host)
             save_config(config)
-            redraw_notice = f"更新しました: {category[1]} = {provider.display_name}"
+            redraw_notice = f"更新しました: {category[1]} = {environment.display_name}"
         else:
             break
 
     missing_categories = []
     if targets and selected_target_manifest(config, targets) is None:
         missing_categories.append("Target")
-    missing_categories.extend(unconfigured_categories(providers, config, optional_categories=optional_categories))
-    optional_missing_categories = unconfigured_categories(providers, config, optional_categories=set(), only_categories=optional_categories)
+    missing_categories.extend(unconfigured_categories(environments, config, optional_categories=optional_categories))
+    optional_missing_categories = unconfigured_categories(environments, config, optional_categories=set(), only_categories=optional_categories)
     print()
     if missing_categories:
         print(style("未完了のセットアップ:", BOLD, RED))
@@ -209,7 +209,7 @@ def print_terminal_bridge_status(*, offer_install: bool) -> None:
 
 
 def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
-    selected_simulation = config.get("selected_providers", {}).get("simulator")
+    selected_simulation = config.get("selected_environments", {}).get("simulator")
     if selected_simulation != "ssh_remote":
         return
 
@@ -249,9 +249,9 @@ def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
 
 
 def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) -> None:
-    selected_target_provider = config.get("selected_providers", {}).get("target")
+    selected_target_environment = config.get("selected_environments", {}).get("target")
     selected_target = config.get("selected_target")
-    if selected_target_provider != "esp32_esptool" or selected_target != "esp32":
+    if selected_target_environment != "esp32_esptool" or selected_target != "esp32":
         return
 
     current_port = saved_esp32_serial_port(config)
@@ -271,13 +271,13 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
         print(f"  {style('候補', YELLOW)} {style(default_port, BOLD)}")
     else:
         print(f"  {style('未設定', YELLOW)}")
-        print(f"     {style('gar target deploy が使う serial port をworkspace設定へ保存できます。', DIM)}")
+        print(f"     {style('gar target app deploy が使う serial port をworkspace設定へ保存できます。', DIM)}")
 
     if candidates:
         print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")
     if not sys.stdin.isatty():
         if not current_port:
-            print(f"     {style('保存するには対話 terminal で gar setup を実行してください。一時指定は gar target flash-esp32 --port COM3 で行えます。', DIM)}")
+            print(f"     {style('保存するには対話 terminal で gar setup を実行してください。', DIM)}")
         return
 
     prompt_default = default_port or ""
@@ -294,12 +294,12 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
 
 
 def configure_target_connection(config: dict) -> None:
-    provider = config.get("selected_providers", {}).get("target")
-    if provider not in {"adb_usb", "adb_win", "ssh_scp"}:
+    environment_id = config.get("selected_environments", {}).get("target")
+    if environment_id not in {"adb_usb", "adb_win", "ssh_scp"}:
         return
 
     print(style("Target Runtime:", BOLD, BLUE))
-    if provider == "ssh_scp":
+    if environment_id == "ssh_scp":
         current = saved_target_setting(config, "host")
         if current:
             print(f"  SSH host: {style(current, BOLD, GREEN)}")
@@ -602,17 +602,17 @@ def detect_esp32_serial_port_candidates() -> list[str]:
 
 
 def print_target_next_steps(config: dict) -> None:
-    selected_simulation = config.get("selected_providers", {}).get("simulator")
+    selected_simulation = config.get("selected_environments", {}).get("simulator")
     if selected_simulation != "wokwi":
         return
 
     print(style("次の操作フェーズ:", BOLD, BLUE))
     print(f"  {style('1. Wokwi firmware/shim をビルド:', BOLD)}")
-    print("    scripts/gar sim env build")
+    print("    scripts/gar sim runtime build")
     print(f"     {style('このtargetのWokwi build入口です。workspace生成後、内部で m5stickc-client の make wokwi-build を実行します。', DIM)}")
     print(f"     {style('workspace生成だけをしたい場合: cd ../gar-vibe-ui/vibe-remote/m5stickc-client && make wokwi-workspace', DIM)}")
     print(f"  {style('2. Wokwi simulation を起動:', BOLD)}")
-    print("    PATH=\"$HOME/bin:$HOME/.venvs/platformio/bin:$PATH\" scripts/gar sim env start --no-port-forward")
+    print("    PATH=\"$HOME/bin:$HOME/.venvs/platformio/bin:$PATH\" scripts/gar sim runtime start --no-port-forward")
     print(f"  {style('3. 人間がUIを確認:', BOLD)}")
     print("    code .gar/wokwi/m5stackc")
     print(f"     {style('VS Codeで diagram.json を開き、Wokwi の再生ボタンで確認します。', DIM)}")
@@ -622,7 +622,7 @@ def print_target_next_steps(config: dict) -> None:
 def configure_target(
     config: dict,
     targets: Sequence[TargetManifest],
-    providers: Sequence[type[EnvironmentSetupOption]],
+    environments: Sequence[type[EnvironmentSetupOption]],
 ) -> None:
     print(style("1. Target", BOLD, CYAN))
 
@@ -646,21 +646,21 @@ def configure_target(
 def save_selected_target(config: dict, target: TargetManifest) -> None:
     config["selected_target"] = target.id
     for category_id in managed_backend_categories():
-        config.setdefault("selected_providers", {}).pop(category_id, None)
+        config.setdefault("selected_environments", {}).pop(category_id, None)
     save_config(config)
 
 
 def ensure_selected_target_ready(config: dict, target: TargetManifest) -> None:
-    before = dict(config.get("selected_providers", {}))
+    before = dict(config.get("selected_environments", {}))
     prune_removed_target_backends(config, target)
-    if config.get("selected_providers", {}) != before:
+    if config.get("selected_environments", {}) != before:
         save_config(config)
 
 
 def prune_removed_target_backends(config: dict, target: TargetManifest) -> None:
-    selected_providers = config.setdefault("selected_providers", {})
+    selected_environments = config.setdefault("selected_environments", {})
     for category_id in removable_target_backend_categories() - set(target.default_backends):
-        selected_providers.pop(category_id, None)
+        selected_environments.pop(category_id, None)
 
 
 def removable_target_backend_categories() -> set[str]:
@@ -688,12 +688,12 @@ def prepare_target_backend(target: TargetManifest) -> None:
 
     print()
     print(style("Wokwi project:", BOLD, BLUE))
-    print(f"  {style('製品 workspace の scripts/product-sim-build.sh が gar sim build 実行時に生成します。', DIM)}")
+    print(f"  {style('製品 workspace の scripts/product-sim-build.sh が gar sim app build 実行時に生成します。', DIM)}")
 
 
 def select_target(
     targets: Sequence[TargetManifest],
-    providers: Sequence[type[EnvironmentSetupOption]],
+    environments: Sequence[type[EnvironmentSetupOption]],
 ) -> TargetManifest | None:
     print()
     print(style("[Target]", BOLD, CYAN))
@@ -701,7 +701,7 @@ def select_target(
     print()
     for index, target in enumerate(targets, start=1):
         print(f"  {style(str(index) + '.', BOLD)} {style(target.display_name, BOLD)}")
-        print_target_summary(target, providers, indent="     ", include_name=False)
+        print_target_summary(target, environments, indent="     ", include_name=False)
         print()
 
     selected_index = _select_target_index(len(targets))
@@ -712,7 +712,7 @@ def select_target(
 
 def print_target_summary(
     target: TargetManifest,
-    providers: Sequence[type[EnvironmentSetupOption]],
+    environments: Sequence[type[EnvironmentSetupOption]],
     *,
     indent: str,
     include_name: bool = True,
@@ -775,22 +775,22 @@ def _select_target_index(count: int) -> int | None:
         print(style(f"1 から {count} の番号を入力してください。", YELLOW))
 
 
-def ensure_provider_dependencies(
-    provider: type[EnvironmentSetupOption],
+def ensure_environment_dependencies(
+    environment: type[EnvironmentSetupOption],
     *,
     no_install: bool = False,
 ) -> int:
-    missing = provider.missing_commands()
+    missing = environment.missing_commands()
 
     print()
     print(
         "選択: "
-        f"{style(provider.display_name, BOLD)} "
-        f"{style(f'({provider.provider_id})', DIM)}"
+        f"{style(environment.display_name, BOLD)} "
+        f"{style(f'({environment.environment_id})', DIM)}"
     )
 
     if not missing:
-        print(style(f"{provider.display_name} に必要なコマンドは見つかりました。", GREEN))
+        print(style(f"{environment.display_name} に必要なコマンドは見つかりました。", GREEN))
         return 0
 
     print(style("不足しているコマンド:", BOLD, YELLOW))
@@ -799,7 +799,7 @@ def ensure_provider_dependencies(
 
     if no_install:
         print()
-        print(provider.install_hint(missing))
+        print(environment.install_hint(missing))
         return 1
 
     print()
@@ -808,11 +808,11 @@ def ensure_provider_dependencies(
         default_on_eof="n",
     )
     if answer.lower() in ("", "y", "yes"):
-        result = provider.install_dependencies(missing)
+        result = environment.install_dependencies(missing)
         if result != 0:
             return result
 
-        remaining = provider.missing_commands()
+        remaining = environment.missing_commands()
         if remaining:
             print()
             print(style("まだ不足しているコマンド:", BOLD, RED))
@@ -821,25 +821,25 @@ def ensure_provider_dependencies(
             return 1
 
         print()
-        print(style(f"{provider.display_name} に必要なコマンドは見つかりました。", GREEN))
+        print(style(f"{environment.display_name} に必要なコマンドは見つかりました。", GREEN))
         return 0
 
-    print(provider.install_hint(missing))
+    print(environment.install_hint(missing))
     return 1
 
 
-def print_provider_overview(
-    providers: Sequence[type[EnvironmentSetupOption]],
+def print_environment_overview(
+    environments: Sequence[type[EnvironmentSetupOption]],
     config: dict[str, dict[str, str]],
     *,
     optional_categories: set[str] | None = None,
     start_index: int = 1,
 ) -> list[tuple[str, str, list[type[EnvironmentSetupOption]]]]:
     categories: list[tuple[str, str, list[type[EnvironmentSetupOption]]]] = []
-    selected_providers = config["selected_providers"]
+    selected_environments = config["selected_environments"]
     optional_categories = optional_categories or set()
 
-    for category_index, (_, category_name, grouped) in enumerate(grouped_providers(providers)):
+    for category_index, (_, category_name, grouped) in enumerate(grouped_environments(environments)):
         category_number = start_index + len(categories)
         categories.append((grouped[0].category_id, category_name, grouped))
         if category_index > 0:
@@ -848,14 +848,14 @@ def print_provider_overview(
         optional_text = f" {style('(後で設定可)', YELLOW)}" if grouped[0].category_id in optional_categories else ""
         print(style(f"{category_number}. {category_name}", BOLD, CYAN) + optional_text)
 
-        selected = provider_by_id(grouped, selected_providers.get(grouped[0].category_id))
+        selected = environment_by_id(grouped, selected_environments.get(grouped[0].category_id))
         if selected is not None:
             missing = selected.missing_commands()
-            status = _provider_status_text(missing)
+            status = _environment_status_text(missing)
             print(
                 f"  {status} "
                 f"{style(selected.display_name, BOLD)} "
-                f"{style(f'({selected.provider_id})', DIM)}"
+                f"{style(f'({selected.environment_id})', DIM)}"
             )
             print(f"     {style(selected.description, DIM)}")
             print(f"     {style('必要:', BLUE)} {_dependency_summary(selected)}")
@@ -921,12 +921,12 @@ def select_setup_category(
         print(style(f"1 または {start_index} から {last_index} の番号を入力してください。", YELLOW))
 
 
-def select_provider_for_category(
+def select_environment_for_category(
     category: tuple[str, str, list[type[EnvironmentSetupOption]]],
     config: dict[str, dict[str, str]],
 ) -> type[EnvironmentSetupOption] | None | object:
-    category_id, category_name, providers = category
-    selected = provider_by_id(providers, config["selected_providers"].get(category_id))
+    category_id, category_name, environments = category
+    selected = environment_by_id(environments, config["selected_environments"].get(category_id))
 
     if selected is not None:
         if selected.missing_commands():
@@ -949,16 +949,16 @@ def select_provider_for_category(
     print(style("利用する環境を選択してください:", BOLD))
     print()
 
-    for index, provider in enumerate(providers, start=1):
-        print(f"  {style(str(index) + '.', BOLD)} {style(provider.display_name, BOLD)}")
-        print(f"     {style(provider.description, DIM)}")
-        print(f"     {style('必要:', BLUE)} {_dependency_summary(provider)}")
+    for index, environment in enumerate(environments, start=1):
+        print(f"  {style(str(index) + '.', BOLD)} {style(environment.display_name, BOLD)}")
+        print(f"     {style(environment.description, DIM)}")
+        print(f"     {style('必要:', BLUE)} {_dependency_summary(environment)}")
         print()
 
     while True:
         raw = safe_input("番号を入力してください [1]: ")
         if raw == "":
-            return providers[0]
+            return environments[0]
         if raw.lower() in ("q", "quit", "exit"):
             return None
 
@@ -968,29 +968,29 @@ def select_provider_for_category(
             print(style("番号で入力してください。", YELLOW))
             continue
 
-        if 1 <= selected_index <= len(providers):
-            return providers[selected_index - 1]
+        if 1 <= selected_index <= len(environments):
+            return environments[selected_index - 1]
 
-        print(style(f"1 から {len(providers)} の番号を入力してください。", YELLOW))
+        print(style(f"1 から {len(environments)} の番号を入力してください。", YELLOW))
 
 
 def unconfigured_categories(
-    providers: Sequence[type[EnvironmentSetupOption]],
+    environments: Sequence[type[EnvironmentSetupOption]],
     config: dict[str, dict[str, str]],
     *,
     optional_categories: set[str] | None = None,
     only_categories: set[str] | None = None,
 ) -> list[str]:
     missing: list[str] = []
-    selected_providers = config["selected_providers"]
+    selected_environments = config["selected_environments"]
     optional_categories = optional_categories or set()
 
-    for category_id, category_name, grouped in grouped_providers(providers):
+    for category_id, category_name, grouped in grouped_environments(environments):
         if only_categories is not None and category_id not in only_categories:
             continue
         if category_id in optional_categories:
             continue
-        selected = provider_by_id(grouped, selected_providers.get(category_id))
+        selected = environment_by_id(grouped, selected_environments.get(category_id))
         if selected is None or selected.missing_commands():
             missing.append(category_name)
 
@@ -1003,55 +1003,55 @@ def first_unconfigured_category_index(
     *,
     optional_categories: set[str] | None = None,
 ) -> int | None:
-    selected_providers = config["selected_providers"]
+    selected_environments = config["selected_environments"]
     optional_categories = optional_categories or set()
 
-    for index, (category_id, _, providers) in enumerate(categories, start=1):
+    for index, (category_id, _, environments) in enumerate(categories, start=1):
         if category_id in optional_categories:
             continue
-        selected = provider_by_id(providers, selected_providers.get(category_id))
+        selected = environment_by_id(environments, selected_environments.get(category_id))
         if selected is None or selected.missing_commands():
             return index
 
-    for index, (category_id, _, providers) in enumerate(categories, start=1):
+    for index, (category_id, _, environments) in enumerate(categories, start=1):
         if category_id not in optional_categories:
             continue
-        selected = provider_by_id(providers, selected_providers.get(category_id))
+        selected = environment_by_id(environments, selected_environments.get(category_id))
         if selected is None or selected.missing_commands():
             return index
 
     return None
 
 
-def grouped_providers(
-    providers: Sequence[type[EnvironmentSetupOption]],
+def grouped_environments(
+    environments: Sequence[type[EnvironmentSetupOption]],
 ) -> list[tuple[str, str, list[type[EnvironmentSetupOption]]]]:
     groups: list[tuple[str, str, list[type[EnvironmentSetupOption]]]] = []
 
-    for provider in providers:
-        if groups and groups[-1][0] == provider.category_id:
-            groups[-1][2].append(provider)
+    for environment in environments:
+        if groups and groups[-1][0] == environment.category_id:
+            groups[-1][2].append(environment)
         else:
-            groups.append((provider.category_id, provider.category_name, [provider]))
+            groups.append((environment.category_id, environment.category_name, [environment]))
 
     return groups
 
 
-def provider_by_id(
-    providers: Sequence[type[EnvironmentSetupOption]],
-    provider_id: str | None,
+def environment_by_id(
+    environments: Sequence[type[EnvironmentSetupOption]],
+    environment_id: str | None,
 ) -> type[EnvironmentSetupOption] | None:
-    if provider_id is None:
+    if environment_id is None:
         return None
 
-    for provider in providers:
-        if provider.provider_id == provider_id:
-            return provider
+    for environment in environments:
+        if environment.environment_id == environment_id:
+            return environment
     return None
 
 
-def _dependency_summary(provider: type[EnvironmentSetupOption]) -> str:
-    statuses = provider.dependency_status()
+def _dependency_summary(environment: type[EnvironmentSetupOption]) -> str:
+    statuses = environment.dependency_status()
     if not statuses:
         return style("なし", DIM)
     return ", ".join(
@@ -1060,7 +1060,7 @@ def _dependency_summary(provider: type[EnvironmentSetupOption]) -> str:
     )
 
 
-def _provider_status_text(missing: list[str]) -> str:
+def _environment_status_text(missing: list[str]) -> str:
     if missing:
         return style("未設定", BOLD, YELLOW)
     return style("設定済み", BOLD, GREEN)

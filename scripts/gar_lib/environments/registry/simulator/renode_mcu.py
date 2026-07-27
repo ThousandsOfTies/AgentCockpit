@@ -1,4 +1,4 @@
-"""Renode MCU simulation provider.
+"""Renode MCU simulation environment.
 
 `gar setup` のシミュレート環境の選択肢として Renode を提供する。
 
@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 
 RENODE_RELEASES_API = "https://api.github.com/repos/renode/renode/releases/latest"
 RENODE_RELEASES_PAGE = "https://github.com/renode/renode/releases/latest"
@@ -41,7 +41,7 @@ TEST_LAUNCHER = BIN_DIR / "renode-test"
 
 
 class RenodeMcuEnvironment(EnvironmentSetupOption):
-    provider_id = "renode_mcu"
+    environment_id = "renode_mcu"
     display_name = "Renode (MCU/ベアメタル)"
     description = (
         "Cortex-M / RISC-V などの MCU ファームを命令セットエミュレータで仮想実行します"
@@ -56,7 +56,7 @@ class RenodeMcuEnvironment(EnvironmentSetupOption):
         renode_test_path = shutil.which("renode-test")
         if renode_test_path and not _renode_test_works(renode_test_path):
             renode_test_path = None
-        from scripts.gar_lib.environments.base import CommandStatus
+        from scripts.gar_lib.environments._base import CommandStatus
 
         return [
             CommandStatus(name="renode", path=renode_path),

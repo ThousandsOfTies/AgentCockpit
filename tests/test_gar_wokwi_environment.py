@@ -12,8 +12,7 @@ from scripts.gar_lib.access.local import ProcessLaunchResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.host_resolver import ConfigSimulationHostControllerResolver
-from scripts.gar_lib.simulation.resolver import ConfigSimulationEnvironmentResolver
+from scripts.gar_lib.simulation.backends import simulation_environment_for, simulation_host_for
 from scripts.gar_lib.simulation.wokwi import WokwiSimulationEnvironment
 
 
@@ -44,7 +43,7 @@ class GarWokwiEnvironmentTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
-            environment = ConfigSimulationEnvironmentResolver().for_workspace(self._workspace(root))
+            environment = simulation_environment_for(self._workspace(root))
 
             self.assertIsInstance(environment, WokwiSimulationEnvironment)
             self.assertIsNone(environment.runtime_host)
@@ -55,7 +54,7 @@ class GarWokwiEnvironmentTest(unittest.TestCase):
             workspace = self._workspace(Path(tmp))
 
             with self.assertRaisesRegex(GarDomainError, "instance_id, region"):
-                ConfigSimulationHostControllerResolver().for_workspace(workspace)
+                simulation_host_for(workspace)
 
     def test_start_launches_local_wokwi_cli_and_records_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

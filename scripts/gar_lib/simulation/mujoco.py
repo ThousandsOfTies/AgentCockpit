@@ -69,7 +69,7 @@ class MujocoSimulationEnvironment:
                 raise GarDomainError("GAR_MUJOCO_BRIDGE_URLはhttp://host:portで指定してください。")
             command = (
                 sys.executable,
-                str(PROJECT_ROOT / "scripts" / "mujoco_bridge.py"),
+                str(PROJECT_ROOT / "examples" / "mujoco" / "bridge.py"),
                 "--mjcf",
                 str(self._model_path()),
                 "--host",
@@ -220,7 +220,7 @@ class MujocoBridgeHardwareControl:
             },
         )
 
-    def panel(self, action: str, params: dict[str, object]) -> HardwareControlResult:
+    def io(self, action: str, params: dict[str, object]) -> HardwareControlResult:
         if action == "state":
             payload = _bridge_state(self.bridge_url)
             if payload is None:

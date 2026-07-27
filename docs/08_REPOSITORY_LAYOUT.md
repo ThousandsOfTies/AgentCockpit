@@ -68,8 +68,8 @@ GaplessAgentRuntime/
 |---|---:|---|---|
 | `scripts/gar` | yes | `gar` executable wrapper。venv を用意し、`scripts.gar_lib.cli` へ委譲する | 人間/AI が最初に触る薄い起動口 |
 | `scripts/gar_lib/` | yes | GAR CLI の本体実装 | 操作面 runtime の正本 |
-| `scripts/gar_lib/environments/` | yes | development / simulation / target access provider の IF と registry | `gar setup` の選択結果で差し替える拡張点 |
-| `scripts/gar_lib/simulation/` | yes | simulation runtime の domain logic | provider 差し替え後も共通に使う simulation 操作 |
+| `scripts/gar_lib/environments/` | yes | development / simulation / target access environment の IF と registry | `gar setup` の選択結果で差し替える拡張点 |
+| `scripts/gar_lib/simulation/` | yes | simulation runtime の domain logic | environment 差し替え後も共通に使う simulation 操作 |
 | `scripts/run_scenario.py` | yes | JSON scenario を bridge API へ流す補助スクリプト | AI / CI が再現可能な検証入口 |
 | `docs/` | yes | 操作手順、コマンド、環境境界、引き継ぎ | 利用者が実行するための正本 |
 | `info/` | yes | 背景思想、製品仮説、将来像 | なぜこの構成かを説明する非手順ドキュメント |
@@ -77,7 +77,7 @@ GaplessAgentRuntime/
 | `tools/vscode-gar/` | yes | VS Code terminal bridge extension | AI から VS Code terminal へ依頼を渡すローカル補助 |
 | `tools/gar-mcp/` | yes | GAR MCP server | 外部 agent / tool 連携用の入口 |
 | `tools/*.sh` | yes | 旧コマンド互換・補助スクリプト | 主要操作は `gar` へ集約し、ここは薄く保つ |
-| `tests/` | yes | CLI / provider discovery / MCP の regression tests | 実装変更時の挙動固定 |
+| `tests/` | yes | CLI / environment discovery / MCP の regression tests | 実装変更時の挙動固定 |
 | `Makefile` | yes | `make init` / `make start` などの bootstrap | 初回導入と日常開始の入口 |
 | `pyproject.toml` | yes | Ruff 設定 | Python 実装の静的品質設定 |
 | `requirements-gar.txt` | yes | `argcomplete` など CLI 実行に必要な依存 | GAR 自体の最小依存 |
@@ -88,7 +88,7 @@ GaplessAgentRuntime/
 
 `app/` を置かないことが重要である。アプリケーションの正本は
 `embedded-poc-app` や `gar-vibe-ui` のような target app repo にあり、GAR は
-その artifact を build / simulation / target access provider へ運ぶ。
+その artifact を build / simulation / target access environment へ運ぶ。
 
 ---
 
@@ -109,7 +109,7 @@ scripts/gar_lib/
     deploy.py             # artifact fetch/deploy for simulator/target access
     hw.py                 # hardware template initialization
     infra.py              # Terraform wrapper for simulator infra
-    setup.py              # target/provider selection and dependency checks
+    setup.py              # target/environment selection and dependency checks
     application.py        # application result rendering and recovery
     terminal.py           # VS Code terminal request writer
     usb.py                # usbipd / USB helper command
@@ -133,7 +133,7 @@ scripts/gar_lib/
 |---|---|---|
 | CLI 表面 | `cli.py` | argparse の shape と各 command module への dispatch |
 | ローカル状態 | `config.py` | `.gar/config.json` の load/save、既定値、project root |
-| 初期設定 | `commands/setup.py` | target 選択、codespace/simulator/target provider 選択、依存コマンド確認 |
+| 初期設定 | `commands/setup.py` | target 選択、codespace/simulator/target environment 選択、依存コマンド確認 |
 | target 定義 | `gar_tools.py` | `gar-tools/targets/*/target.json` の探索と auto clone |
 | code 環境 | `commands/code.py` | Local / Codespaces の開発環境操作。setupで保存した選択を読み、対応する操作を実行する |
 | simulator 環境 | `application.py` + `simulation/*` + `access/*` | VM / Wokwi / MuJoCo 等の simulation runtime 操作 |
@@ -148,7 +148,7 @@ scripts/gar_lib/
 
 ---
 
-## Provider registry の考え方
+## Environment registry の考え方
 
 環境差し替えは `scripts/gar_lib/environments/` に集約する。
 
@@ -162,6 +162,7 @@ scripts/gar_lib/environments/
       github_codespaces.py
       local.py
     simulator/
+      local_docker.py
       ssh_remote.py
       wokwi.py
       renode_mcu.py
@@ -174,13 +175,13 @@ scripts/gar_lib/environments/
       ssh_scp.py
 ```
 
-`gar setup` は provider を category ごとに選び、`.gar/config.json` の
-`selected_providers` に保存する。
+`gar setup` は environment を category ごとに選び、`.gar/config.json` の
+`selected_environments` に保存する。
 
 | category | 代表選択肢 | 実行時の解決先 |
 |---|---|---|
 | `codespace` | `github_codespaces`, `local` | `commands/code.py` / `build/` |
-| `simulator` | `ssh_remote`, `wokwi`, `renode_mcu`, `esp32_qemu_firmware` | `simulation/` |
+| `simulator` | `local_docker`, `ssh_remote`, `wokwi`, `renode_mcu`, `esp32_qemu_firmware` | `simulation/` |
 | `target` | `adb_usb`, `adb_win`, `ssh_scp`, `esp32_esptool` | `target/` |
 
 registryの選択IDは実行時resolverへの入力になるが、registry class自体は実行処理を
@@ -191,11 +192,11 @@ registryの選択IDは実行時resolverへの入力になるが、registry class
 
 ## Simulation domain logic
 
-`scripts/gar_lib/simulation/` は simulator provider の背後にある domain logic を置く。
+`scripts/gar_lib/simulation/` は simulator environment の背後にある domain logic を置く。
 
 ```text
 scripts/gar_lib/simulation/
-  base.py                 # SimProvider interface
+  environment.py          # SimulationEnvironment interface
   linux.py                # Linux/systemd compatible runtime command builder
   wokwi.py                # Wokwi workspace / command helper
 ```
@@ -213,7 +214,7 @@ Git の正本として扱わない。
 
 | パス | 作られるタイミング | 中身 |
 |---|---|---|
-| `.gar/config.json` | `gar setup` | target、provider、host、serial port などの local config |
+| `.gar/config.json` | `gar setup` | target、environment、host、serial port などの local config |
 | `.gar/tools/` | `gar setup` | `gar-tools` が見つからない場合の auto clone 先 |
 | `.gar/wokwi/` | Wokwi workspace 生成時 | template から展開した runnable workspace |
 | `.gar/terminal-requests/` | `gar terminal run` / setup handoff | VS Code terminal bridge への実行要求 JSON |
@@ -222,7 +223,7 @@ Git の正本として扱わない。
 | `codespaces/` | `gar code start` | Codespaces workspace の sshfs mount |
 | `hardware/` | `gar hw init` | target hardware CSV のローカル上書き |
 
-この分離により、同じ repository checkout を使っても、ユーザーごとの provider 選択や
+この分離により、同じ repository checkout を使っても、ユーザーごとの environment 選択や
 接続先、生成 workspace は Git の差分として混ざらない。
 
 ---
@@ -339,7 +340,7 @@ flowchart TB
 flowchart LR
   subgraph GAR["GaplessAgentRuntime"]
     CLI["gar CLI"]
-    Setup["setup / provider selection"]
+    Setup["setup / environment selection"]
     Runtime["orchestration"]
     CodeMount["codespaces/\nsshfs mount"]
     LocalHW["hardware/\nlocal override"]

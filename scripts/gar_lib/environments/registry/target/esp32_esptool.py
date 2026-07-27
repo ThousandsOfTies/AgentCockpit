@@ -7,11 +7,11 @@ import sys
 from pathlib import Path
 
 from scripts.gar_lib.config import PROJECT_ROOT
-from scripts.gar_lib.environments.base import CommandStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments._base import CommandStatus, EnvironmentSetupOption
 
 
 class Esp32EsptoolEnvironment(EnvironmentSetupOption):
-    provider_id = "esp32_esptool"
+    environment_id = "esp32_esptool"
     display_name = "ESP32 esptool"
     description = "esptool で ESP32/M5Stack firmware を USBシリアル経由で実機へ書き込みます"
     display_order = 20

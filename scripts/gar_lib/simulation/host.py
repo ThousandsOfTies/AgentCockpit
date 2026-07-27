@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Protocol
-
-from scripts.gar_lib.core.workspace import Workspace
 
 
 @dataclass(frozen=True)
 class SimulationHostState:
+    """simulation hostの状態。backend実装の語彙をこの層に持ち込まない。"""
+
     host: str
-    instance_id: str
-    region: str
+    backend: str
+    id: str
     state: str
-    public_ip: str | None
+    address: str | None = None
+    details: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def running(self) -> bool:
@@ -22,12 +24,13 @@ class SimulationHostState:
 
     def to_payload(self) -> dict[str, object]:
         return {
-            "command": "sim status",
-            "instance_id": self.instance_id,
-            "region": self.region,
+            "command": "sim host status",
+            "backend": self.backend,
+            "id": self.id,
             "state": self.state,
-            "public_ip": self.public_ip,
+            "address": self.address,
             "running": self.running,
+            "details": dict(self.details),
             "ok": True,
         }
 
@@ -51,7 +54,3 @@ class SimulationHostController(Protocol):
     def stop(self) -> None: ...
 
     def status(self) -> SimulationHostState: ...
-
-
-class SimulationHostControllerResolver(Protocol):
-    def for_workspace(self, workspace: Workspace) -> SimulationHostController: ...

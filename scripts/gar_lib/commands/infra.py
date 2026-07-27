@@ -9,7 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
 from scripts.gar_lib.config import (
     PROJECT_ROOT,
     default_ec2_host,
@@ -20,6 +19,7 @@ from scripts.gar_lib.config import (
     set_default_ec2_instance_id,
     set_default_ec2_region,
 )
+from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
 
 TERRAFORM_DIR = PROJECT_ROOT / "infra" / "terraform"
 

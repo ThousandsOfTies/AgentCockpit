@@ -90,9 +90,9 @@ gar code stop    # アンマウント・profile 削除
 Hardware Panel を WSL2/VS Code から見る場合:
 
 ```bash
-gar sim env start   # EC2:8080/8765 を WSL2:127.0.0.1 に転送
-gar sim env status
-gar sim env stop
+gar sim runtime start   # EC2:8080/8765 を WSL2:127.0.0.1 に転送
+gar sim runtime status
+gar sim runtime stop
 ```
 
 ---
@@ -116,48 +116,28 @@ devcontainer は「全員に必須の魔法の箱」ではなく、Linux 前提�
 
 ## Windows ネイティブの位置づけ
 
-**制御・操作は WSL2 上の `gar` に集約済み**です。simulation VM 起動・停止（`gar sim start` / `gar sim stop`）も実機デプロイ（`gar target deploy`）も WSL2 から実行でき、Windows ネイティブは原則不要です。
+**制御・操作は WSL2 上の `gar` に集約済み**です。simulation VM 起動・停止（`gar sim host start` / `gar sim host stop`）も実機デプロイ（`gar target app deploy`）も WSL2 から実行でき、Windows ネイティブは原則不要です。
 
-USB-C 実機への adb も、`usbipd-win` を WSL2 から呼び出す `gar usb attach` で WSL2 に通せます。busid は自動検出・記憶されるので、初回の `usbipd bind`（管理者・一度だけ）以降は `gar usb attach` だけで実機が WSL2 に現れます。ネットワーク経由のSSH/scp providerは、`gar setup`で実機hostをworkspaceへ保存して`gar target deploy`から利用できます。
+USB-C 実機への adb も、`usbipd-win` を WSL2 から呼び出す `gar usb attach` で WSL2 に通せます。busid は自動検出・記憶されるので、初回の `usbipd bind`（管理者・一度だけ）以降は `gar usb attach` だけで実機が WSL2 に現れます。ネットワーク経由のSSH/scp environmentは、`gar setup`で実機hostをworkspaceへ保存して`gar target app deploy`から利用できます。
 
-### ESP32 / USB serial の低レベル確認
+### ESP32 / USB serial の build と flash
 
-M5StickC Plus2 Vibe Remote の日常操作は `gar target deploy` に寄せる。
-
-```bash
-gar target deploy
-```
-
-移行期間中に低レベルコマンドで確認する場合:
+M5StickC Plus2 Vibe Remote も、workspace の target 定義（`esp32_esptool`）に従って
+`gar target app build` / `gar target app deploy` の統一コマンドで扱う。build 側は PlatformIO
+ビルド＋artifact 取得、deploy 側は esptool flash に自動で解決される。
 
 ```bash
-gar target build-esp32 \
-  --codespace <codespace-name> \
-  --pio-env m5stickc-plus2-vibe-min
-gar target flash-esp32 --port /dev/ttyACM0
+# workspace の target 定義から PlatformIO ビルド＋artifact 取得
+gar target app build
+
+# 取得済み artifact を esptool で実機へ書き込み
+gar target app deploy
 ```
 
-ビルド、artifact 取得、flash を一括で確認する場合:
-
-```bash
-gar target build-esp32 \
-  --codespace <codespace-name> \
-  --pio-env m5stickc-plus2-vibe-min \
-  --flash \
-  --port /dev/ttyACM0
-```
-
-既存 artifact を書き込む場合:
-
-```bash
-gar target flash-esp32 \
-  --artifact-dir ~/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260619-063145-m5stickc-plus2-vibe-min \
-  --port COM3
-```
-
-WSL 上では `COM3` を `/dev/ttyS3` に自動変換する。`--artifact-dir` を省略した場合は
-`~/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/` 配下の最新 artifact を使う。
-`esptool` が見つからない場合は `~/.local/share/gar/esptool-venv` に自動導入する。
+PlatformIO environment などの ESP32 固有パラメータ（`pio_env` / `remote_project_root`）は
+`gar setup` で workspace に保存する。serial port も workspace に保存され、WSL 上では
+`COM3` を `/dev/ttyS3` に自動変換する。`esptool` が見つからない場合は
+`~/.local/share/gar/esptool-venv` に自動導入する。
 
 `/dev/ttyS3` が `root:dialout` で permission denied になる場合:
 
@@ -190,7 +170,7 @@ usbipd bind --busid <busid>
 
 ```bash
 ls -l /dev/ttyACM* /dev/ttyUSB*
-gar target flash-esp32 --port /dev/ttyACM0
+gar target app deploy
 ```
 
 ### 当面の Windows 入口（減らす対象）

@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.config import PROJECT_ROOT, load_config
 
 DEFAULT_GAR_TOOLS_REPO = "https://github.com/ThousandsOfTies/gar-tools"
 
@@ -22,6 +22,11 @@ class TargetManifest:
     tools_root: str
     default_backends: dict[str, str]
     backend_notes: dict[str, str]
+    simulation: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def simulation_settings(self, backend_id: str) -> dict[str, Any]:
+        """simulator backend が必要とする実行条件を返す。"""
+        return self.simulation.get(backend_id, {})
 
 
 def discover_target_manifests() -> list[TargetManifest]:
@@ -35,6 +40,11 @@ def discover_target_manifests() -> list[TargetManifest]:
         if manifest is not None:
             manifests.append(manifest)
     return manifests
+
+
+def active_target_manifest() -> TargetManifest | None:
+    """setupで選択済みのtarget定義。runtime側のresolverが実行条件を引くために使う。"""
+    return target_by_id(discover_target_manifests(), load_config().get("selected_target"))
 
 
 def target_by_id(targets: list[TargetManifest], target_id: str | None) -> TargetManifest | None:
@@ -132,11 +142,22 @@ def _load_target_manifest(path: Path) -> TargetManifest | None:
         tools_root=tools_root,
         default_backends=_str_dict(data.get("defaultBackends")),
         backend_notes=_str_dict(data.get("backendNotes")),
+        simulation=_settings_dict(data.get("simulation")),
     )
 
 
 def _str(value: Any) -> str:
     return value if isinstance(value, str) else ""
+
+
+def _settings_dict(value: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): dict(item)
+        for key, item in value.items()
+        if isinstance(key, str) and isinstance(item, dict)
+    }
 
 
 def _str_dict(value: Any) -> dict[str, str]:

@@ -3,12 +3,12 @@ from __future__ import annotations
 import platform
 import shutil
 
-from scripts.gar_lib.environments.base import EnvironmentSetupOption
+from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
 
 
 class GitHubCodespacesEnvironment(EnvironmentSetupOption):
-    provider_id = "github_codespaces"
+    environment_id = "github_codespaces"
     display_name = "GitHub Codespaces"
     description = "GitHub CLI を使って Codespaces に接続します"
     display_order = 10

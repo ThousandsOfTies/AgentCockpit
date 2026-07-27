@@ -5,7 +5,9 @@ import csv
 import io
 import shlex
 import textwrap
-from urllib.parse import quote
+from urllib.parse import urlencode
+
+from . import io_actions
 
 # Linux constants
 SIM_DIAG_DEVICES = ("/dev/i2c-1", "/dev/gpiochip0", "/dev/spidev0.0")
@@ -549,42 +551,12 @@ class LinuxSystemdCommandBuilder:
     def build_gpio_sim_check(self) -> str:
         return SIM_GPIO_SIM_CHECK_COMMAND
 
-    def build_panel(self, action: str, params: dict) -> str:
-        base = PANEL_BASE_URL
-        if action == "button-press":
-            line = _button_line(params)
-            duration_ms = max(0, int(params.get("duration_ms", 150)))
-            return f'curl -s -X POST "{base}/api/button/press?line={line}&duration_ms={duration_ms}"'
-        if action == "button-set":
-            line = _button_line(params)
-            value = 1 if int(params.get("value", 1)) else 0
-            return f'curl -s -X POST "{base}/api/button?line={line}&value={value}"'
-        if action == "rfid-tap":
-            uid = quote(str(params["uid"]), safe=":")
-            return f'curl -s -X POST "{base}/api/rfid/tap?uid={uid}"'
-        if action == "rfid-remove":
-            return f'curl -s -X POST "{base}/api/rfid/remove"'
-        if action == "range-set":
-            value = int(params["value"])
-            return f'curl -s -X POST "{base}/api/range?value={value}"'
-        if action == "state":
-            return f'curl -s "{base}/api/state"'
-        raise ValueError(f"unknown panel action: {action}")
-
-
-def _button_line(params: dict) -> int:
-    value = str(params.get("line") or params.get("button") or "17")
-    if value.isdigit():
-        return int(value)
-    aliases = {
-        "a": 17,
-        "power": 17,
-        "power_button": 17,
-        "b": 27,
-        "aux": 27,
-        "aux_button": 27,
-    }
-    key = value.strip().lower()
-    if key in aliases:
-        return aliases[key]
-    raise ValueError(f"unknown button: {value}")
+    def build_io(self, action: str, params: dict) -> str:
+        device = str(params.get("device") or "") or None
+        request = io_actions.resolve(action, device, params)
+        url = f"{PANEL_BASE_URL}{request.path}"
+        if request.fields:
+            url += "?" + urlencode(request.fields, safe=":")
+        if request.method == "GET":
+            return f'curl -s "{url}"'
+        return f'curl -s -X {request.method} "{url}"'

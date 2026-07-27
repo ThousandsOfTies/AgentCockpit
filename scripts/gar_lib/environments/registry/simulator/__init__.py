@@ -1,1 +1,1 @@
-"""Simulation environment providers."""
+"""Simulation environments."""

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+from collections.abc import Mapping
 
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
-from scripts.gar_lib.build.base import ProductBuildSpecResolver
+from scripts.gar_lib.build._base import ProductBuildSpecResolver
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
@@ -19,7 +20,10 @@ class CodespacesBuildEnvironment:
 
     def build(self, kind: ArtifactKind, workspace: Workspace) -> Artifact:
         spec = self.specs.for_artifact(kind, workspace)
-        command = f"cd {shlex.quote(workspace.remote_root)} && {shlex.quote(spec.script)}"
+        command = (
+            f"cd {shlex.quote(workspace.remote_root)} && "
+            f"{_assignments(spec.variables)}{shlex.quote(spec.script)}"
+        )
         result = subprocess.run(
             ["gh", "codespace", "ssh", "-c", workspace.codespace_name, "--", command],
             check=False,
@@ -33,7 +37,7 @@ class CodespacesBuildEnvironment:
         spec = self.specs.for_artifact(kind, workspace)
         command = (
             f"cd {shlex.quote(workspace.remote_root)} && "
-            f"{shlex.quote(spec.script)} clean"
+            f"{_assignments(spec.variables)}{shlex.quote(spec.script)} clean"
         )
         result = subprocess.run(
             ["gh", "codespace", "ssh", "-c", workspace.codespace_name, "--", command],
@@ -41,3 +45,12 @@ class CodespacesBuildEnvironment:
         )
         if result.returncode != 0:
             raise GarDomainError(f"{kind.value} Codespaces clean が失敗しました (exit {result.returncode})")
+
+    def fetch(self, workspace: Workspace) -> None:
+        self.artifacts.sync_from_codespaces(workspace)
+
+
+def _assignments(variables: Mapping[str, str]) -> str:
+    return "".join(
+        f"{name}={shlex.quote(value)} " for name, value in sorted(variables.items())
+    )

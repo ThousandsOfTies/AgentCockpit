@@ -1,17 +1,17 @@
-"""MuJoCo physics simulation provider."""
+"""MuJoCo physics simulation environment."""
 
 from __future__ import annotations
 
 import shutil
 import sys
 
-from scripts.gar_lib.environments.base import CommandStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments._base import CommandStatus, EnvironmentSetupOption
 
 
 class MujocoEnvironment(EnvironmentSetupOption):
     """Local MuJoCo installation used for articulated-robot simulation."""
 
-    provider_id = "mujoco"
+    environment_id = "mujoco"
     display_name = "MuJoCo（ロボット物理）"
     description = (
         "関節・接触・摩擦を含むロボット物理シミュレーションをローカルで実行します"
