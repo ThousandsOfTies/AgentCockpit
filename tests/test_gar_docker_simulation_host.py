@@ -14,7 +14,6 @@ from scripts.gar_lib.access.docker import (
 )
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.gar_tools import TargetManifest
 from scripts.gar_lib.simulation.backends import (
     hardware_control_for,
     simulation_environment_for,
@@ -27,6 +26,7 @@ from scripts.gar_lib.simulation.docker_host import (
 )
 from scripts.gar_lib.simulation.docker_spec import DockerHostSpec, docker_host_spec
 from scripts.gar_lib.simulation.linux_systemd import LinuxSystemdSimulationEnvironment
+from scripts.gar_lib.target.manifest import TargetManifest
 
 LINUX_DEVICE_DOCKER = {
     "image": "gar-linux-device:latest",

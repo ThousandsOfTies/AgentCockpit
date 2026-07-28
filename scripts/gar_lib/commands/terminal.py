@@ -12,7 +12,7 @@ from pathlib import Path
 from scripts.gar_lib.config import CONFIG_PATH
 
 
-def run_terminal_request(
+def run_terminal_run_command(
     *,
     command_parts: Sequence[str],
     command_text: str | None = None,
@@ -48,7 +48,7 @@ def run_terminal_request(
     return 0
 
 
-def run_terminal_gc(*, keep_days: int, dry_run: bool) -> int:
+def run_terminal_gc_command(*, keep_days: int, dry_run: bool) -> int:
     if keep_days < 0:
         print("--keep-days は 0 以上を指定してください。", file=sys.stderr)
         return 1

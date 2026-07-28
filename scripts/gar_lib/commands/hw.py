@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts.gar_lib.hardware import write_hw_template
+from scripts.gar_lib.commands.common.hardware import write_hw_template
 
 
 def run_hw_command(command: str, *, output_dir: str | None = None, force: bool = False) -> int:

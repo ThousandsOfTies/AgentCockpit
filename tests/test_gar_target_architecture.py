@@ -127,14 +127,14 @@ class GarTargetArchitectureTest(unittest.TestCase):
         )
         stderr = io.StringIO()
         with (
-            mock.patch("scripts.gar_lib.cli.workspace_for", return_value=selected_workspace),
+            mock.patch("scripts.gar_lib.commands.target.workspace_for", return_value=selected_workspace),
             mock.patch("scripts.gar_lib.commands.target.LocalArtifactStore"),
             mock.patch(
                 "scripts.gar_lib.commands.target.target_environment_for",
                 return_value=environment,
             ),
             mock.patch(
-                "scripts.gar_lib.recovery.access.run_terminal_request"
+                "scripts.gar_lib.recovery.access.run_terminal_run_command"
             ) as terminal_request,
             contextlib.redirect_stdout(io.StringIO()),
             contextlib.redirect_stderr(stderr),

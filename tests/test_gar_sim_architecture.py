@@ -13,10 +13,10 @@ from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.local import LocalBuildEnvironment
 from scripts.gar_lib.commands import sim
+from scripts.gar_lib.commands.common.workspace import workspace_for
 from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.workspaces.registry import workspace_for
 
 
 def local_workspace(root: Path) -> Workspace:
@@ -44,8 +44,8 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             "target": {"host": "raspi", "dest": "/opt/product"},
         }
         with (
-            mock.patch("scripts.gar_lib.workspaces.registry.load_config", return_value={"workspaces": [entry]}),
-            mock.patch("scripts.gar_lib.workspaces.registry.saved_workspaces", return_value=[entry]),
+            mock.patch("scripts.gar_lib.commands.common.workspace.load_config", return_value={"workspaces": [entry]}),
+            mock.patch("scripts.gar_lib.commands.common.workspace.saved_workspaces", return_value=[entry]),
         ):
             workspace = workspace_for("Local/Product")
 
@@ -64,8 +64,8 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             for index in (1, 2)
         ]
         with (
-            mock.patch("scripts.gar_lib.workspaces.registry.load_config", return_value={"workspaces": entries}),
-            mock.patch("scripts.gar_lib.workspaces.registry.saved_workspaces", return_value=entries),
+            mock.patch("scripts.gar_lib.commands.common.workspace.load_config", return_value={"workspaces": entries}),
+            mock.patch("scripts.gar_lib.commands.common.workspace.saved_workspaces", return_value=entries),
         ):
             with self.assertRaises(GarDomainError):
                 workspace_for(None)

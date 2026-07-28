@@ -25,9 +25,10 @@ from scripts.gar_lib.commands.code import (
     start_code_codespace,
     stop_code_codespace,
 )
+from scripts.gar_lib.commands.common.workspace import workspace_for
 from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.setup import run_setup
-from scripts.gar_lib.commands.terminal import run_terminal_request
+from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.usb import parse_usbipd_list, run_usb_command
 from scripts.gar_lib.config import load_config, save_config
 from scripts.gar_lib.core.command import (
@@ -48,7 +49,6 @@ from scripts.gar_lib.core.command import (
 )
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.environments._base import EnvironmentSetupOption
-from scripts.gar_lib.gar_tools import TargetManifest, discover_target_manifests, ensure_gar_tools_available
 from scripts.gar_lib.simulation import io_actions
 from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder, gpio_sim_plan
 from scripts.gar_lib.simulation.parse import parse_gpio_runtime_status, parse_gpio_sim_check, parse_sim_diag
@@ -58,7 +58,8 @@ from scripts.gar_lib.target.esp32_firmware import (
     parse_esp32_build_artifact_path,
 )
 from scripts.gar_lib.target.esptool import normalize_esp32_serial_port, run_esp32_flash_command
-from scripts.gar_lib.workspaces.registry import workspace_for
+from scripts.gar_lib.target.manifest import TargetManifest, discover_target_manifests
+from scripts.gar_lib.tools_repository import ensure_gar_tools_available
 
 
 class FakeDevelopmentEnvironment(EnvironmentSetupOption):
@@ -727,7 +728,7 @@ class GarCliTest(unittest.TestCase):
             ):
                 output = io.StringIO()
                 with contextlib.redirect_stdout(output):
-                    result = run_terminal_request(
+                    result = run_terminal_run_command(
                         command_parts=["echo", "hello"],
                         command_text=None,
                         title="Test Terminal",
@@ -1066,11 +1067,10 @@ class GarCliTest(unittest.TestCase):
         workspace = Workspace(
             id="ws", name="Local/Product", branch="main", connection={"type": "local"}
         )
+        workspace_lookup = f"scripts.gar_lib.commands.{command.group}.workspace_for"
         with (
             mock.patch(f"scripts.gar_lib.commands.{run}", return_value=0) as body,
-            mock.patch(
-                "scripts.gar_lib.cli.workspace_for", return_value=workspace
-            ) as lookup,
+            mock.patch(workspace_lookup, return_value=workspace) as lookup,
         ):
             result = main(argv)
 
@@ -1104,9 +1104,6 @@ class GarCliTest(unittest.TestCase):
                 args = parser.parse_args(invocation)
                 self.assertEqual(command, args.gar_command)
                 self.assertEqual(
-                    run, f"{args.run.__module__.split('.')[-1]}.{args.run.__name__}"
-                )
-                self.assertEqual(
                     " ".join(["gar", *invocation]),
                     command.to_cli(workspace="Local/Product"),
                 )
@@ -1119,6 +1116,20 @@ class GarCliTest(unittest.TestCase):
             run="sim.run_sim_app_build",
             workspace=None,
         )
+
+    def test_gar_command_delegates_to_the_group_runner(self) -> None:
+        workspace = Workspace(
+            id="ws", name="Local/Product", branch="main", connection={"type": "local"}
+        )
+        with (
+            mock.patch("scripts.gar_lib.commands.sim.workspace_for", return_value=workspace),
+            mock.patch("scripts.gar_lib.cli.sim.run_sim_command", return_value=0) as run_sim,
+        ):
+            result = main(["sim", "app", "build"])
+
+        self.assertEqual(0, result)
+        (args,) = run_sim.call_args.args
+        self.assertEqual(SIM_APP_BUILD, args.gar_command)
 
     def test_sim_app_build_rejects_workspace_root_option(self) -> None:
         with self.assertRaises(SystemExit):
@@ -1955,8 +1966,8 @@ class GarCliTest(unittest.TestCase):
             "selected_providers": {"target": "adb_usb"},
         }
 
-        with mock.patch("scripts.gar_lib.workspaces.registry.load_config", return_value={}), \
-             mock.patch("scripts.gar_lib.workspaces.registry.saved_workspaces", return_value=[entry]):
+        with mock.patch("scripts.gar_lib.commands.common.workspace.load_config", return_value={}), \
+             mock.patch("scripts.gar_lib.commands.common.workspace.saved_workspaces", return_value=[entry]):
             workspace = workspace_for(None)
 
         self.assertEqual("adb_usb", workspace.selected_environments["target"])
@@ -2090,9 +2101,9 @@ class GarCliTest(unittest.TestCase):
             project_root.mkdir()
             completed = subprocess.CompletedProcess(["git"], 0)
             with (
-                mock.patch("scripts.gar_lib.gar_tools.PROJECT_ROOT", project_root),
+                mock.patch("scripts.gar_lib.tools_repository.PROJECT_ROOT", project_root),
                 mock.patch.dict(os.environ, {"GAR_TOOLS_REPO": "https://example.invalid/gar-tools"}, clear=True),
-                mock.patch("scripts.gar_lib.gar_tools.subprocess.run", return_value=completed) as run,
+                mock.patch("scripts.gar_lib.tools_repository.subprocess.run", return_value=completed) as run,
             ):
                 root = ensure_gar_tools_available()
 
@@ -2179,7 +2190,7 @@ class GarCliTest(unittest.TestCase):
         self.assertTrue((PROJECT_ROOT / "scripts" / "gar_lib").is_dir())
 
     def test_terminal_gc_removes_old_processed_requests(self) -> None:
-        from scripts.gar_lib.commands.terminal import run_terminal_gc
+        from scripts.gar_lib.commands.terminal import run_terminal_gc_command
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -2206,7 +2217,7 @@ class GarCliTest(unittest.TestCase):
                 ),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
-                result = run_terminal_gc(keep_days=7, dry_run=False)
+                result = run_terminal_gc_command(keep_days=7, dry_run=False)
 
             self.assertEqual(0, result)
             self.assertFalse(old.exists())

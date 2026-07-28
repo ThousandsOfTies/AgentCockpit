@@ -1,8 +1,6 @@
 """`gar` CLI entry point. 引数解析と、対応する関数の呼び出しだけを行う。
 
-`gar <group> <subject> <action>` の leaf parser には、実行する関数そのものを
-``set_defaults(run=...)`` で結び付けてある。つまり parser 自体が dispatch table であり、
-コマンド名を分岐で振り分ける層は存在しない。実体は以下にある:
+`gar <group> <subject> <action>` は command ごとのモジュールへ渡す。実体は以下にある:
 
 - :mod:`scripts.gar_lib.commands.sim` — ``gar sim app/runtime/host/gpio/io``
 - :mod:`scripts.gar_lib.commands.target` — ``gar target app``
@@ -18,22 +16,16 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 
 from scripts.gar_lib.commands import sim, target
 from scripts.gar_lib.commands.code import run_code_command
 from scripts.gar_lib.commands.hw import run_hw_command
 from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.setup import run_setup
-from scripts.gar_lib.commands.terminal import run_terminal_gc, run_terminal_request
+from scripts.gar_lib.commands.terminal import run_terminal_gc_command, run_terminal_run_command
 from scripts.gar_lib.commands.usb import run_usb_command
 from scripts.gar_lib.core.command import GarCommand
-from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
-from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.recovery.access import report_access_failure
-from scripts.gar_lib.workspaces.registry import workspace_for
-
-CommandBody = Callable[[Workspace, argparse.Namespace], int]
 
 CODE_COMMAND_MAP = {
     "boot": "boot",
@@ -153,16 +145,19 @@ def add_actions(
     subparsers: argparse._SubParsersAction,
     group: str,
     subject: str,
-    actions: dict[str, tuple[str, CommandBody]],
+    actions: dict[str, tuple[str, object]],
     *,
     parents: Sequence[argparse.ArgumentParser] = (),
 ) -> dict[str, argparse.ArgumentParser]:
-    """`gar <group> <subject> <action>` の action parser を作り、実行する関数を結び付ける。"""
+    """`gar <group> <subject> <action>` の action parser を作る。
+
+    実行先の選択は parser ではなく group / subject command runner が担う。
+    """
 
     created: dict[str, argparse.ArgumentParser] = {}
-    for action, (help_text, body) in actions.items():
+    for action, (help_text, _) in actions.items():
         leaf = subparsers.add_parser(action, help=help_text, parents=list(parents))
-        leaf.set_defaults(gar_command=GarCommand(group, subject, action), run=body)
+        leaf.set_defaults(gar_command=GarCommand(group, subject, action))
         created[action] = leaf
     return created
 
@@ -590,34 +585,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_gar_command(command: GarCommand, args: argparse.Namespace) -> int:
-    """`gar <group> <subject> <action>` を実行する唯一の経路。"""
-
-    workspace_selector = getattr(args, "workspace", None)
-    try:
-        workspace = workspace_for(workspace_selector)
-    except GarDomainError as error:
-        print(f"gar: {error}", file=sys.stderr)
-        return 1
-
-    try:
-        return args.run(workspace, args)
-    except AccessConnectionError as error:
-        device = getattr(args, "device", None)
-        return report_access_failure(
-            error,
-            workspace=workspace,
-            retry_command=command.to_cli(
-                workspace=workspace_selector,
-                options=("--device", str(device)) if device else (),
-            ),
-            purpose="target" if command.group == "target" else "simulation",
-        )
-    except GarDomainError as error:
-        print(f"gar: {error}", file=sys.stderr)
-        return 1
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     subcommand_parsers = parser._agp_subcommand_parsers  # type: ignore[attr-defined]
@@ -646,20 +613,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             shutdown=getattr(args, "shutdown", False),
         )
     if args.command == "terminal" and args.terminal_command == "run":
-        return run_terminal_request(
+        return run_terminal_run_command(
             command_parts=args.command_parts,
             command_text=args.command_text,
             title=args.title,
             cwd=args.cwd,
         )
     if args.command == "terminal" and args.terminal_command == "gc":
-        return run_terminal_gc(keep_days=args.keep_days, dry_run=args.dry_run)
+        return run_terminal_gc_command(keep_days=args.keep_days, dry_run=args.dry_run)
     if args.command == "terminal":
         subcommand_parsers["terminal"].print_help()
         return 1
-    command = getattr(args, "gar_command", None)
-    if command is not None:
-        return run_gar_command(command, args)
+    if args.command == "sim" and getattr(args, "gar_command", None) is not None:
+        return sim.run_sim_command(args)
+    if args.command == "target" and getattr(args, "gar_command", None) is not None:
+        return target.run_target_command(args)
 
     if args.command == "sim" and getattr(args, "sim_subject", None) == "infra":
         if args.infra_action is None:
