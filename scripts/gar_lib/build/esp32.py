@@ -1,8 +1,8 @@
 """Build ESP32/M5Stack firmware through the unified target build path.
 
-This environment lets ``gar target app build`` produce an ESP32 firmware bundle in
+This environment lets ``gar target build`` produce an ESP32 firmware bundle in
 the same artifact store location the generic target build uses, so a following
-``gar target app deploy`` (``esp32_esptool`` target) can flash it without any
+``gar target deploy`` (``esp32_esptool`` target) can flash it without any
 ESP32-specific CLI subcommand.
 """
 
@@ -75,8 +75,8 @@ class Esp32BuildEnvironment:
     def _materialize(self, firmware_dir: Path, workspace: Workspace) -> Path:
         # TODO(esp32-e2e): この materialize（firmware 一式を artifact store の bundle へコピー
         # + artifact.json 生成）は unit test のみで、実機/Codespace を通した
-        # `gar target app build` -> `gar target app deploy` の end-to-end 疎通は未検証。
-        # 実機で回すとき、deploy 側 Esp32ArtifactInstaller が bundle_path から firmware を
+        # `gar target build` -> `gar target deploy` の end-to-end 疎通は未検証。
+        # 実機で回すとき、deploy 側 Esp32TargetEnvironment が bundle_path から firmware を
         # 解決して flash できることを確認すること。
         required = [name for _, name in FLASH_LAYOUT]
         missing = [name for name in required if not (firmware_dir / name).is_file()]

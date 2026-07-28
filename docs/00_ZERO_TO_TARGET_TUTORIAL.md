@@ -151,7 +151,7 @@ bash scripts/post-create.sh
 
 その後は target software ごとの README / build script に従ってビルドします。
 
-ビルド後、artifact bundle ができていることを確認します。既定では次の場所を `gar target app fetch` / `gar sim runtime deploy` が見に行きます。
+ビルド後、artifact bundle ができていることを確認します。既定では次の場所を `gar target fetch` / `gar sim runtime deploy` が見に行きます。
 
 ```bash
 ls -la /workspaces/gar-build-env/artifacts/from-codespace
@@ -291,35 +291,35 @@ adb devices
 
 `device` と表示されれば OK です。
 
-`gar target app deploy` はADB接続失敗を分類し、Terminal Bridge経由で`gar usb list` / `gar usb attach`の復旧手順を案内します。ただし初回の`usbipd bind`だけは管理者PowerShellが必要です。
+`gar target deploy` はADB接続失敗を分類し、Terminal Bridge経由で`gar usb list` / `gar usb attach`の復旧手順を案内します。ただし初回の`usbipd bind`だけは管理者PowerShellが必要です。
 
 ## 8. 実機へ deploy する
 
-選択したworkspaceの最新target artifactを、`gar setup`で設定した実機へ配置します。先にartifactを作る場合は`gar target app build`を実行します。
+選択したworkspaceの最新target artifactを、`gar setup`で設定した実機へ配置します。先にartifactを作る場合は`gar target build`を実行します。
 
 ```bash
-gar target app build
-gar target app deploy
+gar target build
+gar target deploy
 ```
 
 特定ADB deviceを利用する場合は`gar setup`でserialをworkspaceへ保存します。確認にはADBを直接利用できます。
 
 ```bash
 adb devices
-gar target app deploy --workspace Local/Product
+gar target deploy --workspace Local/Product
 ```
 
 ネットワーク越しSSH/scpでは、`gar setup`でhostをworkspaceへ保存して実行します。
 
 ```bash
-gar target app deploy --workspace Network/Product
+gar target deploy --workspace Network/Product
 ```
 
 deploy だけやり直す場合:
 
 ```bash
-gar target app fetch
-gar target app deploy
+gar target fetch
+gar target deploy
 ```
 
 チェック:
@@ -392,7 +392,7 @@ ssh vibecode-graviton 'systemctl --no-pager --full status gar-sim.target gar-bri
 
 出力を貼って「どこが悪い？」と聞けばよいです。
 
-### `gar target app deploy` が artifact を見つけられない
+### `gar target deploy` が artifact を見つけられない
 
 Codespace 側で artifact bundle の場所を確認します。
 
@@ -404,8 +404,8 @@ cat /workspaces/gar-build-env/artifacts/from-codespace/artifact.json
 WSL Hub 側で取得し直します（取得元は workspace の build environment 設定から解決されます）。
 
 ```bash
-gar target app fetch
-gar target app deploy
+gar target fetch
+gar target deploy
 ```
 
 ### adb device が見えない
@@ -441,7 +441,7 @@ chmod +x ~/sensor_demo
 ~/sensor_demo
 ```
 
-`gar target app deploy` の manifest に `mode: "0755"` が入っているかも確認します。
+`gar target deploy` の manifest に `mode: "0755"` が入っているかも確認します。
 
 
 
@@ -465,7 +465,7 @@ gar sim runtime start
 gar sim runtime diag --json
 ssh vibecode-graviton '~/sensor_demo'
 
-gar target app deploy
+gar target deploy
 adb shell
 ~/sensor_demo
 ```
@@ -474,6 +474,6 @@ SSH/scp 実機経路の場合:
 
 ```bash
 gar setup                 # 実機環境で SSH / scp を選ぶ
-gar target app deploy --workspace Network/Product
+gar target deploy --workspace Network/Product
 ssh raspi5 '~/sensor_demo'
 ```

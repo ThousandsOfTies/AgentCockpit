@@ -120,7 +120,7 @@ def fetch_esp32_codespace_artifact(
         )
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", "replace").strip()
-        print(f"gar target app build: failed to fetch {remote_artifact_dir}", file=sys.stderr)
+        print(f"gar target build: failed to fetch {remote_artifact_dir}", file=sys.stderr)
         if stderr:
             print(stderr, file=sys.stderr)
         tmp_path.unlink(missing_ok=True)
@@ -133,7 +133,7 @@ def fetch_esp32_codespace_artifact(
     try:
         _safe_extract_tar(tmp_path, local_artifact_root)
     except (tarfile.TarError, OSError, ValueError) as exc:
-        print(f"gar target app build: failed to extract artifact: {exc}", file=sys.stderr)
+        print(f"gar target build: failed to extract artifact: {exc}", file=sys.stderr)
         tmp_path.unlink(missing_ok=True)
         return None
     finally:

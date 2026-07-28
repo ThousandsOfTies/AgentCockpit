@@ -8,11 +8,9 @@ from unittest import mock
 
 from scripts.gar_lib.access.adb import AdbFileChannel, AdbShellChannel
 from scripts.gar_lib.access.local import LocalProcessChannel
-from scripts.gar_lib.access.serial import SerialArtifactInstaller, SerialConsoleChannel
+from scripts.gar_lib.access.serial import SerialConsoleChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
-from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import AccessConnectionError
-from scripts.gar_lib.core.workspace import Workspace
 
 
 class GarAccessChannelsTest(unittest.TestCase):
@@ -89,27 +87,6 @@ class GarAccessChannelsTest(unittest.TestCase):
                 AdbShellChannel("device-1").run("true")
 
         self.assertEqual("device_offline", raised.exception.reason)
-
-    def test_serial_installer_uses_target_specific_command_builder(self) -> None:
-        workspace = Workspace(
-            id="ws",
-            name="Local/Product",
-            branch="Product",
-            connection={"type": "local", "path": "/tmp/product"},
-        )
-        artifact = Artifact(ArtifactKind.TARGET_APP, workspace, Path("/tmp/artifact"))
-        completed = subprocess.CompletedProcess([], 0, "flashed", "")
-        installer = SerialArtifactInstaller(lambda item: ["flash-tool", str(item.bundle_path)])
-        with mock.patch("scripts.gar_lib.access.serial.subprocess.run", return_value=completed) as run:
-            result = installer.install(artifact)
-
-        self.assertEqual("flashed", result.stdout)
-        run.assert_called_once_with(
-            ("flash-tool", "/tmp/artifact"),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
 
     def test_serial_console_returns_process_session(self) -> None:
         process = mock.Mock()

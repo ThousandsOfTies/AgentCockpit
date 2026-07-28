@@ -271,7 +271,7 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
         print(f"  {style('候補', YELLOW)} {style(default_port, BOLD)}")
     else:
         print(f"  {style('未設定', YELLOW)}")
-        print(f"     {style('gar target app deploy が使う serial port をworkspace設定へ保存できます。', DIM)}")
+        print(f"     {style('gar target deploy が使う serial port をworkspace設定へ保存できます。', DIM)}")
 
     if candidates:
         print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")

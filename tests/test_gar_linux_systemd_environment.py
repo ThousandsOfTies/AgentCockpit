@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.access._base import CommandResult, TransferResult
+from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.linux_systemd import LinuxSystemdSimulationEnvironment
@@ -36,9 +36,9 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
             workspace = Workspace("ws", "Local/App", "App", {"type": "local", "path": tmp})
             artifact = Artifact(ArtifactKind.SIM_APP, workspace, root)
             commands = mock.Mock()
-            commands.run.return_value = CommandResult(("channel",), 0)
+            commands.run.return_value = AccessResult(("channel",), 0)
             files = mock.Mock()
-            files.push.return_value = TransferResult(("channel",), 0)
+            files.push.return_value = AccessResult(("channel",), 0)
             builder = mock.Mock()
 
             LinuxSystemdSimulationEnvironment(commands, files, builder).deploy(artifact)
@@ -62,7 +62,7 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
 
     def test_lifecycle_uses_command_builder_and_injected_channel(self) -> None:
         commands = mock.Mock()
-        commands.run.return_value = CommandResult(("channel",), 0, "running\n", "")
+        commands.run.return_value = AccessResult(("channel",), 0, "running\n", "")
         builder = mock.Mock()
         builder.build_sim_start.return_value = "systemctl start gar-sim.target"
         environment = LinuxSystemdSimulationEnvironment(commands, mock.Mock(), builder)
@@ -75,7 +75,7 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
 
     def test_diag_returns_structured_result_without_printing_channel_output(self) -> None:
         commands = mock.Mock()
-        commands.run.return_value = CommandResult(
+        commands.run.return_value = AccessResult(
             ("channel",),
             0,
             '@@PROC@@\n123 bridge.py\n@@DEV@@\n/dev/i2c-1 1\n@@API@@\n{"ready": true}\n',
@@ -95,7 +95,7 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
 
     def test_diag_preserves_command_failure_as_structured_result(self) -> None:
         commands = mock.Mock()
-        commands.run.return_value = CommandResult(("channel",), 7, "", "not running\n")
+        commands.run.return_value = AccessResult(("channel",), 7, "", "not running\n")
         builder = mock.Mock()
         builder.build_sim_diag_json.return_value = "diagnose"
         environment = LinuxSystemdSimulationEnvironment(commands, mock.Mock(), builder)

@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.access._base import CommandResult
+from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.access.docker import (
     DockerCliChannel,
     DockerCommandChannel,
@@ -163,7 +163,7 @@ class DockerSimulationHostControllerTest(unittest.TestCase):
 
     def test_status_reports_absent_container_without_raising(self) -> None:
         docker = mock.Mock()
-        docker.run.return_value = CommandResult(
+        docker.run.return_value = AccessResult(
             ("docker",), 1, "", "Error: No such object: gar-sim"
         )
 
@@ -177,10 +177,10 @@ class DockerSimulationHostControllerTest(unittest.TestCase):
     def test_start_creates_container_when_absent(self) -> None:
         docker = mock.Mock()
         docker.run.side_effect = [
-            CommandResult(("docker",), 1, "", "No such object: gar-sim"),
-            CommandResult(("docker",), 0, "sha256:abc\n"),
-            CommandResult(("docker",), 0, "abc123\n"),
-            CommandResult(("docker",), 0, "running\n"),
+            AccessResult(("docker",), 1, "", "No such object: gar-sim"),
+            AccessResult(("docker",), 0, "sha256:abc\n"),
+            AccessResult(("docker",), 0, "abc123\n"),
+            AccessResult(("docker",), 0, "running\n"),
         ]
 
         result = self.controller(docker).start()
@@ -199,11 +199,11 @@ class DockerSimulationHostControllerTest(unittest.TestCase):
     def test_start_builds_image_from_target_build_context_when_missing(self) -> None:
         docker = mock.Mock()
         docker.run.side_effect = [
-            CommandResult(("docker",), 1, "", "No such object: gar-sim"),
-            CommandResult(("docker",), 1, "", "No such image"),
-            CommandResult(("docker",), 0, "built\n"),
-            CommandResult(("docker",), 0, "abc123\n"),
-            CommandResult(("docker",), 0, "running\n"),
+            AccessResult(("docker",), 1, "", "No such object: gar-sim"),
+            AccessResult(("docker",), 1, "", "No such image"),
+            AccessResult(("docker",), 0, "built\n"),
+            AccessResult(("docker",), 0, "abc123\n"),
+            AccessResult(("docker",), 0, "running\n"),
         ]
 
         self.controller(docker).start()
@@ -216,8 +216,8 @@ class DockerSimulationHostControllerTest(unittest.TestCase):
     def test_start_requires_a_build_context_when_image_is_missing(self) -> None:
         docker = mock.Mock()
         docker.run.side_effect = [
-            CommandResult(("docker",), 1, "", "No such object: gar-sim"),
-            CommandResult(("docker",), 1, "", "No such image"),
+            AccessResult(("docker",), 1, "", "No such object: gar-sim"),
+            AccessResult(("docker",), 1, "", "No such image"),
         ]
         controller = DockerSimulationHostController(
             container="gar-sim",
@@ -232,9 +232,9 @@ class DockerSimulationHostControllerTest(unittest.TestCase):
     def test_start_restarts_existing_stopped_container(self) -> None:
         docker = mock.Mock()
         docker.run.side_effect = [
-            CommandResult(("docker",), 0, "exited\n"),
-            CommandResult(("docker",), 0, "gar-sim\n"),
-            CommandResult(("docker",), 0, "running\n"),
+            AccessResult(("docker",), 0, "exited\n"),
+            AccessResult(("docker",), 0, "gar-sim\n"),
+            AccessResult(("docker",), 0, "running\n"),
         ]
 
         result = self.controller(docker).start()
@@ -244,7 +244,7 @@ class DockerSimulationHostControllerTest(unittest.TestCase):
 
     def test_stop_rejects_absent_container(self) -> None:
         docker = mock.Mock()
-        docker.run.return_value = CommandResult(("docker",), 1, "", "No such object: gar-sim")
+        docker.run.return_value = AccessResult(("docker",), 1, "", "No such object: gar-sim")
 
         with self.assertRaisesRegex(GarDomainError, "gar-sim"):
             self.controller(docker).stop()

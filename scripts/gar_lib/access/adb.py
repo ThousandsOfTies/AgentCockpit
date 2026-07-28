@@ -6,7 +6,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from scripts.gar_lib.access._base import CommandResult, TransferResult
+from scripts.gar_lib.access.channel import AccessResult, run_cli
 from scripts.gar_lib.core.errors import AccessConnectionError
 
 
@@ -43,11 +43,11 @@ class _AdbChannel:
 
 
 class AdbShellChannel(_AdbChannel):
-    def run(self, command: str) -> CommandResult:
+    def run(self, command: str) -> AccessResult:
         argv = (*self._prefix(), "shell", command)
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        self._raise_connection_error(completed.returncode, completed.stderr)
-        return CommandResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        result = run_cli(argv, runner=subprocess.run)
+        self._raise_connection_error(result.returncode, result.stderr)
+        return result
 
 
 class AdbFileChannel(_AdbChannel):
@@ -61,14 +61,14 @@ class AdbFileChannel(_AdbChannel):
         super().__init__(serial, executable=executable)
         self.local_path_transform = local_path_transform or (lambda path: str(path))
 
-    def push(self, source: Path, destination: str) -> TransferResult:
+    def push(self, source: Path, destination: str) -> AccessResult:
         return self._run("push", self.local_path_transform(source), destination)
 
-    def pull(self, source: str, destination: Path) -> TransferResult:
+    def pull(self, source: str, destination: Path) -> AccessResult:
         return self._run("pull", source, self.local_path_transform(destination))
 
-    def _run(self, action: str, source: str, destination: str) -> TransferResult:
+    def _run(self, action: str, source: str, destination: str) -> AccessResult:
         argv = (*self._prefix(), action, source, destination)
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        self._raise_connection_error(completed.returncode, completed.stderr)
-        return TransferResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        result = run_cli(argv, runner=subprocess.run)
+        self._raise_connection_error(result.returncode, result.stderr)
+        return result

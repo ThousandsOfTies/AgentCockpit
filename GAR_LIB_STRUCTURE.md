@@ -27,15 +27,23 @@
 scripts/gar_lib/
 ├─ __main__.py                 python -m scripts.gar_lib の入口
 ├─ cli.py                      CLI引数定義・解析、top-level command runnerの選択、shell補完候補生成
+├─ api.py                      Gar(workspace).target.build/deploy/fetch の内部API
 ├─ config.py                   .gar/config.jsonの読み書きとworkspace単位設定の正規化
 ├─ tools_repository.py         gar-tools repositoryの探索・取得
 │
-├─ core/                       外部I/Oを持たない基本モデル
-│  ├─ workspace.py             Workspace
-│  ├─ artifact.py              Artifact / ArtifactKind
-│  ├─ command.py               GarCommandと標準command定数（retry文字列・help表示用）
-│  └─ errors.py                GarDomainError / AccessConnectionError
+├─ access/                     接続手段ごとの小さなcapability
+│  ├─ channel.py               共通result / CLI実行 / capability protocol
+│  ├─ ssh.py                   SSH command / scp file channel
+│  ├─ docker.py                docker exec command / docker cp file channelと失敗分類
+│  ├─ adb.py                   ADB shell / file channel
+│  ├─ aws.py                   AWS CLI command channelと認証失敗分類
+│  ├─ local.py                 local background processの起動・停止
+│  ├─ serial.py                serial console channel
+│  └─ codespaces.py            gh codespace list出力の解析だけを共有
 │
+├─ artifacts/                  artifact bundleの検証・保管・同期
+│  ├─ store.py                 ArtifactStore / LocalArtifactStore
+│  └─ manifest.py              artifact.json解析とCodespaces artifact取得
 │
 ├─ build/                      product buildの実行環境
 │  ├─ _base.py                 BuildEnvironment protocolとBuildSpec
@@ -43,24 +51,51 @@ scripts/gar_lib/
 │  ├─ codespaces.py            Codespaces上のhook実行とartifact同期
 │  └─ backends.py              build_environment_for(): workspace設定から具体実装を作る
 │
-├─ artifacts/                  artifact bundleの検証・保管・同期
-│  ├─ store.py                 ArtifactStore / LocalArtifactStore
-│  └─ manifest.py              artifact.json解析とCodespaces artifact取得
+├─ commands/                   gar コマンド1つにつき関数1つ
+│  ├─ common/
+│  │  └─ hardware.py           hardware CSV読込とtemplate生成を共有
+│  │  └─ workspace.py          --workspaceから実行対象を一意に解決
+│  ├─ sim.py                   gar sim app / runtime / host / gpio / io の本体
+│  ├─ target.py                gar target から内部APIへのCLI adapter
+│  ├─ setup.py                 workspace / target / setup選択肢の対話設定
+│  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
+│  ├─ infra.py                 Terraformによるsimulation host作成・破棄
+│  ├─ usb.py                   usbipd-winによるWSL USB接続
+│  ├─ terminal.py              Terminal Bridge request作成・GC
+│  └─ hw.py                    hardware template初期化のCLI adapter
 │
-├─ access/                     接続手段ごとの小さなcapability
-│  ├─ base.py                  Command/File/ArtifactInstaller/Console protocol
-│  ├─ ssh.py                   SSH command / scp file channel
-│  ├─ docker.py                docker exec command / docker cp file channelと失敗分類
-│  ├─ adb.py                   ADB shell / file channel
-│  ├─ aws.py                   AWS CLI command channelと認証失敗分類
-│  ├─ local.py                 local background processの起動・停止
-│  ├─ serial.py                汎用serial installer / console channel
-│  └─ codespaces.py            gh codespace list出力の解析だけを共有
+├─ core/                       外部I/Oを持たない基本モデル
+│  ├─ workspace.py             Workspace
+│  ├─ artifact.py              Artifact / ArtifactKind
+│  ├─ command.py               GarCommandと標準command定数（retry文字列・help表示用）
+│  └─ errors.py                GarDomainError / AccessConnectionError
 │
+├─ environments/               setup用選択肢の発見・依存導入
+│  ├─ base.py                  EnvironmentSetupOption / CommandStatus
+│  ├─ discovery.py             registry packageの自動走査とcategory付与
+│  ├─ docker_install.py        dockerを必要とするsetup選択肢共通のapt-get導入
+│  ├─ install.py               sudo判定とvisible terminalへのhandoff
+│  └─ registry/
+│     ├─ codespace/
+│     │  ├─ local.py           Local Dockerの依存確認・導入
+│     │  └─ github_codespaces.py  gh / sshfsの依存確認・導入
+│     ├─ simulator/
+│     │  ├─ local_docker.py    Local Docker simulation hostの依存情報
+│     │  ├─ ssh_remote.py      SSH Remoteの依存情報
+│     │  ├─ wokwi.py           Wokwi CLIの依存確認・導入
+│     │  ├─ mujoco.py          MuJoCo Python packageの依存確認・導入
+│     │  ├─ renode_mcu.py      Renode / renode-testの導入
+│     │  ├─ esp32_qemu.py      Espressif QEMUの依存情報
+│     │  └─ aws_ssm.py         AWS CLI / SSM pluginの導入（runtimeはstub）
+│     └─ target/
+│        ├─ adb_usb.py         Linux ADBの依存確認・導入
+│        ├─ adb_win.py         Windows ADBの検出・設定
+│        ├─ ssh_scp.py         SSH / scpの依存情報
+│        └─ esp32_esptool.py   esptoolの依存確認・導入
+|
 ├─ simulation/                 simulation domainと具体environment
 │  ├─ environment.py           SimulationEnvironment protocol
-│  ├─ backends.py              simulation_environment_for / simulation_host_for /
-│  │                          hardware_control_for: backend idから具体実装を作る
+│  ├─ backends.py              simulation_environment_for / simulation_host_for / hardware_control_for: backend idから具体実装を作る
 │  ├─ linux_systemd.py         Linux/systemd runtimeとartifact配置
 │  ├─ linux.py                 Linux runtime command builderとGPIO計画
 │  ├─ io_actions.py            virtual H/W操作の(action, device)→Bridge API解決をCLIとscenarioで共有
@@ -86,49 +121,12 @@ scripts/gar_lib/
 │  ├─ environment.py           TargetEnvironment protocol
 │  ├─ backends.py              target_environment_for(): ADB / SSH / ESP32実装を作る
 │  ├─ file_transfer.py         command + file channelによるartifact配置
-│  ├─ serial.py                ArtifactInstallerによるserial target
-│  ├─ esp32.py                 標準TargetEnvironment用ESP32 installer
+│  ├─ esp32.py                 esptool書込みを行うESP32 TargetEnvironment
 │  ├─ esp32_firmware.py        明示的build-esp32とartifact取得の補助経路
 │  └─ esptool.py               ESP32 artifact検証とesptool書込み
 │
 ├─ recovery/                   接続失敗から利用者操作への変換
 │  └─ access.py                plan_access_recovery / report_access_failure
-│
-├─ environments/               setup用選択肢の発見・依存導入
-│  ├─ base.py                  EnvironmentSetupOption / CommandStatus
-│  ├─ discovery.py             registry packageの自動走査とcategory付与
-│  ├─ docker_install.py        dockerを必要とするsetup選択肢共通のapt-get導入
-│  ├─ install.py               sudo判定とvisible terminalへのhandoff
-│  └─ registry/
-│     ├─ codespace/
-│     │  ├─ local.py           Local Dockerの依存確認・導入
-│     │  └─ github_codespaces.py  gh / sshfsの依存確認・導入
-│     ├─ simulator/
-│     │  ├─ local_docker.py    Local Docker simulation hostの依存情報
-│     │  ├─ ssh_remote.py      SSH Remoteの依存情報
-│     │  ├─ wokwi.py           Wokwi CLIの依存確認・導入
-│     │  ├─ mujoco.py          MuJoCo Python packageの依存確認・導入
-│     │  ├─ renode_mcu.py      Renode / renode-testの導入
-│     │  ├─ esp32_qemu.py      Espressif QEMUの依存情報
-│     │  └─ aws_ssm.py         AWS CLI / SSM pluginの導入（runtimeはstub）
-│     └─ target/
-│        ├─ adb_usb.py         Linux ADBの依存確認・導入
-│        ├─ adb_win.py         Windows ADBの検出・設定
-│        ├─ ssh_scp.py         SSH / scpの依存情報
-│        └─ esp32_esptool.py   esptoolの依存確認・導入
-│
-├─ commands/                   gar コマンド1つにつき関数1つ
-│  ├─ common/
-│  │  └─ hardware.py           hardware CSV読込とtemplate生成を共有
-│  │  └─ workspace.py          --workspaceから実行対象を一意に解決
-│  ├─ sim.py                   gar sim app / runtime / host / gpio / io の本体
-│  ├─ target.py                gar target app の本体
-│  ├─ setup.py                 workspace / target / setup選択肢の対話設定
-│  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
-│  ├─ infra.py                 Terraformによるsimulation host作成・破棄
-│  ├─ usb.py                   usbipd-winによるWSL USB接続
-│  ├─ terminal.py              Terminal Bridge request作成・GC
-│  └─ hw.py                    hardware template初期化のCLI adapter
 │
 └─ vscode/                     VS Code固有I/O
    ├─ terminal_ui.py           ANSI表示とsafe_input
@@ -249,7 +247,7 @@ image・device・mountを決めます。他のbackendは依然として参照し
 | `adb_usb` | 対応 | ADB shell + file transfer |
 | `adb_win` | 対応 | WSLからWindows `adb.exe`を使用 |
 | `ssh_scp` | 対応 | SSH command + scp file transfer |
-| `esp32_esptool` | 対応 | SerialTargetEnvironment + Esp32ArtifactInstaller |
+| `esp32_esptool` | 対応 | Esp32TargetEnvironment |
 
 ## フォルダ境界
 

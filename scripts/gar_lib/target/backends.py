@@ -13,9 +13,8 @@ from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.target.environment import TargetEnvironment
-from scripts.gar_lib.target.esp32 import Esp32ArtifactInstaller
+from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
-from scripts.gar_lib.target.serial import SerialTargetEnvironment
 
 
 def target_environment_for(workspace: Workspace) -> TargetEnvironment:
@@ -62,7 +61,7 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
             raise GarDomainError(
                 f"ESP32 serial portが未設定です: {workspace.name}。gar setupで設定してください。"
             )
-        return SerialTargetEnvironment(Esp32ArtifactInstaller(port))
+        return Esp32TargetEnvironment(port)
 
     raise GarDomainError(f"target environmentはまだ未対応です: {backend or '(未設定)'}")
 

@@ -104,7 +104,7 @@ WSL へ取得済み artifact:
 
 ```bash
 cd /home/user/Yurufuwa/GaplessAgentRuntime
-gar target app deploy
+gar target deploy
 ```
 
 `COM3` は WSL 上で `/dev/ttyS3` に変換される。serial port は workspace 設定

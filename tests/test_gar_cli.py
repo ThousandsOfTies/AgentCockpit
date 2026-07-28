@@ -42,9 +42,9 @@ from scripts.gar_lib.core.command import (
     SIM_RUNTIME_DEPLOY,
     SIM_RUNTIME_DIAG,
     SIM_RUNTIME_START,
-    TARGET_APP_BUILD,
-    TARGET_APP_DEPLOY,
-    TARGET_APP_FETCH,
+    TARGET_BUILD,
+    TARGET_DEPLOY,
+    TARGET_FETCH,
     GarCommand,
 )
 from scripts.gar_lib.core.workspace import Workspace
@@ -1082,8 +1082,31 @@ class GarCliTest(unittest.TestCase):
         for name, value in expected.items():
             self.assertEqual(value, getattr(args, name), name)
 
+    def assert_target_dispatches(
+        self,
+        argv: list[str],
+        command: GarCommand,
+    ) -> None:
+        workspace = Workspace(
+            id="ws", name="Local/Product", branch="main", connection={"type": "local"}
+        )
+        with (
+            mock.patch(
+                f"scripts.gar_lib.api.Target.{command.action}", return_value=0
+            ) as action,
+            mock.patch(
+                "scripts.gar_lib.commands.target.workspace_for", return_value=workspace
+            ) as lookup,
+        ):
+            result = main(argv)
+
+        self.assertEqual(0, result)
+        target = action.call_args.args[0]
+        self.assertIs(workspace, target.workspace)
+        lookup.assert_called_once_with("Local/Product")
+
     def test_cli_surface_maps_one_to_one_to_gar_commands(self) -> None:
-        """CLI表面の3語と GarCommand と retry 文字列が、往復して一致すること。"""
+        """CLI表面と GarCommand と retry 文字列が、往復して一致すること。"""
 
         parser = build_parser()
         for argv, command, run in (
@@ -1095,9 +1118,9 @@ class GarCliTest(unittest.TestCase):
             (["sim", "host", "start"], SIM_HOST_START, "sim.run_sim_host_start"),
             (["sim", "host", "stop"], SIM_HOST_STOP, "sim.run_sim_host_stop"),
             (["sim", "host", "status"], SIM_HOST_STATUS, "sim.run_sim_host_status"),
-            (["target", "app", "build"], TARGET_APP_BUILD, "target.run_target_app_build"),
-            (["target", "app", "deploy"], TARGET_APP_DEPLOY, "target.run_target_app_deploy"),
-            (["target", "app", "fetch"], TARGET_APP_FETCH, "target.run_target_app_fetch"),
+            (["target", "build"], TARGET_BUILD, None),
+            (["target", "deploy"], TARGET_DEPLOY, None),
+            (["target", "fetch"], TARGET_FETCH, None),
         ):
             invocation = [*argv, "--workspace", "Local/Product"]
             with self.subTest(argv=argv):
@@ -1107,7 +1130,10 @@ class GarCliTest(unittest.TestCase):
                     " ".join(["gar", *invocation]),
                     command.to_cli(workspace="Local/Product"),
                 )
-                self.assert_dispatches(invocation, command, run=run)
+                if command.group == "target":
+                    self.assert_target_dispatches(invocation, command)
+                else:
+                    self.assert_dispatches(invocation, command, run=run)
 
     def test_workspace_is_optional(self) -> None:
         self.assert_dispatches(
@@ -1175,7 +1201,7 @@ class GarCliTest(unittest.TestCase):
         self.assertEqual(2, exc.exception.code)
         run_infra.assert_not_called()
 
-    def test_target_app_deploy_rejects_legacy_connection_overrides(self) -> None:
+    def test_target_deploy_rejects_legacy_connection_overrides(self) -> None:
         for option, value in (
             ("--serial", "device-1"),
             ("--port", "COM3"),
@@ -1187,7 +1213,7 @@ class GarCliTest(unittest.TestCase):
         ):
             with self.subTest(option=option), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
-                    main(["target", "app", "deploy", option, value])
+                    main(["target", "deploy", option, value])
 
             self.assertEqual(2, raised.exception.code)
 

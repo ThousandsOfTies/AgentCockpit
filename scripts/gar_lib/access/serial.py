@@ -1,24 +1,10 @@
-"""Serial firmware installation and console capabilities."""
+"""Serial console access."""
 
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable, Sequence
 
-from scripts.gar_lib.access._base import CommandResult, ConsoleSession
-from scripts.gar_lib.core.artifact import Artifact
-
-
-class SerialArtifactInstaller:
-    """Install an artifact with a target-specific serial command builder."""
-
-    def __init__(self, command_builder: Callable[[Artifact], Sequence[str]]):
-        self.command_builder = command_builder
-
-    def install(self, artifact: Artifact) -> CommandResult:
-        argv = tuple(self.command_builder(artifact))
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        return CommandResult(argv, completed.returncode, completed.stdout, completed.stderr)
+from scripts.gar_lib.access.channel import ConsoleSession
 
 
 class SerialConsoleChannel:

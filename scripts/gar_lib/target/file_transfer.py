@@ -5,7 +5,7 @@ from __future__ import annotations
 import shlex
 from posixpath import dirname
 
-from scripts.gar_lib.access._base import CommandChannel, FileChannel
+from scripts.gar_lib.access.channel import CommandChannel, FileChannel
 from scripts.gar_lib.artifacts.manifest import (
     load_deploy_files,
     resolve_artifact_src,

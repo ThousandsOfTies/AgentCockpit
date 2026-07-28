@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shlex
 
-from scripts.gar_lib.access._base import CommandChannel
+from scripts.gar_lib.access.channel import CommandChannel
 from scripts.gar_lib.access.docker import DockerCliCommandChannel
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.simulation.docker_spec import DockerHostSpec

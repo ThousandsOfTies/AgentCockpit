@@ -8,15 +8,18 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class GarCommand:
-    """`gar <group> <subject> <action>`。CLI表面とこの3項は1:1で対応する。"""
+    """A GAR CLI command path independent from argparse."""
 
     group: str
-    subject: str
+    subject: str | None
     action: str
 
     def to_cli(self, *, workspace: str | None = None, options: Sequence[str] = ()) -> str:
         """このcommandを再実行するCLI文字列。retry案内はすべてここから生成する。"""
-        parts = ["gar", self.group, self.subject, self.action, *options]
+        parts = ["gar", self.group]
+        if self.subject:
+            parts.append(self.subject)
+        parts.extend((self.action, *options))
         if workspace:
             parts.extend(("--workspace", workspace))
         return " ".join(parts)
@@ -35,6 +38,6 @@ SIM_RUNTIME_DIAG = GarCommand("sim", "runtime", "diag")
 SIM_HOST_START = GarCommand("sim", "host", "start")
 SIM_HOST_STOP = GarCommand("sim", "host", "stop")
 SIM_HOST_STATUS = GarCommand("sim", "host", "status")
-TARGET_APP_BUILD = GarCommand("target", "app", "build")
-TARGET_APP_DEPLOY = GarCommand("target", "app", "deploy")
-TARGET_APP_FETCH = GarCommand("target", "app", "fetch")
+TARGET_BUILD = GarCommand("target", None, "build")
+TARGET_DEPLOY = GarCommand("target", None, "deploy")
+TARGET_FETCH = GarCommand("target", None, "fetch")

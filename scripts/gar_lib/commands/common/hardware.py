@@ -5,16 +5,11 @@ from __future__ import annotations
 import csv
 import shutil
 from pathlib import Path
-from typing import Protocol
 
 from scripts.gar_lib.config import PROJECT_ROOT
 from scripts.gar_lib.tools_repository import gar_tools_root
 
 HardwareDefinition = dict[str, list[dict[str, str]]]
-
-
-class HardwareDefinitionRepository(Protocol):
-    def load(self) -> HardwareDefinition: ...
 
 
 HW_TEMPLATE_FILES: dict[str, list[str]] = {
@@ -33,11 +28,6 @@ HW_TEMPLATE_FILES: dict[str, list[str]] = {
 
 HW_DIR = PROJECT_ROOT / "hardware"
 HW_TEMPLATE_REL = Path("targets") / "linux-device" / "hardware"
-
-
-class CsvHardwareDefinitionRepository:
-    def load(self) -> HardwareDefinition:
-        return load_hw_definition()
 
 
 def _resolve_hw_dir(output_dir: str | None) -> Path:

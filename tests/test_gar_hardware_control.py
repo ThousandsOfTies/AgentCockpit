@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from scripts.gar_lib.access._base import CommandResult
+from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.simulation.control import LinuxBridgeHardwareControl
 
 
@@ -35,7 +35,7 @@ class GarHardwareControlTest(unittest.TestCase):
 
     def test_gpio_start_uses_builder_and_command_channel(self) -> None:
         channel = mock.Mock()
-        channel.run.return_value = CommandResult(("ssh",), 0, "active\n", "")
+        channel.run.return_value = AccessResult(("ssh",), 0, "active\n", "")
         builder = mock.Mock()
         builder.build_gpio_systemd_install.return_value = "install gpio service"
         hardware = {"gpio": []}
@@ -58,7 +58,7 @@ class GarHardwareControlTest(unittest.TestCase):
             "@@GPIOCHIPS@@\n/dev/gpiochip0\n"
         )
         channel = mock.Mock()
-        channel.run.return_value = CommandResult(("ssh",), 0, raw, "")
+        channel.run.return_value = AccessResult(("ssh",), 0, raw, "")
         builder = mock.Mock()
         builder.build_gpio_runtime_status.return_value = "gpio status"
         control = LinuxBridgeHardwareControl(channel, builder, host="sim-host")
@@ -72,7 +72,7 @@ class GarHardwareControlTest(unittest.TestCase):
 
     def test_io_state_uses_same_command_channel(self) -> None:
         channel = mock.Mock()
-        channel.run.return_value = CommandResult(("ssh",), 0, '{"led18": 1}', "")
+        channel.run.return_value = AccessResult(("ssh",), 0, '{"led18": 1}', "")
         builder = mock.Mock()
         builder.build_io.return_value = "curl state"
         control = LinuxBridgeHardwareControl(channel, builder)

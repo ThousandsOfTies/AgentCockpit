@@ -3,7 +3,7 @@
 `gar <group> <subject> <action>` は command ごとのモジュールへ渡す。実体は以下にある:
 
 - :mod:`scripts.gar_lib.commands.sim` — ``gar sim app/runtime/host/gpio/io``
-- :mod:`scripts.gar_lib.commands.target` — ``gar target app``
+- :mod:`scripts.gar_lib.commands.target` — ``gar target``
 
 コマンド1本を実行する関数は、どの層にあっても ``run_`` で始める。
 実装手段（execute / dispatch / handle など）を名前に持ち込まない。
@@ -18,6 +18,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from scripts.gar_lib.api import Target
 from scripts.gar_lib.commands import sim, target
 from scripts.gar_lib.commands.code import run_code_command
 from scripts.gar_lib.commands.hw import run_hw_command
@@ -144,7 +145,7 @@ def _shared_option(*args: object, **kwargs: object) -> argparse.ArgumentParser:
 def add_actions(
     subparsers: argparse._SubParsersAction,
     group: str,
-    subject: str,
+    subject: str | None,
     actions: dict[str, tuple[str, object]],
     *,
     parents: Sequence[argparse.ArgumentParser] = (),
@@ -155,9 +156,12 @@ def add_actions(
     """
 
     created: dict[str, argparse.ArgumentParser] = {}
-    for action, (help_text, _) in actions.items():
+    for action, (help_text, handler) in actions.items():
         leaf = subparsers.add_parser(action, help=help_text, parents=list(parents))
-        leaf.set_defaults(gar_command=GarCommand(group, subject, action))
+        leaf.set_defaults(
+            gar_command=GarCommand(group, subject, action),
+            action_handler=handler,
+        )
         created[action] = leaf
     return created
 
@@ -491,21 +495,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="接続先が提供する I/O を使う実機 target を操作します",
     )
     target_parser.set_defaults(help_target="target")
-    target_subparsers = target_parser.add_subparsers(dest="target_subject", metavar="subject")
-    target_app_parser = target_subparsers.add_parser(
-        "app", help="product application を実機 target 向けに build / deploy します"
-    )
-    target_app_parser.set_defaults(help_target="target_app")
     add_actions(
-        target_app_parser.add_subparsers(dest="action", metavar="action"),
+        target_parser.add_subparsers(dest="action", metavar="action"),
         "target",
-        "app",
+        None,
         {
-            "build": ("setup 済み target の実機用 artifact をビルドします", target.run_target_app_build),
-            "deploy": ("target runtime へ成果物を配置します", target.run_target_app_deploy),
+            "build": ("setup 済み target の実機用 artifact をビルドします", Target.build),
+            "deploy": ("target runtime へ成果物を配置します", Target.deploy),
             "fetch": (
                 "build environment から artifact bundle を WSL hub へ取得します",
-                target.run_target_app_fetch,
+                Target.fetch,
             ),
         },
         parents=(workspace_option,),
@@ -578,7 +577,6 @@ def build_parser() -> argparse.ArgumentParser:
         "sim_io": sim_io_parser,
         "sim_infra": sim_infra_parser,
         "target": target_parser,
-        "target_app": target_app_parser,
         "usb": usb_parser,
         "hw": hw_parser,
     }
