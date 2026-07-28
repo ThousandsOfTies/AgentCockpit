@@ -26,12 +26,12 @@ from scripts.gar_lib.config import (
 from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.simulator.wokwi import WokwiEnvironment  # noqa: F401
-from scripts.gar_lib.gar_tools import (
+from scripts.gar_lib.target.manifest import (
     TargetManifest,
     discover_target_manifests,
-    ensure_gar_tools_available,
     target_by_id,
 )
+from scripts.gar_lib.tools_repository import ensure_gar_tools_available
 from scripts.gar_lib.vscode.terminal_bridge import (
     install_vscode_terminal_bridge,
     installed_vscode_terminal_bridge_path,
@@ -271,7 +271,7 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
         print(f"  {style('候補', YELLOW)} {style(default_port, BOLD)}")
     else:
         print(f"  {style('未設定', YELLOW)}")
-        print(f"     {style('gar target app deploy が使う serial port をworkspace設定へ保存できます。', DIM)}")
+        print(f"     {style('gar target deploy が使う serial port をworkspace設定へ保存できます。', DIM)}")
 
     if candidates:
         print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")

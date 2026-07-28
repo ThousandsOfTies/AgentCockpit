@@ -48,7 +48,7 @@ def select_codespace(explicit: str | None) -> str | None:
         env=gh_env(),
     )
     if result.returncode != 0:
-        print("gar target app fetch: failed to list Codespaces", file=sys.stderr)
+        print("gar target fetch: failed to list Codespaces", file=sys.stderr)
         if result.stderr:
             print(result.stderr.strip(), file=sys.stderr)
         return None
@@ -92,7 +92,7 @@ def fetch_codespace_artifacts(
 ) -> int:
     selected_codespace = select_codespace(codespace)
     if not selected_codespace:
-        print("gar target app fetch: pass --codespace NAME or set GAR_CODESPACE_NAME", file=sys.stderr)
+        print("gar target fetch: pass --codespace NAME or set GAR_CODESPACE_NAME", file=sys.stderr)
         return 1
 
     resolved_remote_root = (remote_root or default_codespace_artifact_root()).rstrip("/")
@@ -107,7 +107,7 @@ def fetch_codespace_artifacts(
         )
         if result.returncode != 0:
             print(
-                f"gar target app fetch: failed to fetch {resolved_remote_root}/artifact.json",
+                f"gar target fetch: failed to fetch {resolved_remote_root}/artifact.json",
                 file=sys.stderr,
             )
             return result.returncode
@@ -142,7 +142,7 @@ def fetch_codespace_artifacts(
                 recursive=True,
             )
             if result.returncode != 0:
-                print(f"gar target app fetch: failed to fetch {src}", file=sys.stderr)
+                print(f"gar target fetch: failed to fetch {src}", file=sys.stderr)
                 return result.returncode
 
         (root / "artifact.json").write_text(

@@ -38,12 +38,12 @@ class GarSimulationLifecycleTest(unittest.TestCase):
             returncode=255,
         )
         with (
-            mock.patch("scripts.gar_lib.cli.workspace_for", return_value=self.workspace),
+            mock.patch("scripts.gar_lib.commands.sim.workspace_for", return_value=self.workspace),
             mock.patch(
                 "scripts.gar_lib.commands.sim.simulation_host_for", return_value=controller
             ),
             mock.patch(
-                "scripts.gar_lib.recovery.access.run_terminal_request", return_value=0
+                "scripts.gar_lib.recovery.access.run_terminal_run_command", return_value=0
             ) as terminal_request,
             contextlib.redirect_stderr(io.StringIO()),
         ):

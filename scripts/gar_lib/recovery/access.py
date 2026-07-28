@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.gar_lib.commands.terminal import run_terminal_request
+from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
 
@@ -32,7 +32,7 @@ def report_access_failure(
         error, workspace=workspace, retry_command=retry_command, purpose=purpose
     )
     if action.terminal_command is not None:
-        run_terminal_request(
+        run_terminal_run_command(
             command_parts=[],
             command_text=shlex.join(action.terminal_command),
             title=action.title,

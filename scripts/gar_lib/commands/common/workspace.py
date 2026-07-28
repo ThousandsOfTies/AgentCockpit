@@ -1,4 +1,4 @@
-"""GAR 設定から product workspace を1つ選ぶ。"""
+"""command runner 共通の workspace 解決。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ def workspace_for(selector: str | None) -> Workspace:
 
     config = load_config()
     entries = saved_workspaces(config)
-
     if selector:
         matches = [entry for entry in entries if selector in (entry["id"], entry["name"])]
     elif isinstance(config.get("workspace_id"), str):
@@ -24,9 +23,7 @@ def workspace_for(selector: str | None) -> Workspace:
 
     if len(matches) != 1:
         available = ", ".join(entry["name"] for entry in entries) or "(なし)"
-        raise GarDomainError(
-            f"workspace を一意に選べません。--workspace を指定してください: {available}"
-        )
+        raise GarDomainError(f"workspace を一意に選べません。--workspace を指定してください: {available}")
 
     entry = matches[0]
     return Workspace(
@@ -34,9 +31,7 @@ def workspace_for(selector: str | None) -> Workspace:
         name=entry["name"],
         branch=entry["branch"],
         connection=dict(entry["connection"]),
-        selected_environments=_mapping(
-            entry.get("selected_environments", entry.get("selected_providers"))
-        ),
+        selected_environments=_mapping(entry.get("selected_environments", entry.get("selected_providers"))),
         ec2=_mapping(entry.get("ec2")),
         docker=_mapping(entry.get("docker")),
         target=_mapping(entry.get("target")),

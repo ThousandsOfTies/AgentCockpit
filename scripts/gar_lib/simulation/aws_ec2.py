@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import shlex
 
-from scripts.gar_lib.access._base import CommandChannel, CommandResult
 from scripts.gar_lib.access.aws import AwsCommandChannel
+from scripts.gar_lib.access.channel import AccessResult, CommandChannel
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.simulation.host import SimulationHostStartResult, SimulationHostState
 from scripts.gar_lib.simulation.ssh_config import HostAddressUpdater
@@ -119,7 +119,7 @@ class AwsEc2SimulationHostController:
         raise GarDomainError(message)
 
     @staticmethod
-    def _require_success(result: CommandResult, message: str) -> None:
+    def _require_success(result: AccessResult, message: str) -> None:
         if result.returncode == 0:
             return
         detail = result.stderr.strip()

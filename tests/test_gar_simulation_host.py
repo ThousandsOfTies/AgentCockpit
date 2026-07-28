@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.access.aws import AwsCliChannel
+from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.aws_ec2 import AwsEc2SimulationHostController
@@ -49,15 +49,15 @@ class GarSimulationHostTest(unittest.TestCase):
     def test_ec2_controller_composes_aws_ssh_config_and_repository_channels(self) -> None:
         aws = mock.Mock()
         aws.run.side_effect = [
-            CommandResult(("aws",), 0),
-            CommandResult(("aws",), 0),
-            CommandResult(("aws",), 0, "running\n"),
-            CommandResult(("aws",), 0, "203.0.113.5\n"),
+            AccessResult(("aws",), 0),
+            AccessResult(("aws",), 0),
+            AccessResult(("aws",), 0, "running\n"),
+            AccessResult(("aws",), 0, "203.0.113.5\n"),
         ]
         address_updater = mock.Mock()
         address_updater.update.return_value = True
         repository = mock.Mock()
-        repository.run.return_value = CommandResult(("ssh",), 0)
+        repository.run.return_value = AccessResult(("ssh",), 0)
         controller = AwsEc2SimulationHostController(
             host="sim-host",
             instance_id="i-test",
@@ -82,7 +82,7 @@ class GarSimulationHostTest(unittest.TestCase):
 
     def test_ec2_controller_reports_non_authentication_aws_failure_as_domain_error(self) -> None:
         aws = mock.Mock()
-        aws.run.return_value = CommandResult(("aws",), 2, "", "access denied")
+        aws.run.return_value = AccessResult(("aws",), 2, "", "access denied")
         controller = AwsEc2SimulationHostController(
             host="sim-host",
             instance_id="i-test",

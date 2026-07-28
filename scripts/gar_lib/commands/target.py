@@ -1,33 +1,48 @@
-"""`gar target ...` の本体。設定から object を作り、verb を呼び、結果を表示する。"""
+"""CLI adapter for ``gar target <action>``."""
 
 from __future__ import annotations
 
+import sys
 from argparse import Namespace
+from collections.abc import Callable
 
-from scripts.gar_lib.artifacts.store import LocalArtifactStore
-from scripts.gar_lib.build.backends import build_environment_for
-from scripts.gar_lib.core.artifact import ArtifactKind
-from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.target.backends import target_environment_for
+from scripts.gar_lib.api import Gar, Target
+from scripts.gar_lib.commands.common.workspace import workspace_for
+from scripts.gar_lib.core.command import GarCommand
+from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
+from scripts.gar_lib.recovery.access import report_access_failure
 
-
-def run_target_app_build(workspace: Workspace, args: Namespace) -> int:
-    artifacts = LocalArtifactStore()
-    build = build_environment_for(workspace, artifacts)
-    artifact = build.build(ArtifactKind.TARGET_APP, workspace)
-    print(f"Artifact: {artifact.bundle_path}")
-    return 0
+TargetAction = Callable[[Target], int]
 
 
-def run_target_app_deploy(workspace: Workspace, args: Namespace) -> int:
-    artifact = LocalArtifactStore().latest(ArtifactKind.TARGET_APP, workspace)
-    target_environment_for(workspace).deploy(artifact)
-    print(f"Artifact: {artifact.bundle_path}")
-    return 0
+def run_target_command(args: Namespace) -> int:
+    """Resolve a workspace and invoke the method selected by argparse."""
 
-
-def run_target_app_fetch(workspace: Workspace, args: Namespace) -> int:
-    artifacts = LocalArtifactStore()
-    build_environment_for(workspace, artifacts).fetch(workspace)
-    print("artifact bundle を WSL hub へ取得しました。")
-    return 0
+    command: GarCommand = args.gar_command
+    if command.group != "target":
+        raise GarDomainError(f"target command ではありません: {command.group}")
+    workspace_selector = getattr(args, "workspace", None)
+    try:
+        workspace = workspace_for(workspace_selector)
+    except GarDomainError as error:
+        print(f"gar: {error}", file=sys.stderr)
+        return 1
+    try:
+        if command.subject is not None:
+            raise GarDomainError(f"target commandにsubjectはありません: {command.subject}")
+        action: TargetAction = args.action_handler
+        return action(Gar(workspace).target)
+    except AccessConnectionError as error:
+        device = getattr(args, "device", None)
+        return report_access_failure(
+            error,
+            workspace=workspace,
+            retry_command=command.to_cli(
+                workspace=workspace_selector,
+                options=("--device", str(device)) if device else (),
+            ),
+            purpose="target",
+        )
+    except GarDomainError as error:
+        print(f"gar: {error}", file=sys.stderr)
+        return 1

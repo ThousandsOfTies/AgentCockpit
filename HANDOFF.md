@@ -223,7 +223,7 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 - `environments/registry/target/esp32_esptool.py` — setup用の依存確認と導入
 - `environments/registry/simulator/wokwi.py`（115行）+ `simulation/wokwi.py`（613行）— Wokwi simulation
 - `scripts/gar_lib/target/esp32_firmware.py` — ESP32 ビルド・artifact 管理
-- `scripts/gar_lib/build/esp32.py` — `gar target app build` に統合された ESP32 build environment
+- `scripts/gar_lib/build/esp32.py` — `gar target build` に統合された ESP32 build environment
 - `docs/07_HANDOFF.md` の vibe-remote 作業記録
 
 **Linux SBC（RasPi5 + EC2 CUSE sim）** と **ESP32 MCU（M5StickC + Wokwi sim）** という、アーキテクチャが全く異なる 2 つのターゲットが、同じ `gar` CLI + environment 選択で通っている。これは environment 抽象が設計通りに機能している証拠であり、「たまたま 1 パターンに最適化しただけ」という反論が効かない。
@@ -260,7 +260,7 @@ CLI 設計            ████████████████░░░�
 #### GAR アーキテクチャへの影響
 
 - **ビルド**: `artifact.json` に `deploy.tx` / `deploy.rx` のようなセクションが生えるか、target.json を 2 つ定義するか
-- **deploy**: `gar target app deploy` が 2 つのポートに別々の firmware を流す必要
+- **deploy**: `gar target deploy` が 2 つのポートに別々の firmware を流す必要
 - **sim**: TX が送ったデータを RX が受け取る通信路をどう再現するか（Wokwi なら `diagram.json` に 2 チップ + 配線）
 
 #### これが通ると証明されること
@@ -279,7 +279,7 @@ Phase 2:  RX 単体で動かす（受信 → 表示/保存まで）
 Phase 3:  繋ぐ（← ここで初めて 2 台協調の問題が出る）
 ```
 
-Phase 1・2 は今の GAR がそのまま使える（`gar target app build` → `gar target app deploy` の 1 対 1 モデル）。GAR の拡張が要るのは Phase 3。そのときに初めて「TX を焼いて、RX も焼いて、通信を確認する」という 1 セッション内マルチターゲットの需要が実際の痛みとして出る。その痛みを感じてから抽象を引き直すのが YAGNI の正しい使い方。
+Phase 1・2 は今の GAR がそのまま使える（`gar target build` → `gar target deploy` の 1 対 1 モデル）。GAR の拡張が要るのは Phase 3。そのときに初めて「TX を焼いて、RX も焼いて、通信を確認する」という 1 セッション内マルチターゲットの需要が実際の痛みとして出る。その痛みを感じてから抽象を引き直すのが YAGNI の正しい使い方。
 
 setup候補とruntime environmentの分離は完了済み。Phase 3でマルチターゲットの需要が
 具体化した場合は、現在の`TargetEnvironment`を土台にセッション単位の構成を検討する。

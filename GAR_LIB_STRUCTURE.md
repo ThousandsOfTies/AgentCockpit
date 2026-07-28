@@ -26,19 +26,24 @@
 ```text
 scripts/gar_lib/
 ├─ __main__.py                 python -m scripts.gar_lib の入口
-├─ cli.py                      全CLI引数定義。leaf parserに実行関数を直付けする
-├─ config.py                   .gar/config.jsonの読み書きとworkspace選択
-├─ gar_tools.py                gar-tools探索・取得・TargetManifest読込み
-├─ hardware.py                 hardware CSV repositoryとtemplate生成
+├─ cli.py                      CLI引数定義・解析、top-level command runnerの選択、shell補完候補生成
+├─ api.py                      Gar(workspace).target.build/deploy/fetch の内部API
+├─ config.py                   .gar/config.jsonの読み書きとworkspace単位設定の正規化
+├─ tools_repository.py         gar-tools repositoryの探索・取得
 │
-├─ core/                       外部I/Oを持たない基本モデル
-│  ├─ workspace.py             Workspace
-│  ├─ artifact.py              Artifact / ArtifactKind
-│  ├─ command.py               GarCommandと標準command定数（retry文字列・help表示用）
-│  └─ errors.py                GarDomainError / AccessConnectionError
+├─ access/                     接続手段ごとの小さなcapability
+│  ├─ channel.py               共通result / CLI実行 / capability protocol
+│  ├─ ssh.py                   SSH command / scp file channel
+│  ├─ docker.py                docker exec command / docker cp file channelと失敗分類
+│  ├─ adb.py                   ADB shell / file channel
+│  ├─ aws.py                   AWS CLI command channelと認証失敗分類
+│  ├─ local.py                 local background processの起動・停止
+│  ├─ serial.py                serial console channel
+│  └─ codespaces.py            gh codespace list出力の解析だけを共有
 │
-├─ workspaces/                 workspace検索
-│  └─ registry.py              workspace_for(): --workspace指定から1つ選ぶ
+├─ artifacts/                  artifact bundleの検証・保管・同期
+│  ├─ store.py                 ArtifactStore / LocalArtifactStore
+│  └─ manifest.py              artifact.json解析とCodespaces artifact取得
 │
 ├─ build/                      product buildの実行環境
 │  ├─ _base.py                 BuildEnvironment protocolとBuildSpec
@@ -46,55 +51,24 @@ scripts/gar_lib/
 │  ├─ codespaces.py            Codespaces上のhook実行とartifact同期
 │  └─ backends.py              build_environment_for(): workspace設定から具体実装を作る
 │
-├─ artifacts/                  artifact bundleの検証・保管・同期
-│  ├─ store.py                 ArtifactStore / LocalArtifactStore
-│  └─ manifest.py              artifact.json解析とCodespaces artifact取得
+├─ commands/                   gar コマンド1つにつき関数1つ
+│  ├─ common/
+│  │  └─ hardware.py           hardware CSV読込とtemplate生成を共有
+│  │  └─ workspace.py          --workspaceから実行対象を一意に解決
+│  ├─ sim.py                   gar sim app / runtime / host / gpio / io の本体
+│  ├─ target.py                gar target から内部APIへのCLI adapter
+│  ├─ setup.py                 workspace / target / setup選択肢の対話設定
+│  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
+│  ├─ infra.py                 Terraformによるsimulation host作成・破棄
+│  ├─ usb.py                   usbipd-winによるWSL USB接続
+│  ├─ terminal.py              Terminal Bridge request作成・GC
+│  └─ hw.py                    hardware template初期化のCLI adapter
 │
-├─ access/                     接続手段ごとの小さなcapability
-│  ├─ base.py                  Command/File/ArtifactInstaller/Console protocol
-│  ├─ ssh.py                   SSH command / scp file channel
-│  ├─ docker.py                docker exec command / docker cp file channelと失敗分類
-│  ├─ adb.py                   ADB shell / file channel
-│  ├─ aws.py                   AWS CLI command channelと認証失敗分類
-│  ├─ local.py                 local background processの起動・停止
-│  ├─ serial.py                汎用serial installer / console channel
-│  └─ codespaces.py            gh codespace list出力の解析だけを共有
-│
-├─ simulation/                 simulation domainと具体environment
-│  ├─ environment.py           SimulationEnvironment protocol
-│  ├─ backends.py              simulation_environment_for / simulation_host_for /
-│  │                          hardware_control_for: backend idから具体実装を作る
-│  ├─ linux_systemd.py         Linux/systemd runtimeとartifact配置
-│  ├─ linux.py                 Linux runtime command builderとGPIO計画
-│  ├─ io_actions.py            virtual H/W操作の(action, device)→Bridge API解決をCLIとscenarioで共有
-│  ├─ wokwi.py                 Wokwi runtime・project配置・process管理
-│  ├─ mujoco.py                MuJoCo runtimeとHTTP bridge hardware control
-│  ├─ pending.py               未実装操作を明示的なdomain errorにする共通stub
-│  ├─ renode.py                Renode runtimeのerror-only具体environment
-│  ├─ esp32_qemu.py            ESP32 QEMUのerror-only具体environment
-│  ├─ aws_ssm.py               AWS SSMのerror-only具体environment
-│  ├─ diagnostic.py            構造化diagnostic結果
-│  ├─ parse.py                 Linux diagnostic / GPIO出力parser
-│  ├─ control.py               hardware control protocolとLinux bridge実装
-│  ├─ host.py                  SimulationHostController protocolと結果
-│  ├─ aws_ec2.py               AWS EC2 host lifecycle
-│  ├─ docker_host.py           local containerをsimulation hostとして扱うlifecycle
-│  ├─ docker_spec.py           target定義からcontainerの形(image/device/mount)を組立
-│  ├─ ssh_config.py            EC2 host用SSH configのHostName更新
-│  ├─ session.py               SimulationSessionManager protocolとVS Code adapter
-│  └─ remote_session.py        SSH port forwardとVS Code terminal profileの実処理
-│
-├─ target/                     物理target domainと具体environment
-│  ├─ environment.py           TargetEnvironment protocol
-│  ├─ backends.py              target_environment_for(): ADB / SSH / ESP32実装を作る
-│  ├─ file_transfer.py         command + file channelによるartifact配置
-│  ├─ serial.py                ArtifactInstallerによるserial target
-│  ├─ esp32.py                 標準TargetEnvironment用ESP32 installer
-│  ├─ esp32_firmware.py        明示的build-esp32とartifact取得の補助経路
-│  └─ esptool.py               ESP32 artifact検証とesptool書込み
-│
-├─ recovery/                   接続失敗から利用者操作への変換
-│  └─ access.py                plan_access_recovery / report_access_failure
+├─ core/                       外部I/Oを持たない基本モデル
+│  ├─ workspace.py             Workspace
+│  ├─ artifact.py              Artifact / ArtifactKind
+│  ├─ command.py               GarCommandと標準command定数（retry文字列・help表示用）
+│  └─ errors.py                GarDomainError / AccessConnectionError
 │
 ├─ environments/               setup用選択肢の発見・依存導入
 │  ├─ base.py                  EnvironmentSetupOption / CommandStatus
@@ -118,16 +92,41 @@ scripts/gar_lib/
 │        ├─ adb_win.py         Windows ADBの検出・設定
 │        ├─ ssh_scp.py         SSH / scpの依存情報
 │        └─ esp32_esptool.py   esptoolの依存確認・導入
+|
+├─ simulation/                 simulation domainと具体environment
+│  ├─ environment.py           SimulationEnvironment protocol
+│  ├─ backends.py              simulation_environment_for / simulation_host_for / hardware_control_for: backend idから具体実装を作る
+│  ├─ linux_systemd.py         Linux/systemd runtimeとartifact配置
+│  ├─ linux.py                 Linux runtime command builderとGPIO計画
+│  ├─ io_actions.py            virtual H/W操作の(action, device)→Bridge API解決をCLIとscenarioで共有
+│  ├─ wokwi.py                 Wokwi runtime・project配置・process管理
+│  ├─ mujoco.py                MuJoCo runtimeとHTTP bridge hardware control
+│  ├─ pending.py               未実装操作を明示的なdomain errorにする共通stub
+│  ├─ renode.py                Renode runtimeのerror-only具体environment
+│  ├─ esp32_qemu.py            ESP32 QEMUのerror-only具体environment
+│  ├─ aws_ssm.py               AWS SSMのerror-only具体environment
+│  ├─ diagnostic.py            構造化diagnostic結果
+│  ├─ parse.py                 Linux diagnostic / GPIO出力parser
+│  ├─ control.py               hardware control protocolとLinux bridge実装
+│  ├─ host.py                  SimulationHostController protocolと結果
+│  ├─ aws_ec2.py               AWS EC2 host lifecycle
+│  ├─ docker_host.py           local containerをsimulation hostとして扱うlifecycle
+│  ├─ docker_spec.py           target定義からcontainerの形(image/device/mount)を組立
+│  ├─ ssh_config.py            EC2 host用SSH configのHostName更新
+│  ├─ session.py               SimulationSessionManager protocolとVS Code adapter
+│  └─ remote_session.py        SSH port forwardとVS Code terminal profileの実処理
 │
-├─ commands/                   gar コマンド1つにつき関数1つ
-│  ├─ sim.py                   gar sim app / runtime / host / gpio / io の本体
-│  ├─ target.py                gar target app の本体
-│  ├─ setup.py                 workspace / target / setup選択肢の対話設定
-│  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
-│  ├─ infra.py                 Terraformによるsimulation host作成・破棄
-│  ├─ usb.py                   usbipd-winによるWSL USB接続
-│  ├─ terminal.py              Terminal Bridge request作成・GC
-│  └─ hw.py                    hardware template初期化のCLI adapter
+├─ target/                     物理target domainと具体environment
+│  ├─ manifest.py              gar-toolsのtarget.json読込み・TargetManifest検索
+│  ├─ environment.py           TargetEnvironment protocol
+│  ├─ backends.py              target_environment_for(): ADB / SSH / ESP32実装を作る
+│  ├─ file_transfer.py         command + file channelによるartifact配置
+│  ├─ esp32.py                 esptool書込みを行うESP32 TargetEnvironment
+│  ├─ esp32_firmware.py        明示的build-esp32とartifact取得の補助経路
+│  └─ esptool.py               ESP32 artifact検証とesptool書込み
+│
+├─ recovery/                   接続失敗から利用者操作への変換
+│  └─ access.py                plan_access_recovery / report_access_failure
 │
 └─ vscode/                     VS Code固有I/O
    ├─ terminal_ui.py           ANSI表示とsafe_input
@@ -137,15 +136,33 @@ scripts/gar_lib/
 
 ## コマンド1本が通る経路
 
-`gar <group> <subject> <action>` は、CLI表面から実装まで分岐なしで届きます。
-leaf parser が `set_defaults(run=<関数>)` を持つので、parser 自体が dispatch table です。
+`cli.py` は CLI の表面を定義し、引数解析の結果から呼び出す command runner を決定します。
+`sim` と `target` の実行判断・workspace解決・接続失敗のrecoveryは、それぞれの
+`commands/<command>.py` に置きます。parserは実行関数を保持せず、leaf parserでは
+`GarCommand(group, subject, action)` だけを作ります。
+`setup`、`code`、`terminal`、`usb`、`hw`、`sim infra` も、`main()` から対応する
+`commands/` モジュールのrunnerへ直接渡します。
+
+`cli.py` が担うのは次の4点です。
+
+- 全CLI引数とsubcommandの定義
+- `main()` における引数解析と top-level command runner の選択
+- `?` を文脈に応じた `--help` に正規化する処理
+- bash completion script と、argparse構造からの補完候補生成
 
 ```text
 cli.py: main()
-  ├─ parser.parse_args() → args.run と args.gar_command が決まる
+  ├─ parser.parse_args() → args.command と args.gar_command が決まる
+  └─ args.command に対応する runner を呼ぶ
+          ├─ sim    → commands/sim.py: run_sim_command(args)
+          └─ target → commands/target.py: run_target_command(args)
+          ↓
+commands/sim.py: run_sim_command(args)
   ├─ workspace_for(--workspace) で Workspace を1つ選ぶ
-  ├─ args.run(workspace, args) を呼ぶ            ← commands/sim.py, commands/target.py
-  └─ AccessConnectionError → recovery/access.py: report_access_failure()
+  ├─ subject runner（例: run_sim_runtime_command）を選ぶ
+  ├─ action runner（例: run_sim_runtime_start）を選ぶ
+  ├─ AccessConnectionError → recovery/access.py: report_access_failure()
+  └─ action runnerを実行する
           ↓
 commands/sim.py: run_sim_runtime_start(workspace, args)
   ├─ simulation_environment_for(workspace)      ← simulation/backends.py
@@ -185,7 +202,7 @@ sim host start:
 
 | 保存項目 | 読込み先 | 実行時の用途 |
 |---|---|---|
-| `workspaces[].id/name/branch/connection` | `workspaces/registry.py: workspace_for()` | Workspaceの識別とlocal / Codespaces / network接続情報 |
+| `workspaces[].id/name/branch/connection` | `commands/common/workspace.py: workspace_for()` | Workspaceの識別とlocal / Codespaces / network接続情報 |
 | `selected_environments.codespace` | `Workspace.selected_environments["codespace"]` | `build_environment_for()`と`gar code` |
 | `selected_environments.simulator` | `Workspace.selected_environments["simulator"]` | `simulation_environment_for()` / `hardware_control_for()` |
 | `selected_environments.target` | `Workspace.selected_environments["target"]` | `target_environment_for()` |
@@ -230,14 +247,14 @@ image・device・mountを決めます。他のbackendは依然として参照し
 | `adb_usb` | 対応 | ADB shell + file transfer |
 | `adb_win` | 対応 | WSLからWindows `adb.exe`を使用 |
 | `ssh_scp` | 対応 | SSH command + scp file transfer |
-| `esp32_esptool` | 対応 | SerialTargetEnvironment + Esp32ArtifactInstaller |
+| `esp32_esptool` | 対応 | Esp32TargetEnvironment |
 
 ## フォルダ境界
 
 | フォルダ | 担当すること | 担当しないこと |
 |---|---|---|
 | `core/` | 値、意図、domain error | config読込み、subprocess、表示 |
-| `workspaces/` | configからWorkspaceを一意に解決 | buildや接続の実行 |
+| `commands/common/workspace.py` | configからWorkspaceを一意に解決 | buildや接続の実行 |
 | `build/` | product hookを指定場所で実行 | runtimeへのdeploy |
 | `artifacts/` | artifact manifest検証、bundle選択・同期 | simulation/target固有判断 |
 | `access/` | SSH、ADB、AWS、process等の単一capability | ユースケース順序、setup UI |
@@ -320,7 +337,7 @@ image・device・mountを決めます。他のbackendは依然として参照し
     - domain結果を構造化してCLI境界で表示する方針をどこまで適用するか決める必要がある。
 
 11. **hardware定義とtemplate生成が同居している**
-    - `hardware.py`はApplication用Repository、CSV parser、`gar hw init`用writerを同時に持つ。
+    - `commands/common/hardware.py`はApplication用Repository、CSV parser、`gar hw init`用writerを同時に持つ。
     - fallbackも選択TargetManifestではなく固定の `gar-tools/targets/linux-device/hardware`を参照する。
     - repositoryとtemplate initializer、target別hardware sourceの分離余地がある。
 

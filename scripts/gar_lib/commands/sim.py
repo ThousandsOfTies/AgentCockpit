@@ -8,9 +8,13 @@ from argparse import Namespace
 
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.backends import build_environment_for
+from scripts.gar_lib.commands.common.hardware import load_hw_definition
+from scripts.gar_lib.commands.common.workspace import workspace_for
 from scripts.gar_lib.core.artifact import ArtifactKind
+from scripts.gar_lib.core.command import GarCommand
+from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.hardware import load_hw_definition
+from scripts.gar_lib.recovery.access import report_access_failure
 from scripts.gar_lib.simulation.backends import (
     hardware_control_for,
     simulation_environment_for,
@@ -19,6 +23,98 @@ from scripts.gar_lib.simulation.backends import (
 from scripts.gar_lib.simulation.session import VsCodeSimulationSessionManager
 
 IO_PARAMETERS = ("device", "button", "line", "duration_ms", "value", "uid")
+
+
+def run_sim_command(args: Namespace) -> int:
+    """`gar sim ...` を subject command runner へ dispatch する。"""
+
+    command: GarCommand = args.gar_command
+    if command.group != "sim":
+        raise GarDomainError(f"simulation command ではありません: {command.group}")
+    workspace_selector = getattr(args, "workspace", None)
+    try:
+        workspace = workspace_for(workspace_selector)
+    except GarDomainError as error:
+        print(f"gar: {error}", file=sys.stderr)
+        return 1
+    runners = {
+        "app": run_sim_app_command,
+        "runtime": run_sim_runtime_command,
+        "host": run_sim_host_command,
+        "gpio": run_sim_gpio_command,
+        "io": run_sim_io_command,
+    }
+    try:
+        return runners[command.subject](command, workspace, args)
+    except AccessConnectionError as error:
+        device = getattr(args, "device", None)
+        return report_access_failure(
+            error,
+            workspace=workspace,
+            retry_command=command.to_cli(
+                workspace=workspace_selector,
+                options=("--device", str(device)) if device else (),
+            ),
+            purpose="simulation",
+        )
+    except GarDomainError as error:
+        print(f"gar: {error}", file=sys.stderr)
+        return 1
+    except KeyError as error:
+        raise GarDomainError(f"未対応の simulation subject: {command.subject}") from error
+
+
+def _run_sim_subject_command(
+    command: GarCommand,
+    workspace: Workspace,
+    args: Namespace,
+    *,
+    subject: str,
+    actions: dict[str, object],
+) -> int:
+    """subject ごとの action を検証して実行する。"""
+
+    if command.subject != subject:
+        raise GarDomainError(f"{subject} command ではありません: {command.subject}")
+    try:
+        action = actions[command.action]
+    except KeyError as error:
+        raise GarDomainError(f"未対応の sim {subject} action: {command.action}") from error
+    return action(workspace, args)  # type: ignore[operator]
+
+
+def run_sim_app_command(command: GarCommand, workspace: Workspace, args: Namespace) -> int:
+    return _run_sim_subject_command(command, workspace, args, subject="app", actions={
+        "build": run_sim_app_build, "clean": run_sim_app_clean, "deploy": run_sim_app_deploy,
+    })
+
+
+def run_sim_runtime_command(command: GarCommand, workspace: Workspace, args: Namespace) -> int:
+    return _run_sim_subject_command(command, workspace, args, subject="runtime", actions={
+        "build": run_sim_runtime_build, "deploy": run_sim_runtime_deploy,
+        "start": run_sim_runtime_start, "stop": run_sim_runtime_stop,
+        "status": run_sim_runtime_status, "log": run_sim_runtime_log,
+        "diag": run_sim_runtime_diag,
+    })
+
+
+def run_sim_host_command(command: GarCommand, workspace: Workspace, args: Namespace) -> int:
+    return _run_sim_subject_command(command, workspace, args, subject="host", actions={
+        "start": run_sim_host_start, "stop": run_sim_host_stop, "status": run_sim_host_status,
+    })
+
+
+def run_sim_gpio_command(command: GarCommand, workspace: Workspace, args: Namespace) -> int:
+    return _run_sim_subject_command(command, workspace, args, subject="gpio", actions={
+        "install": run_sim_gpio, "start": run_sim_gpio, "stop": run_sim_gpio,
+        "plan": run_sim_gpio, "status": run_sim_gpio, "check": run_sim_gpio,
+    })
+
+
+def run_sim_io_command(command: GarCommand, workspace: Workspace, args: Namespace) -> int:
+    return _run_sim_subject_command(command, workspace, args, subject="io", actions={
+        "state": run_sim_io, "press": run_sim_io, "set": run_sim_io, "clear": run_sim_io,
+    })
 
 
 def run_sim_app_build(workspace: Workspace, args: Namespace) -> int:

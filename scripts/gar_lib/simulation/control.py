@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Protocol
 
-from scripts.gar_lib.access._base import CommandChannel, CommandResult
+from scripts.gar_lib.access.channel import AccessResult, CommandChannel
 from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder, gpio_sim_plan
 from scripts.gar_lib.simulation.parse import parse_gpio_runtime_status, parse_gpio_sim_check
 
@@ -121,7 +121,7 @@ class LinuxBridgeHardwareControl:
         return {**payload, **({"host": self.host} if self.host else {})}
 
     @staticmethod
-    def _error_payload(result: CommandResult) -> dict[str, object]:
+    def _error_payload(result: AccessResult) -> dict[str, object]:
         return {
             "ok": False,
             "error": f"command exited {result.returncode}",

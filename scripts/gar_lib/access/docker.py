@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Protocol
 
-from scripts.gar_lib.access._base import CommandResult, TransferResult
+from scripts.gar_lib.access.channel import AccessResult, run_cli
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 
 DAEMON_FAILURE_MARKERS = (
@@ -44,23 +44,23 @@ def connection_reason(stderr: str) -> str | None:
 
 
 class DockerCliCommandChannel(Protocol):
-    def run(self, arguments: tuple[str, ...]) -> CommandResult: ...
+    def run(self, arguments: tuple[str, ...]) -> AccessResult: ...
 
 
 class DockerCliChannel:
     """docker CLI自体を実行する。containerが存在しない状態でも使える。"""
 
-    def run(self, arguments: tuple[str, ...]) -> CommandResult:
+    def run(self, arguments: tuple[str, ...]) -> AccessResult:
         argv = (docker_executable(), *arguments)
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        if completed.returncode != 0 and connection_reason(completed.stderr) == "daemon":
+        result = run_cli(argv, runner=subprocess.run)
+        if result.returncode != 0 and connection_reason(result.stderr) == "daemon":
             raise AccessConnectionError(
                 channel="docker",
                 endpoint="daemon",
                 reason="daemon",
-                returncode=completed.returncode,
+                returncode=result.returncode,
             )
-        return CommandResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        return result
 
 
 class DockerCommandChannel:
@@ -70,7 +70,7 @@ class DockerCommandChannel:
         self.container = container
         self.shell = shell
 
-    def run(self, command: str) -> CommandResult:
+    def run(self, command: str) -> AccessResult:
         argv = (
             docker_executable(),
             "exec",
@@ -80,16 +80,16 @@ class DockerCommandChannel:
             "-lc",
             command,
         )
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        reason = connection_reason(completed.stderr)
+        result = run_cli(argv, runner=subprocess.run)
+        reason = connection_reason(result.stderr)
         if reason is not None:
             raise AccessConnectionError(
                 channel="docker",
                 endpoint=self.container,
                 reason=reason,
-                returncode=completed.returncode,
+                returncode=result.returncode,
             )
-        return CommandResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        return result
 
 
 class DockerFileChannel:
@@ -98,21 +98,21 @@ class DockerFileChannel:
     def __init__(self, container: str):
         self.container = container
 
-    def push(self, source: Path, destination: str) -> TransferResult:
+    def push(self, source: Path, destination: str) -> AccessResult:
         return self._run((str(source), f"{self.container}:{destination}"))
 
-    def pull(self, source: str, destination: Path) -> TransferResult:
+    def pull(self, source: str, destination: Path) -> AccessResult:
         return self._run((f"{self.container}:{source}", str(destination)))
 
-    def _run(self, arguments: tuple[str, ...]) -> TransferResult:
+    def _run(self, arguments: tuple[str, ...]) -> AccessResult:
         argv = (docker_executable(), "cp", *arguments)
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        reason = connection_reason(completed.stderr)
+        result = run_cli(argv, runner=subprocess.run)
+        reason = connection_reason(result.stderr)
         if reason is not None:
             raise AccessConnectionError(
                 channel="docker",
                 endpoint=self.container,
                 reason=reason,
-                returncode=completed.returncode,
+                returncode=result.returncode,
             )
-        return TransferResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        return result

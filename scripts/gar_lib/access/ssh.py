@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from scripts.gar_lib.access._base import CommandResult, TransferResult
+from scripts.gar_lib.access.channel import AccessResult, run_cli
 from scripts.gar_lib.core.errors import AccessConnectionError
 
 SSH_CONNECTION_OPTIONS = (
@@ -40,7 +40,7 @@ class SshCommandChannel:
         self.host = host
         self.config_path = config_path or Path.home() / ".ssh" / "config"
 
-    def run(self, command: str) -> CommandResult:
+    def run(self, command: str) -> AccessResult:
         argv = (
             "ssh",
             "-F",
@@ -51,15 +51,15 @@ class SshCommandChannel:
             self.host,
             command,
         )
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        if completed.returncode == 255:
+        result = run_cli(argv, runner=subprocess.run)
+        if result.returncode == 255:
             raise AccessConnectionError(
                 channel="ssh",
                 endpoint=self.host,
-                reason=_connection_reason(completed.stderr),
-                returncode=completed.returncode,
+                reason=_connection_reason(result.stderr),
+                returncode=result.returncode,
             )
-        return CommandResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        return result
 
 
 class ScpFileChannel:
@@ -67,13 +67,13 @@ class ScpFileChannel:
         self.host = host
         self.config_path = config_path or Path.home() / ".ssh" / "config"
 
-    def push(self, source: Path, destination: str) -> TransferResult:
+    def push(self, source: Path, destination: str) -> AccessResult:
         return self._run(("-r", str(source), f"{self.host}:{destination}"))
 
-    def pull(self, source: str, destination: Path) -> TransferResult:
+    def pull(self, source: str, destination: Path) -> AccessResult:
         return self._run(("-r", f"{self.host}:{source}", str(destination)))
 
-    def _run(self, arguments: tuple[str, ...]) -> TransferResult:
+    def _run(self, arguments: tuple[str, ...]) -> AccessResult:
         argv = (
             "scp",
             "-F",
@@ -83,12 +83,12 @@ class ScpFileChannel:
             f"HostKeyAlias={self.host}",
             *arguments,
         )
-        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-        if completed.returncode == 255:
+        result = run_cli(argv, runner=subprocess.run)
+        if result.returncode == 255:
             raise AccessConnectionError(
                 channel="scp",
                 endpoint=self.host,
-                reason=_connection_reason(completed.stderr),
-                returncode=completed.returncode,
+                reason=_connection_reason(result.stderr),
+                returncode=result.returncode,
             )
-        return TransferResult(argv, completed.returncode, completed.stdout, completed.stderr)
+        return result

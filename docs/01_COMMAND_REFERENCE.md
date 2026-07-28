@@ -88,7 +88,7 @@ product build hook に次の環境変数を渡します。artifact を動かす 
 | `ssh_remote` | `aarch64`（`ec2.arch` で上書き） | `aarch64-linux-gnu-gcc` |
 
 `GAR_SIM_ENVIRONMENT` には simulator の ID そのものが入ります。target build
-（`gar target app build`）にはこれらの変数は渡りません。
+（`gar target build`）にはこれらの変数は渡りません。
 
 `id` は GAR が自動生成する内部用の不変 ID で、ユーザーが入力する必要はありません。`name` は自動生成された workspace名で、既定値は `Local/<product-branch>`、
 `Codespaces/<product-branch>`、`Network/<product-branch>` です。`main` branch の場合は
@@ -237,25 +237,25 @@ gar sim host stop
 
 ---
 
-## 3. 実機 build / deploy (`gar target app`)
+## 3. 実機 build / deploy (`gar target`)
 
 | コマンド | 内容 |
 |---|---|
-| `gar target app build [--workspace NAME]` | workspaceのbuild environmentで実機用artifactを最新化。target定義から解決するため、Linux系は `scripts/product-target-build.sh`、ESP32/M5Stack（`esp32_esptool`）は PlatformIO ビルド＋artifact取得を自動で切り替える |
-| `gar target app deploy [--workspace NAME]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置 |
+| `gar target build [--workspace NAME]` | workspaceのbuild environmentで実機用artifactを最新化。target定義から解決するため、Linux系は `scripts/product-target-build.sh`、ESP32/M5Stack（`esp32_esptool`）は PlatformIO ビルド＋artifact取得を自動で切り替える |
+| `gar target deploy [--workspace NAME]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置 |
 
 低レベルコマンド:
 
 | コマンド | 内容 |
 |---|---|
-| `gar target app fetch [--workspace NAME]` | workspace の build environment から artifact bundle を WSL hub へ取得（Codespaces は gh cp、local は取得不要）。artifact node の内部処理 |
+| `gar target fetch [--workspace NAME]` | workspace の build environment から artifact bundle を WSL hub へ取得（Codespaces は gh cp、local は取得不要）。artifact node の内部処理 |
 
 ADB接続に失敗した場合は、Terminal Bridgeを通じて`gar usb list` / `gar usb attach`による復旧手順を案内する。
 
 日常操作:
 
 ```bash
-gar target app deploy
+gar target deploy
 ```
 
 ESP32 / USB serial の低レベル確認やトラブルシュートは

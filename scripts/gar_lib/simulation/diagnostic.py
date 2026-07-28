@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from scripts.gar_lib.access._base import CommandResult
+from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.simulation.parse import parse_sim_diag
 
 
@@ -40,7 +40,7 @@ class SimulationDiagnostic:
     stderr: str | None = None
 
     @classmethod
-    def from_command(cls, result: CommandResult) -> SimulationDiagnostic:
+    def from_command(cls, result: AccessResult) -> SimulationDiagnostic:
         if result.returncode != 0:
             return cls(
                 processes=[],

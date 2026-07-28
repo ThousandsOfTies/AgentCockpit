@@ -17,7 +17,7 @@
 ## コマンドモデル
 
 GAR のコマンドは make の target に近い考え方に寄せる。ユーザーが入力するのは
-`gar sim app build` / `gar sim app deploy` / `gar target app build` / `gar target app deploy` のような
+`gar sim app build` / `gar sim app deploy` / `gar target build` / `gar target deploy` のような
 抽象 target であり、個別の実行方法（PlatformIO、Codespaces、esptool、adb、scp など）は
 `gar setup` で選ばれた target 定義と接続設定から解決する。
 
@@ -26,7 +26,7 @@ GAR のコマンドは make の target に近い考え方に寄せる。ユー�
 対象 runtime へ反映する。低レベルコマンドは互換・診断用に残すが、日常操作の文法には出さない。
 
 Codespace は build target の実行場所のひとつ。ユーザーは通常 `gar sim app build` /
-`gar sim app deploy` / `gar target app build` / `gar target app deploy` から間接的に使う。
+`gar sim app deploy` / `gar target build` / `gar target deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。
 
 実機操作も make 的な依存 target として扱う。
@@ -153,4 +153,4 @@ Gapless Agent Runtime では、AI が実機へ到達するための接続経路�
 
 既定は USB-C を用いた adb です。社内ネットワークなどで作業 PC が複数の NIC を自由に使えない環境でも、USB ケーブル一本で実機にアクセスできるためです（[scripts/gar_lib/environments/registry/target/adb_usb.py](../scripts/gar_lib/environments/registry/target/adb_usb.py)）。
 
-ネットワーク越しに実機へ到達できる環境では、SSH/scp 経路も選択できます。`gar setup` の実機環境カテゴリで `SSH / scp` を選び、SSH configのhostをworkspaceへ保存すると、`gar target app deploy` が `ScpFileChannel` と `SshCommandChannel` を組み合わせてartifactを転送します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、AIも人間も同じ設定で動作します。
+ネットワーク越しに実機へ到達できる環境では、SSH/scp 経路も選択できます。`gar setup` の実機環境カテゴリで `SSH / scp` を選び、SSH configのhostをworkspaceへ保存すると、`gar target deploy` が `ScpFileChannel` と `SshCommandChannel` を組み合わせてartifactを転送します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、AIも人間も同じ設定で動作します。

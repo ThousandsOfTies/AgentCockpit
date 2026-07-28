@@ -1,31 +1,30 @@
-"""ESP32 serial artifact adapter for the target architecture."""
+"""ESP32 physical target environment."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.gar_lib.access._base import CommandResult
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
-from scripts.gar_lib.core.artifact import Artifact
+from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.target.esp32_firmware import FLASH_LAYOUT
 from scripts.gar_lib.target.esptool import run_esp32_flash_command
 
 
-class Esp32ArtifactInstaller:
+class Esp32TargetEnvironment:
     def __init__(self, port: str):
         self.port = port
 
-    def install(self, artifact: Artifact) -> CommandResult:
+    def deploy(self, artifact: Artifact) -> None:
+        if artifact.kind is not ArtifactKind.TARGET_APP:
+            raise GarDomainError(f"ESP32 targetへ配置できないartifactです: {artifact.kind.value}")
         artifact_dir = self._artifact_dir(artifact)
         returncode = run_esp32_flash_command(
             artifact_dir=str(artifact_dir),
             port=self.port,
         )
-        return CommandResult(
-            argv=("esptool", "--port", self.port, str(artifact_dir)),
-            returncode=returncode,
-        )
+        if returncode != 0:
+            raise GarDomainError(f"ESP32 targetへの書き込みに失敗しました (exit {returncode})")
 
     @staticmethod
     def _artifact_dir(artifact: Artifact) -> Path:

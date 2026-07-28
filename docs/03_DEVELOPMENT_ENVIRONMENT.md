@@ -116,22 +116,22 @@ devcontainer は「全員に必須の魔法の箱」ではなく、Linux 前提�
 
 ## Windows ネイティブの位置づけ
 
-**制御・操作は WSL2 上の `gar` に集約済み**です。simulation VM 起動・停止（`gar sim host start` / `gar sim host stop`）も実機デプロイ（`gar target app deploy`）も WSL2 から実行でき、Windows ネイティブは原則不要です。
+**制御・操作は WSL2 上の `gar` に集約済み**です。simulation VM 起動・停止（`gar sim host start` / `gar sim host stop`）も実機デプロイ（`gar target deploy`）も WSL2 から実行でき、Windows ネイティブは原則不要です。
 
-USB-C 実機への adb も、`usbipd-win` を WSL2 から呼び出す `gar usb attach` で WSL2 に通せます。busid は自動検出・記憶されるので、初回の `usbipd bind`（管理者・一度だけ）以降は `gar usb attach` だけで実機が WSL2 に現れます。ネットワーク経由のSSH/scp environmentは、`gar setup`で実機hostをworkspaceへ保存して`gar target app deploy`から利用できます。
+USB-C 実機への adb も、`usbipd-win` を WSL2 から呼び出す `gar usb attach` で WSL2 に通せます。busid は自動検出・記憶されるので、初回の `usbipd bind`（管理者・一度だけ）以降は `gar usb attach` だけで実機が WSL2 に現れます。ネットワーク経由のSSH/scp environmentは、`gar setup`で実機hostをworkspaceへ保存して`gar target deploy`から利用できます。
 
 ### ESP32 / USB serial の build と flash
 
 M5StickC Plus2 Vibe Remote も、workspace の target 定義（`esp32_esptool`）に従って
-`gar target app build` / `gar target app deploy` の統一コマンドで扱う。build 側は PlatformIO
+`gar target build` / `gar target deploy` の統一コマンドで扱う。build 側は PlatformIO
 ビルド＋artifact 取得、deploy 側は esptool flash に自動で解決される。
 
 ```bash
 # workspace の target 定義から PlatformIO ビルド＋artifact 取得
-gar target app build
+gar target build
 
 # 取得済み artifact を esptool で実機へ書き込み
-gar target app deploy
+gar target deploy
 ```
 
 PlatformIO environment などの ESP32 固有パラメータ（`pio_env` / `remote_project_root`）は
@@ -170,7 +170,7 @@ usbipd bind --busid <busid>
 
 ```bash
 ls -l /dev/ttyACM* /dev/ttyUSB*
-gar target app deploy
+gar target deploy
 ```
 
 ### 当面の Windows 入口（減らす対象）

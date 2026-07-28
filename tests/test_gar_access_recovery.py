@@ -82,7 +82,7 @@ class GarAccessRecoveryTest(unittest.TestCase):
         )
 
         with mock.patch(
-            "scripts.gar_lib.recovery.access.run_terminal_request", return_value=0
+            "scripts.gar_lib.recovery.access.run_terminal_run_command", return_value=0
         ) as requester:
             exit_code = report_access_failure(
                 error,
