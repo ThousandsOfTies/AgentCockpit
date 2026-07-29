@@ -7,8 +7,8 @@ import json
 import unittest
 from unittest import mock
 
+from scripts.gar_lib.api import Gar
 from scripts.gar_lib.cli import main
-from scripts.gar_lib.commands import sim
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.diagnostic import SimulationDiagnostic
@@ -40,7 +40,7 @@ class GarSimulationLifecycleTest(unittest.TestCase):
         with (
             mock.patch("scripts.gar_lib.commands.sim.workspace_for", return_value=self.workspace),
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_host_for", return_value=controller
+                "scripts.gar_lib.api.simulation_host_for", return_value=controller
             ),
             mock.patch(
                 "scripts.gar_lib.recovery.access.run_terminal_run_command", return_value=0
@@ -69,11 +69,11 @@ class GarSimulationLifecycleTest(unittest.TestCase):
         output = io.StringIO()
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_host_for", return_value=controller
+                "scripts.gar_lib.api.simulation_host_for", return_value=controller
             ) as host_for,
             contextlib.redirect_stdout(output),
         ):
-            exit_code = sim.run_sim_host_status(self.workspace, cli_args(json_output=True))
+            exit_code = Gar(self.workspace).sim.host.status(json_output=True)
 
         payload = json.loads(output.getvalue())
         self.assertEqual(0, exit_code)
@@ -95,13 +95,13 @@ class GarSimulationLifecycleTest(unittest.TestCase):
         output = io.StringIO()
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_environment_for",
+                "scripts.gar_lib.api.simulation_environment_for",
                 return_value=environment,
             ),
-            mock.patch("scripts.gar_lib.commands.sim.load_hw_definition", return_value={}),
+            mock.patch("scripts.gar_lib.api.load_hw_definition", return_value={}),
             contextlib.redirect_stdout(output),
         ):
-            sim.run_sim_runtime_diag(self.workspace, cli_args(json_output=True))
+            Gar(self.workspace).sim.runtime.diag(json_output=True)
 
         self.assertEqual("sim-host", json.loads(output.getvalue())["host"])
         environment.diag.assert_called_once_with({})
@@ -115,16 +115,16 @@ class GarSimulationLifecycleTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_environment_for",
+                "scripts.gar_lib.api.simulation_environment_for",
                 return_value=environment,
             ),
-            mock.patch("scripts.gar_lib.commands.sim.load_hw_definition", return_value={}),
+            mock.patch("scripts.gar_lib.api.load_hw_definition", return_value={}),
             mock.patch(
-                "scripts.gar_lib.commands.sim.VsCodeSimulationSessionManager",
+                "scripts.gar_lib.api.VsCodeSimulationSessionManager",
                 return_value=sessions,
             ),
         ):
-            exit_code = sim.run_sim_runtime_status(self.workspace, cli_args())
+            exit_code = Gar(self.workspace).sim.runtime.status()
 
         self.assertEqual(1, exit_code)
         environment.status.assert_called_once_with({})
@@ -137,19 +137,16 @@ class GarSimulationLifecycleTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_environment_for",
+                "scripts.gar_lib.api.simulation_environment_for",
                 return_value=environment,
             ),
-            mock.patch("scripts.gar_lib.commands.sim.load_hw_definition", return_value={}),
+            mock.patch("scripts.gar_lib.api.load_hw_definition", return_value={}),
             mock.patch(
-                "scripts.gar_lib.commands.sim.VsCodeSimulationSessionManager",
+                "scripts.gar_lib.api.VsCodeSimulationSessionManager",
                 return_value=sessions,
             ),
         ):
-            exit_code = sim.run_sim_runtime_start(
-                self.workspace,
-                cli_args(settings=None, profile_name=None, no_port_forward=True),
-            )
+            exit_code = Gar(self.workspace).sim.runtime.start(no_port_forward=True)
 
         self.assertEqual(0, exit_code)
         sessions.start.assert_not_called()
@@ -162,19 +159,16 @@ class GarSimulationLifecycleTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_environment_for",
+                "scripts.gar_lib.api.simulation_environment_for",
                 return_value=environment,
             ),
-            mock.patch("scripts.gar_lib.commands.sim.load_hw_definition", return_value={}),
+            mock.patch("scripts.gar_lib.api.load_hw_definition", return_value={}),
             mock.patch(
-                "scripts.gar_lib.commands.sim.VsCodeSimulationSessionManager",
+                "scripts.gar_lib.api.VsCodeSimulationSessionManager",
                 return_value=sessions,
             ),
         ):
-            exit_code = sim.run_sim_runtime_start(
-                self.workspace,
-                cli_args(settings=None, profile_name=None, no_port_forward=False),
-            )
+            exit_code = Gar(self.workspace).sim.runtime.start()
 
         self.assertEqual(0, exit_code)
         sessions.configure_terminal.assert_not_called()

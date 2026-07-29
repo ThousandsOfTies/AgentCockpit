@@ -10,9 +10,9 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
+from scripts.gar_lib.api import Gar
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.local import LocalBuildEnvironment
-from scripts.gar_lib.commands import sim
 from scripts.gar_lib.commands.common.workspace import workspace_for
 from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
@@ -108,12 +108,12 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.build_environment_for",
+                "scripts.gar_lib.api.build_environment_for",
                 return_value=build_environment,
             ) as build_for,
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = sim.run_sim_app_build(workspace, cli_args())
+            exit_code = Gar(workspace).sim.app.build()
 
         self.assertEqual(0, exit_code)
         build_for.assert_called_once_with(workspace, mock.ANY)
@@ -125,12 +125,12 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.build_environment_for",
+                "scripts.gar_lib.api.build_environment_for",
                 return_value=build_environment,
             ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = sim.run_sim_app_clean(workspace, cli_args())
+            exit_code = Gar(workspace).sim.app.clean()
 
         self.assertEqual(0, exit_code)
         build_environment.clean.assert_called_once_with(ArtifactKind.SIM_APP, workspace)
@@ -176,13 +176,13 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_environment_for",
+                "scripts.gar_lib.api.simulation_environment_for",
                 return_value=mock.Mock(requires_runtime_artifact=False),
             ),
-            mock.patch("scripts.gar_lib.commands.sim.build_environment_for") as build_for,
+            mock.patch("scripts.gar_lib.api.build_environment_for") as build_for,
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = sim.run_sim_runtime_build(workspace, cli_args())
+            exit_code = Gar(workspace).sim.runtime.build()
 
         self.assertEqual(0, exit_code)
         build_for.assert_not_called()
@@ -194,15 +194,12 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.commands.sim.simulation_environment_for",
+                "scripts.gar_lib.api.simulation_environment_for",
                 return_value=environment,
-            ),
-            mock.patch(
-                "scripts.gar_lib.commands.sim.LocalArtifactStore", return_value=artifacts
             ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = sim.run_sim_runtime_deploy(workspace, cli_args())
+            exit_code = Gar(workspace, artifacts).sim.runtime.deploy()
 
         self.assertEqual(0, exit_code)
         artifacts.latest.assert_not_called()

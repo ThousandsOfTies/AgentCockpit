@@ -27,7 +27,7 @@
 scripts/gar_lib/
 ├─ __main__.py                 python -m scripts.gar_lib の入口
 ├─ cli.py                      CLI引数定義・解析、top-level command runnerの選択、shell補完候補生成
-├─ api.py                      Gar(workspace).target.build/deploy/fetch の内部API
+├─ api.py                      Gar(workspace).sim / target の内部API
 ├─ config.py                   .gar/config.jsonの読み書きとworkspace単位設定の正規化
 ├─ tools_repository.py         gar-tools repositoryの探索・取得
 │
@@ -51,12 +51,12 @@ scripts/gar_lib/
 │  ├─ codespaces.py            Codespaces上のhook実行とartifact同期
 │  └─ backends.py              build_environment_for(): workspace設定から具体実装を作る
 │
-├─ commands/                   gar コマンド1つにつき関数1つ
+├─ commands/                   command groupごとのCLI定義とadapter
 │  ├─ common/
 │  │  └─ hardware.py           hardware CSV読込とtemplate生成を共有
 │  │  └─ workspace.py          --workspaceから実行対象を一意に解決
-│  ├─ sim.py                   gar sim app / runtime / host / gpio / io の本体
-│  ├─ target.py                gar target から内部APIへのCLI adapter
+│  ├─ sim.py                   gar simのparser定義・action解決・内部API adapter
+│  ├─ target.py                gar targetのparser定義・action解決・内部API adapter
 │  ├─ setup.py                 workspace / target / setup選択肢の対話設定
 │  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
 │  ├─ infra.py                 Terraformによるsimulation host作成・破棄
@@ -136,16 +136,16 @@ scripts/gar_lib/
 
 ## コマンド1本が通る経路
 
-`cli.py` は CLI の表面を定義し、引数解析の結果から呼び出す command runner を決定します。
-`sim` と `target` の実行判断・workspace解決・接続失敗のrecoveryは、それぞれの
-`commands/<command>.py` に置きます。parserは実行関数を保持せず、leaf parserでは
-`GarCommand(group, subject, action)` だけを作ります。
-`setup`、`code`、`terminal`、`usb`、`hw`、`sim infra` も、`main()` から対応する
-`commands/` モジュールのrunnerへ直接渡します。
+`cli.py` は root CLI を組み立て、引数解析の結果から呼び出す command runner を決定します。
+`sim` と `target` のparser定義・実行判断・workspace解決・接続失敗のrecoveryは、
+それぞれの `commands/<command>.py` に置きます。leaf parserが保持する実行情報は
+`GarCommand(group, subject, action)` だけです。`sim infra` も `sim` runnerが扱います。
+`setup`、`code`、`terminal`、`usb`、`hw` は、`main()` から対応する `commands/`
+モジュールのrunnerへ直接渡します。
 
 `cli.py` が担うのは次の4点です。
 
-- 全CLI引数とsubcommandの定義
+- root parserの作成とcommand moduleが提供するparserの合成
 - `main()` における引数解析と top-level command runner の選択
 - `?` を文脈に応じた `--help` に正規化する処理
 - bash completion script と、argparse構造からの補完候補生成
@@ -159,12 +159,12 @@ cli.py: main()
           ↓
 commands/sim.py: run_sim_command(args)
   ├─ workspace_for(--workspace) で Workspace を1つ選ぶ
-  ├─ subject runner（例: run_sim_runtime_command）を選ぶ
-  ├─ action runner（例: run_sim_runtime_start）を選ぶ
+  ├─ Gar(workspace).sim からsubject objectを選ぶ
+  ├─ SIM_ACTIONSで検証したGarCommand.actionからAPI methodを選ぶ
   ├─ AccessConnectionError → recovery/access.py: report_access_failure()
-  └─ action runnerを実行する
+  └─ CLI optionを内部APIの明示引数へ変換する
           ↓
-commands/sim.py: run_sim_runtime_start(workspace, args)
+api.py: Gar(workspace).sim.runtime.start(...)
   ├─ simulation_environment_for(workspace)      ← simulation/backends.py
   ├─ environment.start(load_hw_definition())    ← 実処理
   └─ 結果をその場でprint、exit codeをreturn
@@ -359,9 +359,12 @@ image・device・mountを決めます。他のbackendは依然として参照し
 ## 今後の依存方向
 
 ```text
-CLI parser（leaf parserがそのまま実行関数を持つ）
+cli.py（root parserの合成とtop-level dispatch）
         ↓
-commands/sim.py, commands/target.py（コマンド1本 = 関数1つ）
+commands/sim.py, commands/target.py
+（group parser定義・action解決・workspace解決・引数変換・error recovery）
+        ↓
+api.py（Gar(workspace).sim / target のprogrammatic API）
         ↓
 */backends.py の *_for(workspace)（設定 → 具体オブジェクト）
         ↓
