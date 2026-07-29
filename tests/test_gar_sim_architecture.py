@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.api import Gar
+from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.local import LocalBuildEnvironment
 from scripts.gar_lib.commands.common.workspace import workspace_for
