@@ -28,8 +28,6 @@ scripts/gar_lib/
 ├─ __main__.py                 python -m scripts.gar_lib の入口
 ├─ cli.py                      CLI引数定義・解析、top-level command runnerの選択、shell補完候補生成
 ├─ api.py                      Gar(workspace).sim / target の内部API
-├─ config.py                   .gar/config.jsonの読み書きとworkspace単位設定の正規化
-├─ tools_repository.py         gar-tools repositoryの探索・取得
 │
 ├─ access/                     接続手段ごとの小さなcapability
 │  ├─ channel.py               共通result / CLI実行 / capability protocol
@@ -37,7 +35,6 @@ scripts/gar_lib/
 │  ├─ docker.py                docker exec command / docker cp file channelと失敗分類
 │  ├─ adb.py                   ADB shell / file channel
 │  ├─ aws.py                   AWS CLI command channelと認証失敗分類
-│  ├─ local.py                 local background processの起動・停止
 │  ├─ serial.py                serial console channel
 │  └─ codespaces.py            gh codespace list出力の解析だけを共有
 │
@@ -52,11 +49,10 @@ scripts/gar_lib/
 │  └─ backends.py              build_environment_for(): workspace設定から具体実装を作る
 │
 ├─ commands/                   command groupごとのCLI定義とadapter
-│  ├─ common/
-│  │  └─ hardware.py           hardware CSV読込とtemplate生成を共有
-│  │  └─ workspace.py          --workspaceから実行対象を一意に解決
 │  ├─ sim.py                   gar simのparser定義・action解決・内部API adapter
 │  ├─ target.py                gar targetのparser定義・action解決・内部API adapter
+│  ├─ workspace.py             --workspaceから実行対象を一意に解決
+│  ├─ recovery.py              接続失敗を利用者向け復旧操作へ変換
 │  ├─ setup.py                 workspace / target / setup選択肢の対話設定
 │  ├─ code.py                  Local / Codespacesのboot・mount・terminal管理
 │  ├─ infra.py                 Terraformによるsimulation host作成・破棄
@@ -64,11 +60,14 @@ scripts/gar_lib/
 │  ├─ terminal.py              Terminal Bridge request作成・GC
 │  └─ hw.py                    hardware template初期化のCLI adapter
 │
-├─ core/                       外部I/Oを持たない基本モデル
+├─ core/                       複数domainから参照する基盤モデルとrepository
 │  ├─ workspace.py             Workspace
 │  ├─ artifact.py              Artifact / ArtifactKind
 │  ├─ command.py               GarCommandと標準command定数（retry文字列・help表示用）
-│  └─ errors.py                GarDomainError / AccessConnectionError
+│  ├─ errors.py                GarDomainError / AccessConnectionError
+│  ├─ config.py                .gar/config.jsonの読み書きとworkspace単位設定の正規化
+│  ├─ hardware.py              hardware CSV読込とtemplate生成
+│  └─ tools_repository.py      gar-tools repositoryの探索・取得
 │
 ├─ environments/               setup用選択肢の発見・依存導入
 │  ├─ base.py                  EnvironmentSetupOption / CommandStatus
@@ -105,6 +104,7 @@ scripts/gar_lib/
 │  ├─ renode.py                Renode runtimeのerror-only具体environment
 │  ├─ esp32_qemu.py            ESP32 QEMUのerror-only具体environment
 │  ├─ aws_ssm.py               AWS SSMのerror-only具体environment
+│  ├─ process.py               simulator local processの起動・停止capability
 │  ├─ diagnostic.py            構造化diagnostic結果
 │  ├─ parse.py                 Linux diagnostic / GPIO出力parser
 │  ├─ control.py               hardware control protocolとLinux bridge実装
@@ -124,10 +124,6 @@ scripts/gar_lib/
 │  ├─ esp32.py                 esptool書込みを行うESP32 TargetEnvironment
 │  ├─ esp32_firmware.py        明示的build-esp32とartifact取得の補助経路
 │  └─ esptool.py               ESP32 artifact検証とesptool書込み
-│
-├─ recovery/                   接続失敗から利用者操作への変換
-│  └─ access.py                plan_access_recovery / report_access_failure
-│
 └─ vscode/                     VS Code固有I/O
    ├─ terminal_ui.py           ANSI表示とsafe_input
    ├─ profile_manage.py        integrated terminal profileの追加・削除
@@ -161,7 +157,7 @@ commands/sim.py: run_sim_command(args)
   ├─ workspace_for(--workspace) で Workspace を1つ選ぶ
   ├─ Gar(workspace).sim からsubject objectを選ぶ
   ├─ SIM_ACTIONSで検証したGarCommand.actionからAPI methodを選ぶ
-  ├─ AccessConnectionError → recovery/access.py: report_access_failure()
+  ├─ AccessConnectionError → commands/recovery.py: report_access_failure()
   └─ CLI optionを内部APIの明示引数へ変換する
           ↓
 api.py: Gar(workspace).sim.runtime.start(...)
@@ -202,7 +198,7 @@ sim host start:
 
 | 保存項目 | 読込み先 | 実行時の用途 |
 |---|---|---|
-| `workspaces[].id/name/branch/connection` | `commands/common/workspace.py: workspace_for()` | Workspaceの識別とlocal / Codespaces / network接続情報 |
+| `workspaces[].id/name/branch/connection` | `commands/workspace.py: workspace_for()` | Workspaceの識別とlocal / Codespaces / network接続情報 |
 | `selected_environments.codespace` | `Workspace.selected_environments["codespace"]` | `build_environment_for()`と`gar code` |
 | `selected_environments.simulator` | `Workspace.selected_environments["simulator"]` | `simulation_environment_for()` / `hardware_control_for()` |
 | `selected_environments.target` | `Workspace.selected_environments["target"]` | `target_environment_for()` |
@@ -253,16 +249,15 @@ image・device・mountを決めます。他のbackendは依然として参照し
 
 | フォルダ | 担当すること | 担当しないこと |
 |---|---|---|
-| `core/` | 値、意図、domain error | config読込み、subprocess、表示 |
-| `commands/common/workspace.py` | configからWorkspaceを一意に解決 | buildや接続の実行 |
+| `core/` | 複数domainで共有する値、設定、repository、domain error | subprocess、CLI表示、domain固有実行 |
+| `commands/workspace.py` | configからWorkspaceを一意に解決 | buildや接続の実行 |
 | `build/` | product hookを指定場所で実行 | runtimeへのdeploy |
 | `artifacts/` | artifact manifest検証、bundle選択・同期 | simulation/target固有判断 |
-| `access/` | SSH、ADB、AWS、process等の単一capability | ユースケース順序、setup UI |
-| `simulation/` | simulation runtime / host / controlの契約と実装 | argparse、setup選択画面 |
+| `access/` | SSH、ADB、AWS等の複数domainで使える接続capability | ユースケース順序、setup UI |
+| `simulation/` | simulation runtime / host / controlと専用process capability | argparse、setup選択画面 |
 | `target/` | physical targetへのdeploy/write | setup選択画面 |
 | `environments/` | setup候補の発見、依存確認・導入 | runtime commandの実行 |
-| `recovery/` | 構造化された接続失敗を利用者操作へ変換 | 実際のSSH/AWS/ADB処理 |
-| `commands/` | CLI表示・対話・補助command・Application境界 | 標準sim/targetのdomainシーケンス |
+| `commands/` | CLI表示・対話・復旧案内・補助command・Application境界 | 標準sim/targetのdomainシーケンス |
 | `vscode/` | VS Code terminal UI/profile/extension I/O | simulationやtargetの判断 |
 
 ## 似た名前の区別
@@ -337,7 +332,7 @@ image・device・mountを決めます。他のbackendは依然として参照し
     - domain結果を構造化してCLI境界で表示する方針をどこまで適用するか決める必要がある。
 
 11. **hardware定義とtemplate生成が同居している**
-    - `commands/common/hardware.py`はApplication用Repository、CSV parser、`gar hw init`用writerを同時に持つ。
+    - `core/hardware.py`はApplication用Repository、CSV parser、`gar hw init`用writerを同時に持つ。
     - fallbackも選択TargetManifestではなく固定の `gar-tools/targets/linux-device/hardware`を参照する。
     - repositoryとtemplate initializer、target別hardware sourceの分離余地がある。
 

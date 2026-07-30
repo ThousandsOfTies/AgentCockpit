@@ -1,4 +1,4 @@
-"""接続失敗を、人間が次にやるべきことへ翻訳して報告する。"""
+"""CLI の接続失敗を、人間が次にやるべきことへ翻訳して報告する。"""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ def report_access_failure(
     """接続失敗を stderr へ報告し、必要なら見える terminal で復旧コマンドを走らせる。
 
     terminalへの実際の起動は行わず、呼び出し側が渡した `run_terminal`（例:
-    `commands.terminal.run_terminal_run_command`）へ委譲する。recoveryがcommands
-    package へ依存しないようにするため。
+    `commands.terminal.run_terminal_run_command`）へ委譲する。これにより、この共有
+    adapter と個別 command runner の間に循環依存を作らない。
     """
 
     action = plan_access_recovery(

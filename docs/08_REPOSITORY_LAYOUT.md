@@ -100,21 +100,27 @@ GaplessAgentRuntime/
 ```text
 scripts/gar_lib/
   cli.py                  # argparse parser and top-level dispatch
-  application.py          # workspace/environment/artifact collaboration
-  composition.py          # config-backed object composition
-  hardware.py             # hardware definition repository and CSV implementation
-  config.py               # .gar/config.json and project paths
+  api.py                  # Gar(workspace).sim / target programmatic API
   commands/
+    sim.py                # `gar sim` parser, dispatch, CLI recovery
+    target.py             # `gar target` parser, dispatch, CLI recovery
+    workspace.py          # --workspace resolution shared by sim / target
+    recovery.py           # connection failure to user-action translation
     code.py               # `gar code` command dispatcher and Codespaces helpers
-    deploy.py             # artifact fetch/deploy for simulator/target access
     hw.py                 # hardware template initialization
     infra.py              # Terraform wrapper for simulator infra
     setup.py              # target/environment selection and dependency checks
-    application.py        # application result rendering and recovery
     terminal.py           # VS Code terminal request writer
     usb.py                # usbipd / USB helper command
-  gar_tools.py            # gar-tools target manifest discovery
+  core/                   # shared config, models, errors, hardware and tools repository
+  access/                 # reusable SSH / ADB / AWS / Docker capabilities
+  artifacts/              # artifact manifest and store
+  build/                  # local / Codespaces / ESP32 build environments
+  simulation/             # simulation runtime, host, control and process implementations
+    process.py            # simulator-local background process capability
   target/
+    manifest.py           # gar-tools target manifest discovery
+    backends.py           # target environment composition
     esp32.py              # ESP32 artifact installer
     esp32_firmware.py     # ESP32 firmware artifact fetch / build helpers
     esptool.py            # ESP32 serial flashing
@@ -123,8 +129,6 @@ scripts/gar_lib/
     terminal_ui.py        # shared terminal UI helpers
     profile_manage.py     # VS Code terminal profile write/remove
     terminal_bridge.py    # VS Code Terminal Bridge extension install
-  simulation/
-    parse.py              # parsers for simulation diagnostics
 ```
 
 役割の分け方は次の通り。
@@ -132,12 +136,13 @@ scripts/gar_lib/
 | 種類 | ファイル/ディレクトリ | 責務 |
 |---|---|---|
 | CLI 表面 | `cli.py` | argparse の shape と各 command module への dispatch |
-| ローカル状態 | `config.py` | `.gar/config.json` の load/save、既定値、project root |
+| 内部API | `api.py` | Workspace・artifact・simulation/target domainの協調 |
+| 共有基盤 | `core/` | `.gar/config.json`、Workspace/Artifact、domain error、hardware、gar-tools探索 |
 | 初期設定 | `commands/setup.py` | target 選択、codespace/simulator/target environment 選択、依存コマンド確認 |
-| target 定義 | `gar_tools.py` | `gar-tools/targets/*/target.json` の探索と auto clone |
+| target 定義 | `target/manifest.py`, `core/tools_repository.py` | `gar-tools/targets/*/target.json` の探索と auto clone |
 | code 環境 | `commands/code.py` | Local / Codespaces の開発環境操作。setupで保存した選択を読み、対応する操作を実行する |
-| simulator 環境 | `application.py` + `simulation/*` + `access/*` | VM / Wokwi / MuJoCo 等の simulation runtime 操作 |
-| target 環境 | `application.py` + `target/*` + `access/*` | 実機へのartifact配置とADB/SSH/esptool等の接続方式差し替え |
+| simulator 環境 | `api.py` + `simulation/*` + `access/*` | VM / Wokwi / MuJoCo 等の simulation runtime 操作 |
+| target 環境 | `api.py` + `target/*` + `access/*` | 実機へのartifact配置とADB/SSH/esptool等の接続方式差し替え |
 | target 固有処理 | `target/esp32.py`, `target/esp32_firmware.py`, `target/esptool.py` | ESP32 firmwareのbuild・artifact管理と、esptoolによる実機書き込み |
 | インフラ | `commands/infra.py`, `simulation/aws_ec2.py`, `access/aws.py` | Terraform実行、EC2 instance lifecycle、AWS CLIアクセス |
 | ローカル補助 | `commands/terminal.py`, `commands/usb.py`, `vscode/profile_manage.py`, `vscode/terminal_bridge.py`, `vscode/terminal_ui.py` | VS Code terminal bridge、settings、USB、表示 |

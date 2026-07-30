@@ -17,7 +17,6 @@ from scripts.gar_lib.access.docker import (
     DockerCommandChannel,
     DockerFileChannel,
 )
-from scripts.gar_lib.access.local import LocalProcessChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
 from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
@@ -44,6 +43,7 @@ from scripts.gar_lib.simulation.mujoco import (
     MujocoBridgeHardwareControl,
     MujocoSimulationEnvironment,
 )
+from scripts.gar_lib.simulation.process import LocalProcessChannel
 from scripts.gar_lib.simulation.renode import RenodeSimulationEnvironment
 from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
 from scripts.gar_lib.simulation.wokwi import WokwiSimulationEnvironment

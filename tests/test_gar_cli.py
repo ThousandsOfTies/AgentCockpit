@@ -25,11 +25,11 @@ from scripts.gar_lib.commands.code import (
     start_code_codespace,
     stop_code_codespace,
 )
-from scripts.gar_lib.commands.common.workspace import workspace_for
 from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.setup import run_setup
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.usb import parse_usbipd_list, run_usb_command
+from scripts.gar_lib.commands.workspace import workspace_for
 from scripts.gar_lib.core.command import (
     SIM_APP_BUILD,
     SIM_APP_CLEAN,
@@ -1987,8 +1987,8 @@ class GarCliTest(unittest.TestCase):
         }
 
         with (
-            mock.patch("scripts.gar_lib.commands.common.workspace.load_config", return_value={}),
-            mock.patch("scripts.gar_lib.commands.common.workspace.saved_workspaces", return_value=[entry]),
+            mock.patch("scripts.gar_lib.commands.workspace.load_config", return_value={}),
+            mock.patch("scripts.gar_lib.commands.workspace.saved_workspaces", return_value=[entry]),
         ):
             workspace = workspace_for(None)
 

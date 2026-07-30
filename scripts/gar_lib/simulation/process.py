@@ -1,4 +1,4 @@
-"""Local background process access independent from simulator behavior."""
+"""Local process capability shared by simulation environment implementations."""
 
 from __future__ import annotations
 

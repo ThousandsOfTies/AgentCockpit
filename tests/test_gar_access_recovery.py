@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+from scripts.gar_lib.commands.recovery import plan_access_recovery, report_access_failure
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.recovery.access import plan_access_recovery, report_access_failure
 
 
 class GarAccessRecoveryTest(unittest.TestCase):

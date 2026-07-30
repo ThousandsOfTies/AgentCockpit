@@ -8,11 +8,11 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from scripts.gar_lib.access.local import ProcessChannel
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.simulation.diagnostic import PayloadSimulationDiagnostic
+from scripts.gar_lib.simulation.process import ProcessChannel
 
 DEFAULT_TIMEOUT_MS = 30000
 

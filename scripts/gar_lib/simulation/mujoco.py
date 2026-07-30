@@ -11,12 +11,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from scripts.gar_lib.access.local import LocalProcessChannel, ProcessChannel
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.simulation.control import HardwareControlResult
 from scripts.gar_lib.simulation.diagnostic import PayloadSimulationDiagnostic
+from scripts.gar_lib.simulation.process import LocalProcessChannel, ProcessChannel
 
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "examples" / "mujoco" / "pendulum.xml"
 DEFAULT_WORKSPACE_DIR = PROJECT_ROOT / ".gar" / "mujoco"

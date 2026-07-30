@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import csv
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -71,6 +72,19 @@ def package_of(mod: str) -> str:
     return short_name(".".join(parts[:3]))
 
 
+def file_tree_distance(left: Path, right: Path) -> int:
+    """Return the number of tree edges between two repository files."""
+
+    left_parts = left.relative_to(REPO / "scripts" / "gar_lib").parts
+    right_parts = right.relative_to(REPO / "scripts" / "gar_lib").parts
+    common = 0
+    for left_part, right_part in zip(left_parts, right_parts, strict=False):
+        if left_part != right_part:
+            break
+        common += 1
+    return len(left_parts) + len(right_parts) - (2 * common)
+
+
 def resolve_relative(current_mod: str, is_package: bool, level: int, module: str | None):
     parts = current_mod.split(".")
     base_parts = parts if is_package else parts[:-1]
@@ -112,7 +126,7 @@ def main() -> None:
     module_set = set(modules.keys())
     local_bindings: dict[str, list[tuple[str, str, str | None]]] = defaultdict(list)
 
-    for mod, (_path, tree) in parsed.items():
+    for mod, (path, tree) in parsed.items():
         is_package = path.name == "__init__.py"
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -210,6 +224,39 @@ def main() -> None:
         f"file粒度 ({len(gar_lib_modules)}x{len(gar_lib_modules)}) の完全なmatrixは"
         " `GAR_LIB_DSM_file_level.csv` を参照 (Excel/sheetsで開くと見やすい)。"
     )
+    lines.append("")
+    file_edges = [
+        (consumer, provider, count)
+        for consumer, providers in dep_edges.items()
+        if consumer in gar_lib_modules
+        for provider, count in providers.items()
+        if provider in gar_lib_modules
+    ]
+    distances = sorted(
+        file_tree_distance(parsed[consumer][0], parsed[provider][0])
+        for consumer, provider, _count in file_edges
+    )
+    weighted_distance_sum = sum(
+        file_tree_distance(parsed[consumer][0], parsed[provider][0]) * count
+        for consumer, provider, count in file_edges
+    )
+    binding_count = sum(count for _consumer, _provider, count in file_edges)
+    mean_distance = sum(distances) / len(distances) if distances else 0.0
+    weighted_mean_distance = weighted_distance_sum / binding_count if binding_count else 0.0
+    p95_distance = distances[math.ceil(len(distances) * 0.95) - 1] if distances else 0
+    max_distance = distances[-1] if distances else 0
+    lines.append("## file配置距離")
+    lines.append("")
+    lines.append(
+        "各Pythonファイルをtreeのleaf、import元→import先の一意な組を1 edgeとして、"
+        "最短pathに含まれるtree edge数を測定。平均だけでなく外れ値も確認できるよう"
+        "p95と最大値を併記する。"
+    )
+    lines.append("")
+    lines.append(f"- 一意なfile依存edge数: {len(file_edges)}")
+    lines.append(f"- 平均path長: {mean_distance:.3f}")
+    lines.append(f"- import binding数による加重平均path長: {weighted_mean_distance:.3f}")
+    lines.append(f"- p95 / 最大path長: {p95_distance} / {max_distance}")
     lines.append("")
     lines.append("## 公開メンバの参照状況サマリ")
     lines.append("")

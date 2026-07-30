@@ -8,11 +8,11 @@ from argparse import Namespace
 from collections.abc import Mapping
 
 from scripts.gar_lib.api import Gar
-from scripts.gar_lib.commands.common.workspace import workspace_for
+from scripts.gar_lib.commands.recovery import report_access_failure
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
+from scripts.gar_lib.commands.workspace import workspace_for
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
-from scripts.gar_lib.recovery.access import report_access_failure
 
 TARGET_ACTIONS = {
     "build": "setup 済み target の実機用 artifact をビルドします",

@@ -8,11 +8,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.access.local import ProcessLaunchResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.backends import simulation_environment_for, simulation_host_for
+from scripts.gar_lib.simulation.process import ProcessLaunchResult
 from scripts.gar_lib.simulation.wokwi import WokwiSimulationEnvironment
 
 

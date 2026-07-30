@@ -49,14 +49,6 @@
 | `DockerCommandChannel` | 66 | simulation.backends(3), tests.test_gar_docker_simulation_host(4) |
 | `DockerFileChannel` | 95 | simulation.backends(1), tests.test_gar_docker_simulation_host(2) |
 
-## `access.local` (scripts/gar_lib/access/local.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `ProcessLaunchResult` | 15 | tests.test_gar_wokwi_environment(1) |
-| `ProcessChannel` | 20 | simulation.esp32_qemu(1), simulation.mujoco(1), simulation.renode(1), simulation.wokwi(1) |
-| `LocalProcessChannel` | 36 | simulation.backends(4), simulation.mujoco(1), tests.test_gar_access_channels(1) |
-
 ## `access.serial` (scripts/gar_lib/access/serial.py)
 
 | メンバ | 行 | 参照元module (回数) |
@@ -185,12 +177,6 @@
 | `unmount_codespace_code` | 646 | _(外部参照なし)_ |
 | `codespace_terminal_script` | 695 | _(外部参照なし)_ |
 
-## `commands.common.workspace` (scripts/gar_lib/commands/common/workspace.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `workspace_for` | 10 | commands.sim(1), commands.target(1), tests.test_gar_cli(1), tests.test_gar_sim_architecture(2) |
-
 ## `commands.hw` (scripts/gar_lib/commands/hw.py)
 
 | メンバ | 行 | 参照元module (回数) |
@@ -203,6 +189,14 @@
 |---|---:|---|
 | `TERRAFORM_DIR` | 24 | _(外部参照なし)_ |
 | `run_sim_infra_command` | 111 | commands.sim(1), tests.test_gar_cli(2) |
+
+## `commands.recovery` (scripts/gar_lib/commands/recovery.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `RecoveryAction` | 16 | _(外部参照なし)_ |
+| `report_access_failure` | 22 | commands.sim(1), commands.target(1), tests.test_gar_access_recovery(1) |
+| `plan_access_recovery` | 53 | tests.test_gar_access_recovery(3) |
 
 ## `commands.setup` (scripts/gar_lib/commands/setup.py)
 
@@ -283,6 +277,12 @@
 | `list_usb_devices` | 129 | _(外部参照なし)_ |
 | `run_usb_command` | 236 | cli(1), tests.test_gar_cli(5) |
 
+## `commands.workspace` (scripts/gar_lib/commands/workspace.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `workspace_for` | 10 | commands.sim(1), commands.target(1), tests.test_gar_cli(1), tests.test_gar_sim_architecture(2) |
+
 ## `core.artifact` (scripts/gar_lib/core/artifact.py)
 
 | メンバ | 行 | 参照元module (回数) |
@@ -326,7 +326,7 @@
 | `RUNTIME_HOST_PATTERN` | 26 | _(外部参照なし)_ |
 | `is_valid_runtime_host` | 29 | commands.setup(1) |
 | `set_active_workspace_root` | 33 | commands.setup(1) |
-| `load_config` | 111 | commands.code(1), commands.common.workspace(1), commands.infra(2), commands.setup(2), commands.usb(1), environments.registry.target.adb_win(1), target.esptool(1), target.manifest(1), tests.test_gar_cli(5) |
+| `load_config` | 111 | commands.code(1), commands.infra(2), commands.setup(2), commands.usb(1), commands.workspace(1), environments.registry.target.adb_win(1), target.esptool(1), target.manifest(1), tests.test_gar_cli(5) |
 | `save_config` | 234 | commands.infra(1), commands.setup(11), commands.usb(1), environments.registry.target.adb_win(1), tests.test_gar_cli(10) |
 | `default_config` | 289 | tests.test_gar_cli(2) |
 | `default_ec2_host` | 299 | commands.infra(2), commands.setup(1) |
@@ -339,7 +339,7 @@
 | `set_saved_esp32_serial_port` | 349 | commands.setup(2) |
 | `saved_target_setting` | 357 | commands.setup(2) |
 | `set_saved_target_setting` | 364 | commands.setup(2) |
-| `saved_workspaces` | 372 | commands.common.workspace(1), commands.setup(1) |
+| `saved_workspaces` | 372 | commands.setup(1), commands.workspace(1) |
 | `set_saved_workspaces` | 376 | commands.setup(1) |
 | `saved_adb_exe` | 387 | environments.registry.target.adb_win(1) |
 | `set_saved_adb_exe` | 394 | environments.registry.target.adb_win(1) |
@@ -351,8 +351,8 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(2), build._base(1), build.backends(1), build.codespaces(2), build.esp32(2), build.local(4), commands.common.workspace(1), commands.sim(5), commands.target(6), core.workspace(5), simulation.aws_ec2(4), simulation.backends(6), simulation.docker_host(4), simulation.linux_systemd(5), simulation.mujoco(5), simulation.pending(1), simulation.wokwi(8), target.backends(4), target.esp32(4), target.esp32_firmware(6), target.file_transfer(6), tests.test_gar_docker_simulation_host(4), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(2), tests.test_gar_wokwi_environment(2) |
-| `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.sim(1), commands.target(1), recovery.access(2), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1) |
+| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(2), build._base(1), build.backends(1), build.codespaces(2), build.esp32(2), build.local(4), commands.sim(5), commands.target(6), commands.workspace(1), core.workspace(5), simulation.aws_ec2(4), simulation.backends(6), simulation.docker_host(4), simulation.linux_systemd(5), simulation.mujoco(5), simulation.pending(1), simulation.wokwi(8), target.backends(4), target.esp32(4), target.esp32_firmware(6), target.file_transfer(6), tests.test_gar_docker_simulation_host(4), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(2), tests.test_gar_wokwi_environment(2) |
+| `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1) |
 
 ## `core.hardware` (scripts/gar_lib/core/hardware.py)
 
@@ -378,7 +378,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Workspace` | 14 | api(8), artifacts.store(4), build._base(5), build.backends(1), build.codespaces(3), build.esp32(5), build.local(3), commands.common.workspace(2), core.artifact(1), recovery.access(2), simulation.backends(8), target.backends(1), tests.test_gar_access_recovery(1), tests.test_gar_build_variables(4), tests.test_gar_cli(3), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(3), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(2), tests.test_gar_target_architecture(5), tests.test_gar_wokwi_environment(2) |
+| `Workspace` | 14 | api(8), artifacts.store(4), build._base(5), build.backends(1), build.codespaces(3), build.esp32(5), build.local(3), commands.recovery(2), commands.workspace(2), core.artifact(1), simulation.backends(8), target.backends(1), tests.test_gar_access_recovery(1), tests.test_gar_build_variables(4), tests.test_gar_cli(3), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(3), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(2), tests.test_gar_target_architecture(5), tests.test_gar_wokwi_environment(2) |
 
 ## `environments._base` (scripts/gar_lib/environments/_base.py)
 
@@ -499,14 +499,6 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `SshScpEnvironment` | 6 | _(外部参照なし)_ |
-
-## `recovery.access` (scripts/gar_lib/recovery/access.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `RecoveryAction` | 16 | _(外部参照なし)_ |
-| `report_access_failure` | 22 | commands.sim(1), commands.target(1), tests.test_gar_access_recovery(1) |
-| `plan_access_recovery` | 53 | tests.test_gar_access_recovery(3) |
 
 ## `simulation.aws_ec2` (scripts/gar_lib/simulation/aws_ec2.py)
 
@@ -650,6 +642,14 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `PendingSimulationEnvironment` | 12 | simulation.aws_ssm(1), simulation.esp32_qemu(1), simulation.renode(1) |
+
+## `simulation.process` (scripts/gar_lib/simulation/process.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `ProcessLaunchResult` | 15 | tests.test_gar_wokwi_environment(1) |
+| `ProcessChannel` | 20 | simulation.esp32_qemu(1), simulation.mujoco(1), simulation.renode(1), simulation.wokwi(1) |
+| `LocalProcessChannel` | 36 | simulation.backends(4), simulation.mujoco(1), tests.test_gar_simulation_process(1) |
 
 ## `simulation.remote_session` (scripts/gar_lib/simulation/remote_session.py)
 
@@ -835,6 +835,7 @@
 | `commands.code` | `status_code_codespace` | 392 |
 | `commands.code` | `unmount_codespace_code` | 646 |
 | `commands.infra` | `TERRAFORM_DIR` | 24 |
+| `commands.recovery` | `RecoveryAction` | 16 |
 | `commands.setup` | `SKIP_CATEGORY` | 51 |
 | `commands.setup` | `TARGET_MENU_ENTRY` | 52 |
 | `commands.setup` | `clear_setup_screen` | 176 |
@@ -907,7 +908,6 @@
 | `environments.registry.target.adb_win` | `AdbWinEnvironment` | 30 |
 | `environments.registry.target.adb_win` | `WINGET_PACKAGE_ID` | 27 |
 | `environments.registry.target.ssh_scp` | `SshScpEnvironment` | 6 |
-| `recovery.access` | `RecoveryAction` | 16 |
 | `simulation.backends` | `LOCAL_DOCKER` | 52 |
 | `simulation.backends` | `docker_spec_for` | 170 |
 | `simulation.backends` | `selected_simulator` | 55 |

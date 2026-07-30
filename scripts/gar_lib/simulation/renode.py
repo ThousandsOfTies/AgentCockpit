@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from scripts.gar_lib.access.local import ProcessChannel
 from scripts.gar_lib.simulation.pending import PendingSimulationEnvironment
+from scripts.gar_lib.simulation.process import ProcessChannel
 
 
 class RenodeSimulationEnvironment(PendingSimulationEnvironment):
