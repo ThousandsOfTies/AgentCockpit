@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import sys
 
-from scripts.gar_lib.environments._base import CommandStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
 
 
 class MujocoEnvironment(EnvironmentSetupOption):
@@ -21,9 +21,9 @@ class MujocoEnvironment(EnvironmentSetupOption):
     required_commands = ("mujoco-python",)
 
     @classmethod
-    def dependency_status(cls) -> list[CommandStatus]:
+    def dependency_status(cls) -> list[DependencyStatus]:
         return [
-            CommandStatus(
+            DependencyStatus(
                 name="mujoco-python",
                 path=sys.executable if _mujoco_is_importable() else None,
             )

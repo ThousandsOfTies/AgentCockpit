@@ -1,4 +1,4 @@
-"""workspace が選んだ simulator backend から、実際に動かすオブジェクトを作る。
+"""Compose simulation runtime objects from the environment selected by a workspace.
 
 `gar setup` で選ばれた backend id（`local_docker` / `wokwi` など）を見て、
 対応する実装とアクセス経路を組み立てるだけの層。実処理は各実装が持つ。
@@ -22,31 +22,29 @@ from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.tools_repository import gar_tools_root
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.aws_ec2 import AwsEc2SimulationHostController
-from scripts.gar_lib.simulation.aws_ssm import AwsSsmSimulationEnvironment
-from scripts.gar_lib.simulation.control import (
+from scripts.gar_lib.simulation.hardware.control import (
     LinuxBridgeHardwareControl,
     SimulationHardwareControl,
 )
-from scripts.gar_lib.simulation.docker_host import (
+from scripts.gar_lib.simulation.hardware.mujoco import MujocoBridgeHardwareControl
+from scripts.gar_lib.simulation.host.aws_ec2 import AwsEc2SimulationHostController
+from scripts.gar_lib.simulation.host.contract import SimulationHostController
+from scripts.gar_lib.simulation.host.docker import (
     BACKEND_ID,
     DEFAULT_CONTAINER,
     DockerSimulationHostController,
 )
-from scripts.gar_lib.simulation.docker_spec import DockerHostSpec, docker_host_spec
-from scripts.gar_lib.simulation.environment import SimulationEnvironment
-from scripts.gar_lib.simulation.esp32_qemu import Esp32QemuSimulationEnvironment
-from scripts.gar_lib.simulation.host import SimulationHostController
-from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder
-from scripts.gar_lib.simulation.linux_systemd import LinuxSystemdSimulationEnvironment
-from scripts.gar_lib.simulation.mujoco import (
-    MujocoBridgeHardwareControl,
-    MujocoSimulationEnvironment,
-)
-from scripts.gar_lib.simulation.process import LocalProcessChannel
-from scripts.gar_lib.simulation.renode import RenodeSimulationEnvironment
-from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
-from scripts.gar_lib.simulation.wokwi import WokwiSimulationEnvironment
+from scripts.gar_lib.simulation.host.docker_spec import DockerHostSpec, docker_host_spec
+from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.simulation.runtime.aws_ssm import AwsSsmSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.contract import SimulationEnvironment
+from scripts.gar_lib.simulation.runtime.esp32_qemu import Esp32QemuSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.linux_commands import LinuxSystemdCommandBuilder
+from scripts.gar_lib.simulation.runtime.linux_systemd import LinuxSystemdSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.mujoco import MujocoSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.process import LocalProcessChannel
+from scripts.gar_lib.simulation.runtime.renode import RenodeSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.wokwi import WokwiSimulationEnvironment
 from scripts.gar_lib.target.manifest import active_target_manifest
 
 LOCAL_DOCKER = "local_docker"

@@ -7,7 +7,7 @@ Renode の .repl/.resc はボード定義を育てる場所として残しつつ
 
 from __future__ import annotations
 
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
 
 class Esp32QemuFirmwareEnvironment(EnvironmentSetupOption):

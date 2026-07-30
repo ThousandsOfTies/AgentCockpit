@@ -15,16 +15,16 @@
 ### Workspace / sibling repo 注意
 
 GAR 関連作業では、VS Code のアクティブファイルや CWD が
-`gar-tools` / `gar-build-env` / `embedded-poc-app` などの兄弟リポジトリを
+`gar-tools` / `gar-build-env` / `gar-adhoc-app` などの兄弟リポジトリを
 指していても、本ファイルと `docs/02_ARCHITECTURE.md` /
 `docs/03_DEVELOPMENT_ENVIRONMENT.md` を運用正本として先に読むこと。
 
-`/home/user/Yurufuwa` 配下の代表的な sibling repo:
+`/home/user/Yurufuwa/GAR` 配下の代表的な sibling repo:
 
 - `GaplessAgentRuntime/`: 操作規約・アーキテクチャ正本
 - `gar-tools/`: CUSE stubs、ESP32/M5Stack firmware runner、Renode/QEMU足場
 - `gar-build-env/`: Codespaces/devcontainer build hub
-- `embedded-poc-app/`: ARM64 target app
+- `gar-adhoc-app/`: ARM64 target app
 
 AI は CWD やエディタのアクティブファイルだけから運用境界を推測しない。
 GAR 系 sibling repo に入ったら、まず本リポジトリの規約へ戻って環境の役割
@@ -183,7 +183,7 @@ find .gar -maxdepth 3 -type f | sort
 
 - **SSH 設定**: `gar sim host start` / `gar sim infra apply` が `~/.ssh/config` の HostName を更新する
 - **Codespaces 名**: `gh codespace list` で確認
-- **RasPi5**: `gar target status` で確認
+- **RasPi5**: `gar setup`で保存先を確認し、ADBなら`adb devices`、SSHなら`ssh <host> true`で疎通を確認
 
 ---
 
@@ -195,14 +195,14 @@ find .gar -maxdepth 3 -type f | sort
 
 | 環境 | 役割 | やってよい | **やってはいけない** |
 |---|---|---|---|
-| **Codespaces** | ビルド | cross-compile、成果物生成 | — |
-| **WSL** | コントロールプレーン | `gar` 発信、成果物中継、deploy | ターゲット用バイナリのビルド |
+| **Codespaces** | remote BuildEnvironment | cross-compile、成果物生成 | 実行targetとしての運用 |
+| **WSL** | control plane / local BuildEnvironment | `gar` 発信、成果物中継、deploy、setupでlocalを選んだproduct hook | EC2/RasPi5上の場当たり的なビルド |
 | **EC2 / RasPi5** | 実行（ターゲット） | 配布されたバイナリの起動・実行 | **ツールチェーン導入・`make`・コンパイル・ビルド環境構築** |
 
-- **ビルドは必ず Codespaces**。EC2/RasPi5 上で `make` / `gcc` / `apt install build-*` 等を
-  実行しない。「ビルドできる場所が目の前にある」からといって EC2 で組まない。
-- ARM 向け成果物も **Codespaces で cross-build → WSL 経由で EC2/実機へ deploy → ターゲットは起動のみ**。
-- EC2 にビルド環境を生やそうとしている自分に気づいたら、それは役割違反。手を止めて Codespaces 経路に戻す。
+- **ビルドはsetupで選択したBuildEnvironment（local / Codespaces）で行う**。EC2/RasPi5 上で
+  `make` / `gcc` / `apt install build-*` 等を実行しない。
+- ARM 向け成果物の標準経路は **Codespacesでcross-build → WSL artifact store → EC2/実機へdeploy**。
+- EC2 にビルド環境を生やそうとしている自分に気づいたら、それは役割違反。手を止めて `gar setup` で選んだ local / Codespaces の `BuildEnvironment` に戻す。
 
 ---
 
@@ -213,15 +213,17 @@ find .gar -maxdepth 3 -type f | sort
 **target app を VM に転送する（実行テスト用）:**
 
 ```bash
+gar sim app build
 gar sim app deploy
 ```
 
-経路: Codespaces でビルド → WSL に成果物コピー → WSL から VM へ転送  
-（`artifact.json` の `deploy.sim` セクション）
+経路: 選択したBuildEnvironmentでビルド → WSL artifact store → VMへ転送
+（`artifact.json` の `deploy.app` セクション）
 
 **VM の仮想 H/W 環境（CUSE stubs, web-bridge）を更新する:**
 
 ```bash
+gar sim runtime build
 gar sim runtime deploy
 ```
 
@@ -239,16 +241,15 @@ gar sim runtime deploy
 
 ### 「実機にデプロイして」と言われたら
 
-1. Codespaces でビルド:
+1. 選択したBuildEnvironmentでビルドし、artifactをWSL側へ用意:
    ```bash
-   gh codespace ssh  # GAR_CODESPACE_NAME または gh codespace list で確認
-   # Codespace build VM 内で、target software ごとの README / build script に従ってビルド
+   gar target build
    ```
 2. WSL hub から実機へ転送:
    ```bash
    gar target deploy
    ```
-   経路: Codespaces でビルド → WSL に成果物コピー → adb push → RasPi5
+   経路: local/Codespaces build → WSL artifact store → adb/scp/esptool → 実機
 
 ---
 
@@ -315,7 +316,7 @@ gar sim host status    # 状態確認
 
 | ファイル | 用途 |
 |---|---|
-| `../embedded-poc-app/app/sensor_demo` | 統合デモアプリ（GPIO + I2C OLED + SPI RFID） |
+| `../gar-adhoc-app/app/sensor_demo` | 統合デモアプリ（GPIO + I2C OLED + SPI RFID） |
 | `gar-tools/targets/linux-device/runtime/spi-stub/cuse_spi` | SPI CUSE スタブ（MFRC-522 sim、EC2 用） |
 | `gar-tools/targets/linux-device/runtime/i2c-stub/cuse_i2c` | I2C CUSE スタブ（VL53L0X + SSD1306、EC2 用） |
 | `gar-tools/targets/linux-device/runtime/test/gpio_led_button` | GPIO 単機能デモ |

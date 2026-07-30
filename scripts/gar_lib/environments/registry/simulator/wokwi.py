@@ -6,7 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
-from scripts.gar_lib.environments._base import CommandStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
 
 
 class WokwiEnvironment(EnvironmentSetupOption):
@@ -17,8 +17,8 @@ class WokwiEnvironment(EnvironmentSetupOption):
     required_commands = ("wokwi-cli",)
 
     @classmethod
-    def dependency_status(cls) -> list[CommandStatus]:
-        return [CommandStatus(name="wokwi-cli", path=_find_wokwi_cli())]
+    def dependency_status(cls) -> list[DependencyStatus]:
+        return [DependencyStatus(name="wokwi-cli", path=_find_wokwi_cli())]
 
     @classmethod
     def install_hint(cls, missing: list[str]) -> str:

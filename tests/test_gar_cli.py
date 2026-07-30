@@ -29,7 +29,7 @@ from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.setup import run_setup
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.usb import parse_usbipd_list, run_usb_command
-from scripts.gar_lib.commands.workspace import workspace_for
+from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.command import (
     SIM_APP_BUILD,
     SIM_APP_CLEAN,
@@ -49,11 +49,11 @@ from scripts.gar_lib.core.command import (
 from scripts.gar_lib.core.config import load_config, save_config
 from scripts.gar_lib.core.tools_repository import ensure_gar_tools_available
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
-from scripts.gar_lib.simulation import io_actions
-from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder, gpio_sim_plan
-from scripts.gar_lib.simulation.parse import parse_gpio_runtime_status, parse_gpio_sim_check, parse_sim_diag
-from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.simulation.diagnostics.parse import parse_gpio_runtime_status, parse_gpio_sim_check, parse_sim_diag
+from scripts.gar_lib.simulation.hardware import io_actions
+from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.simulation.runtime.linux_commands import LinuxSystemdCommandBuilder, gpio_sim_plan
 from scripts.gar_lib.target.esp32_firmware import (
     build_esp32_firmware_codespace,
     parse_esp32_build_artifact_path,
@@ -1074,7 +1074,7 @@ class GarCliTest(unittest.TestCase):
                 return_value=0,
                 autospec=True,
             ) as action,
-            mock.patch("scripts.gar_lib.commands.sim.workspace_for", return_value=workspace) as lookup,
+            mock.patch("scripts.gar_lib.commands.sim.resolve_workspace", return_value=workspace) as lookup,
         ):
             result = main(argv)
 
@@ -1099,7 +1099,7 @@ class GarCliTest(unittest.TestCase):
                 return_value=0,
                 autospec=True,
             ) as action,
-            mock.patch("scripts.gar_lib.commands.target.workspace_for", return_value=workspace) as lookup,
+            mock.patch("scripts.gar_lib.commands.target.resolve_workspace", return_value=workspace) as lookup,
         ):
             result = main(argv)
 
@@ -1149,7 +1149,7 @@ class GarCliTest(unittest.TestCase):
     def test_gar_command_delegates_to_the_group_runner(self) -> None:
         workspace = Workspace(id="ws", name="Local/Product", branch="main", connection={"type": "local"})
         with (
-            mock.patch("scripts.gar_lib.commands.sim.workspace_for", return_value=workspace),
+            mock.patch("scripts.gar_lib.commands.sim.resolve_workspace", return_value=workspace),
             mock.patch("scripts.gar_lib.cli.sim.run_sim_command", return_value=0) as run_sim,
         ):
             result = main(["sim", "app", "build"])
@@ -1977,7 +1977,7 @@ class GarCliTest(unittest.TestCase):
         )
         self.assertNotIn("selected_providers", migrated["workspaces"][0])
 
-    def test_workspace_for_accepts_legacy_selected_providers_key(self) -> None:
+    def test_resolve_workspace_accepts_legacy_selected_providers_key(self) -> None:
         entry = {
             "id": "ws_test",
             "name": "product · main",
@@ -1987,10 +1987,10 @@ class GarCliTest(unittest.TestCase):
         }
 
         with (
-            mock.patch("scripts.gar_lib.commands.workspace.load_config", return_value={}),
-            mock.patch("scripts.gar_lib.commands.workspace.saved_workspaces", return_value=[entry]),
+            mock.patch("scripts.gar_lib.commands.workspace_resolver.load_config", return_value={}),
+            mock.patch("scripts.gar_lib.commands.workspace_resolver.saved_workspaces", return_value=[entry]),
         ):
-            workspace = workspace_for(None)
+            workspace = resolve_workspace(None)
 
         self.assertEqual("adb_usb", workspace.selected_environments["target"])
 

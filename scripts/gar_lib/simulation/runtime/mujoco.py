@@ -1,4 +1,4 @@
-"""Local MuJoCo simulation and bridge control environments."""
+"""Local MuJoCo simulation runtime environment."""
 
 from __future__ import annotations
 
@@ -6,23 +6,18 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.simulation.control import HardwareControlResult
-from scripts.gar_lib.simulation.diagnostic import PayloadSimulationDiagnostic
-from scripts.gar_lib.simulation.process import LocalProcessChannel, ProcessChannel
+from scripts.gar_lib.simulation.diagnostics.model import PayloadSimulationDiagnostic
+from scripts.gar_lib.simulation.hardware.mujoco import DEFAULT_BRIDGE_URL, bridge_state
+from scripts.gar_lib.simulation.runtime.process import LocalProcessChannel, ProcessChannel
 
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "examples" / "mujoco" / "pendulum.xml"
 DEFAULT_WORKSPACE_DIR = PROJECT_ROOT / ".gar" / "mujoco"
-DEFAULT_BRIDGE_URL = "http://127.0.0.1:8081"
-
-
 class MujocoSimulationEnvironment:
     """Manage a local MuJoCo runner through the SimulationEnvironment contract."""
 
@@ -118,8 +113,8 @@ class MujocoSimulationEnvironment:
         state = self._state()
         pid = state.get("pid")
         running = isinstance(pid, int) and self.process_channel.is_running(pid)
-        bridge_state = _bridge_state(self._bridge_url()) if running else None
-        ok = model_ok and running and bridge_state is not None
+        current_bridge_state = bridge_state(self._bridge_url()) if running else None
+        ok = model_ok and running and current_bridge_state is not None
         return PayloadSimulationDiagnostic(
             {
                 "environment": "mujoco",
@@ -129,7 +124,7 @@ class MujocoSimulationEnvironment:
                 "runner": str(self._runner_path()) if self._runner_path() else None,
                 "bridge_url": self._bridge_url(),
                 "pid": pid if running else None,
-                "bridge_state": bridge_state,
+                "bridge_state": current_bridge_state,
                 **({"error": model_error} if model_error else {}),
             }
         )
@@ -195,79 +190,3 @@ class MujocoSimulationEnvironment:
         print(f"ok: {str(ok).lower()}")
         if pid is not None:
             print(f"pid: {pid}")
-
-
-class MujocoBridgeHardwareControl:
-    """Translate common control-plane operations to the MuJoCo JSON bridge."""
-
-    def __init__(self, bridge_url: str | None = None):
-        self.bridge_url = (bridge_url or os.environ.get("GAR_MUJOCO_BRIDGE_URL", DEFAULT_BRIDGE_URL)).rstrip("/")
-
-    def gpio(
-        self,
-        action: str,
-        hardware: dict[str, list[dict[str, str]]],
-    ) -> HardwareControlResult:
-        del hardware
-        return HardwareControlResult(
-            0,
-            {
-                "environment": "mujoco",
-                "action": action,
-                "ok": True,
-                "status": "not-applicable",
-                "reason": "MuJoCoはLinux GPIOではなくロボット物理を制御します。",
-            },
-        )
-
-    def io(self, action: str, params: dict[str, object]) -> HardwareControlResult:
-        if action == "state":
-            payload = _bridge_state(self.bridge_url)
-            if payload is None:
-                return HardwareControlResult(1, {"environment": "mujoco", "ok": False})
-            return HardwareControlResult(0, payload)
-        status, payload = _bridge_command(self.bridge_url, action, params)
-        return HardwareControlResult(
-            0 if status < 300 else 1,
-            {
-                "environment": "mujoco",
-                "action": action,
-                "ok": status < 300,
-                "result": payload,
-            },
-        )
-
-
-def _bridge_state(bridge_url: str) -> dict[str, object] | None:
-    try:
-        with urllib.request.urlopen(f"{bridge_url}/api/state", timeout=2) as response:  # noqa: S310
-            payload = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
-def _bridge_command(
-    bridge_url: str,
-    action: str,
-    params: dict[str, object],
-) -> tuple[int, dict[str, object] | str]:
-    body = json.dumps({"action": action, "params": params}).encode("utf-8")
-    request = urllib.request.Request(
-        f"{bridge_url}/api/command",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8")
-    except urllib.error.URLError as exc:
-        return 503, str(exc.reason)
-    try:
-        decoded = json.loads(raw) if raw else {}
-    except json.JSONDecodeError:
-        return 200, raw
-    return 200, decoded if isinstance(decoded, dict) else {"value": decoded}

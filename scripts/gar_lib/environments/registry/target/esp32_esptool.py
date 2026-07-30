@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from scripts.gar_lib.core.config import PROJECT_ROOT
-from scripts.gar_lib.environments._base import CommandStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
 
 
 class Esp32EsptoolEnvironment(EnvironmentSetupOption):
@@ -19,8 +19,8 @@ class Esp32EsptoolEnvironment(EnvironmentSetupOption):
     required_commands = ("esptool",)
 
     @classmethod
-    def dependency_status(cls) -> list[CommandStatus]:
-        return [CommandStatus(name="esptool", path=_find_tool("esptool"))]
+    def dependency_status(cls) -> list[DependencyStatus]:
+        return [DependencyStatus(name="esptool", path=_find_tool("esptool"))]
 
     @classmethod
     def install_hint(cls, missing: list[str]) -> str:

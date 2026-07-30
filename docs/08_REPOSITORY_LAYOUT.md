@@ -11,11 +11,11 @@
 
 ```mermaid
 flowchart TB
-  subgraph Dev["開発者 workspace: Yurufuwa/"]
+  subgraph Dev["開発者 workspace: Yurufuwa/GAR/"]
     GAR["GaplessAgentRuntime/"]
     Tools["gar-tools/"]
     BuildEnv["gar-build-env/"]
-    LinuxApp["embedded-poc-app/"]
+    LinuxApp["gar-adhoc-app/"]
     M5App["gar-vibe-ui/"]
   end
 
@@ -87,7 +87,7 @@ GaplessAgentRuntime/
 | `hardware/` | no/任意 | `gar hw init` が作るローカル hardware CSV override | target 標準値からのプロジェクト固有上書き |
 
 `app/` を置かないことが重要である。アプリケーションの正本は
-`embedded-poc-app` や `gar-vibe-ui` のような target app repo にあり、GAR は
+`gar-adhoc-app` や `gar-vibe-ui` のような target app repo にあり、GAR は
 その artifact を build / simulation / target access environment へ運ぶ。
 
 ---
@@ -104,7 +104,7 @@ scripts/gar_lib/
   commands/
     sim.py                # `gar sim` parser, dispatch, CLI recovery
     target.py             # `gar target` parser, dispatch, CLI recovery
-    workspace.py          # --workspace resolution shared by sim / target
+    workspace_resolver.py # --workspace resolution shared by sim / target
     recovery.py           # connection failure to user-action translation
     code.py               # `gar code` command dispatcher and Codespaces helpers
     hw.py                 # hardware template initialization
@@ -116,11 +116,30 @@ scripts/gar_lib/
   access/                 # reusable SSH / ADB / AWS / Docker capabilities
   artifacts/              # artifact manifest and store
   build/                  # local / Codespaces / ESP32 build environments
-  simulation/             # simulation runtime, host, control and process implementations
-    process.py            # simulator-local background process capability
+  simulation/             # setup selectionからsimulation object graphを構成
+    composition.py        # selected simulator IDから各役割の実装を組み立てる
+    runtime/              # artifactを動かすsimulation environment
+      contract.py         # SimulationEnvironment protocol
+      process.py          # simulator-local background process capability
+      linux_commands.py   # Linux/systemd command builderとGPIO計画
+      linux_systemd.py    # Linux/systemd runtime
+      wokwi.py            # Wokwi runtime
+      mujoco.py           # MuJoCo runtime
+    host/                 # container / VM lifecycle
+      contract.py         # SimulationHostController protocol
+      docker.py           # local Docker host
+      aws_ec2.py          # EC2 host
+      docker_spec.py      # target manifestからDocker形状を解決
+      ssh_config.py       # remote hostのSSH alias更新
+    hardware/             # virtual hardware control plane
+      control.py          # protocolとLinux bridge control
+      mujoco.py           # MuJoCo bridge control
+      io_actions.py       # 共通H/W操作語彙
+    diagnostics/          # diagnostic modelとoutput parser
+    session/              # session managerとremote session処理
   target/
     manifest.py           # gar-tools target manifest discovery
-    backends.py           # target environment composition
+    composition.py        # target environment composition
     esp32.py              # ESP32 artifact installer
     esp32_firmware.py     # ESP32 firmware artifact fetch / build helpers
     esptool.py            # ESP32 serial flashing
@@ -144,7 +163,7 @@ scripts/gar_lib/
 | simulator 環境 | `api.py` + `simulation/*` + `access/*` | VM / Wokwi / MuJoCo 等の simulation runtime 操作 |
 | target 環境 | `api.py` + `target/*` + `access/*` | 実機へのartifact配置とADB/SSH/esptool等の接続方式差し替え |
 | target 固有処理 | `target/esp32.py`, `target/esp32_firmware.py`, `target/esptool.py` | ESP32 firmwareのbuild・artifact管理と、esptoolによる実機書き込み |
-| インフラ | `commands/infra.py`, `simulation/aws_ec2.py`, `access/aws.py` | Terraform実行、EC2 instance lifecycle、AWS CLIアクセス |
+| インフラ | `commands/infra.py`, `simulation/host/aws_ec2.py`, `access/aws.py` | Terraform実行、EC2 instance lifecycle、AWS CLIアクセス |
 | ローカル補助 | `commands/terminal.py`, `commands/usb.py`, `vscode/profile_manage.py`, `vscode/terminal_bridge.py`, `vscode/terminal_ui.py` | VS Code terminal bridge、settings、USB、表示 |
 
 `cli.py` は command line の形を決める場所に留め、実行処理はcommandと専用domainへ
@@ -159,17 +178,18 @@ scripts/gar_lib/
 
 ```text
 scripts/gar_lib/environments/
-  base.py                 # setup option metadata / dependency installation
+  setup_option.py         # setup option metadata / dependency installation
   install.py              # setup時のsudo / Terminal Bridge補助
   discovery.py            # registry package scan and category metadata
   registry/
     codespace/
       github_codespaces.py
-      local.py
+      local_docker.py
     simulator/
       local_docker.py
       ssh_remote.py
       wokwi.py
+      mujoco.py
       renode_mcu.py
       esp32_qemu.py
       aws_ssm.py
@@ -186,7 +206,7 @@ scripts/gar_lib/environments/
 | category | 代表選択肢 | 実行時の解決先 |
 |---|---|---|
 | `codespace` | `github_codespaces`, `local` | `commands/code.py` / `build/` |
-| `simulator` | `local_docker`, `ssh_remote`, `wokwi`, `renode_mcu`, `esp32_qemu_firmware` | `simulation/` |
+| `simulator` | `local_docker`, `ssh_remote`, `wokwi`, `mujoco`, `renode_mcu`, `esp32_qemu_firmware`, `aws_ssm` | `simulation/composition.py` |
 | `target` | `adb_usb`, `adb_win`, `ssh_scp`, `esp32_esptool` | `target/` |
 
 registryの選択IDは実行時resolverへの入力になるが、registry class自体は実行処理を
@@ -201,9 +221,22 @@ registryの選択IDは実行時resolverへの入力になるが、registry class
 
 ```text
 scripts/gar_lib/simulation/
-  environment.py          # SimulationEnvironment interface
-  linux.py                # Linux/systemd compatible runtime command builder
-  wokwi.py                # Wokwi workspace / command helper
+  composition.py          # setupで選ばれたIDからruntime / host / hardwareを構成
+  runtime/
+    contract.py           # SimulationEnvironment interface
+    linux_commands.py     # Linux/systemd command builder
+    linux_systemd.py      # Linux/systemd runtime
+    wokwi.py              # Wokwi runtime
+    mujoco.py             # MuJoCo runtime
+    pending.py            # error-only runtime共通実装
+    renode.py             # Renode runtime stub
+    esp32_qemu.py         # ESP32 QEMU runtime stub
+    aws_ssm.py            # AWS SSM runtime stub
+    process.py            # local process capability
+  host/                   # Docker / EC2 lifecycleとSSH設定
+  hardware/               # Linux / MuJoCo control planeと共通I/O語彙
+  diagnostics/            # diagnostic modelとparser
+  session/                # VS Code terminal profileとport forward
 ```
 
 ここは「どの transport で接続するか」ではなく、「simulation runtime をどう起動し、
@@ -240,11 +273,11 @@ Git の正本として扱わない。
 
 ```mermaid
 flowchart LR
-  subgraph Workspace["Yurufuwa/"]
+  subgraph Workspace["Yurufuwa/GAR/"]
     GAR["GaplessAgentRuntime/"]
     Tools["gar-tools/"]
     BuildEnv["gar-build-env/"]
-    LinuxApp["embedded-poc-app/"]
+    LinuxApp["gar-adhoc-app/"]
     M5App["gar-vibe-ui/"]
   end
 
@@ -263,11 +296,11 @@ flowchart LR
 代表的な配置:
 
 ```text
-Yurufuwa/
+Yurufuwa/GAR/
   GaplessAgentRuntime/
   gar-tools/
   gar-build-env/
-  embedded-poc-app/
+  gar-adhoc-app/
   gar-vibe-ui/
 ```
 
@@ -309,7 +342,7 @@ GaplessAgentRuntime/
 
 `.gar/` はローカル状態、外部ツール、テンプレート展開済み workspace、ログの置き場なので、Git管理しない。
 アプリケーションのソースは `GaplessAgentRuntime/app` には置かず、
-target app repo（例: `../embedded-poc-app/app`、`../gar-vibe-ui/vibe-remote/m5stickc-client`）を正本にする。
+target app repo（例: `../gar-adhoc-app/app`、`../gar-vibe-ui/vibe-remote/m5stickc-client`）を正本にする。
 
 ---
 
@@ -363,10 +396,10 @@ flowchart LR
   subgraph BuildEnv["gar-build-env"]
     Codespace["Codespaces devcontainer"]
     BuildArtifacts["artifacts/from-codespace"]
-    BuildRepos["repos/tools/gar-tools\nrepos/apps/embedded-poc-app\nrepos/apps/gar-vibe-ui"]
+    BuildRepos["repos/tools/gar-tools\nrepos/apps/gar-adhoc-app\nrepos/apps/gar-vibe-ui"]
   end
 
-  subgraph LinuxAppRepo["embedded-poc-app"]
+  subgraph LinuxAppRepo["gar-adhoc-app"]
     LinuxAppSource["app/sensor_demo"]
     LinuxAppScenarios["scenarios/*.json"]
   end
@@ -403,8 +436,8 @@ flowchart LR
 | Wokwi workspace template | `gar-tools/targets/esp32/wokwi/m5stackc/` | `.gar/wokwi/m5stackc/` |
 | ESP32 optional tools | `gar-tools/targets/esp32/{qemu,renode,fake-idf,probes}/` | 必要時のみ |
 | Linux hardware CSV template | `gar-tools/targets/linux-device/hardware/` | `hardware/` |
-| target app source | `embedded-poc-app/app/` | build artifact |
-| app scenario | `embedded-poc-app/scenarios/` | remote scenario copy |
+| target app source | `gar-adhoc-app/app/` | build artifact |
+| app scenario | `gar-adhoc-app/scenarios/` | remote scenario copy |
 | Codespaces build hub | `gar-build-env/` | `codespaces/` sshfs mount |
 | ESP32/M5Stack firmware source | `gar-vibe-ui/vibe-remote/m5stickc-client/` | `.bin` artifact |
 | ESP32/M5Stack firmware artifact | `gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/` | flash input |

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from scripts.gar_lib.core.artifact import Artifact
-from scripts.gar_lib.simulation.diagnostic import SimulationDiagnosticReport
+from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnosticReport
 
 
 class SimulationEnvironment(Protocol):

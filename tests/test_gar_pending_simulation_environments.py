@@ -6,10 +6,10 @@ from pathlib import Path
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.aws_ssm import AwsSsmSimulationEnvironment
-from scripts.gar_lib.simulation.backends import simulation_environment_for
-from scripts.gar_lib.simulation.esp32_qemu import Esp32QemuSimulationEnvironment
-from scripts.gar_lib.simulation.renode import RenodeSimulationEnvironment
+from scripts.gar_lib.simulation.composition import simulation_environment_for
+from scripts.gar_lib.simulation.runtime.aws_ssm import AwsSsmSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.esp32_qemu import Esp32QemuSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.renode import RenodeSimulationEnvironment
 
 
 def workspace(environment_id: str, *, ec2: dict[str, str] | None = None) -> Workspace:

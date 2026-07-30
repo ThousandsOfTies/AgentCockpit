@@ -27,10 +27,15 @@ GAR は複数リポジトリで構成されるため、VS Code / AI agent の CW
 
 ```text
 Yurufuwa/
-  GaplessAgentRuntime/   # gar CLI、操作規約、アーキテクチャ正本
-  gar-tools/             # simulation/runtime tools
-  gar-build-env/         # Codespaces build hub
-  embedded-poc-app/      # target app
+  GAR/
+    GaplessAgentRuntime/ # gar CLI、操作規約、アーキテクチャ正本
+    gar-tools/           # simulation/runtime tools
+    gar-build-env/       # Codespaces build hub
+    gar-adhoc-app/       # target app
+  GarAdhocApp/           # gar-build-envのGarAdhocApp product workspace
+    sources/
+      gar-adhoc-app/     # target app submodule
+      gar-tools/         # runtime tools submodule
 ```
 
 AI agent は sibling repo で作業を始める場合でも、

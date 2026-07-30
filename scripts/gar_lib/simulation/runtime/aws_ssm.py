@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from scripts.gar_lib.access.aws import AwsCommandChannel
-from scripts.gar_lib.simulation.pending import PendingSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.pending import PendingSimulationEnvironment
 
 
 class AwsSsmSimulationEnvironment(PendingSimulationEnvironment):

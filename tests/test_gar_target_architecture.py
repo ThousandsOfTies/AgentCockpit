@@ -17,7 +17,7 @@ from scripts.gar_lib.commands.setup import configure_target_connection
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.target.backends import target_environment_for
+from scripts.gar_lib.target.composition import target_environment_for
 from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
 
@@ -121,7 +121,7 @@ class GarTargetArchitectureTest(unittest.TestCase):
         artifacts.latest.return_value = mock.Mock(bundle_path="/tmp/bundle")
         stderr = io.StringIO()
         with (
-            mock.patch("scripts.gar_lib.commands.target.workspace_for", return_value=selected_workspace),
+            mock.patch("scripts.gar_lib.commands.target.resolve_workspace", return_value=selected_workspace),
             mock.patch("scripts.gar_lib.api.LocalArtifactStore", return_value=artifacts),
             mock.patch(
                 "scripts.gar_lib.api.target_environment_for",

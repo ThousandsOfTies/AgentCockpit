@@ -11,7 +11,7 @@ from scripts.gar_lib.api import Gar
 from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.recovery import report_access_failure
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
-from scripts.gar_lib.commands.workspace import workspace_for
+from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 
@@ -83,6 +83,40 @@ def _add_actions(
         leaf.set_defaults(gar_command=GarCommand("sim", subject, action))
         created[action] = leaf
     return created
+
+
+def _print_help(
+    subcommand_parsers: Mapping[str, argparse.ArgumentParser] | None,
+    target: str,
+) -> None:
+    if subcommand_parsers is not None:
+        subcommand_parsers[target].print_help()
+
+
+def _action_kwargs(command: GarCommand, args: Namespace) -> dict[str, object]:
+    if command.subject == "runtime" and command.action == "start":
+        return {
+            "settings": getattr(args, "settings", None),
+            "profile_name": getattr(args, "profile_name", None),
+            "no_port_forward": getattr(args, "no_port_forward", False),
+        }
+    if command.subject == "runtime" and command.action == "stop":
+        return {"keep_port_forward": getattr(args, "keep_port_forward", False)}
+    if command.subject == "host" and command.action == "start":
+        return {
+            "no_update_ssh": getattr(args, "no_update_ssh", False),
+            "pull": getattr(args, "pull", False),
+        }
+    if (
+        (command.subject == "runtime" and command.action == "diag")
+        or (command.subject == "host" and command.action == "status")
+        or command.subject == "gpio"
+    ):
+        return {"json_output": getattr(args, "json_output", False)}
+    if command.subject == "io":
+        params = {name: value for name in IO_PARAMETERS if (value := getattr(args, name, None)) is not None}
+        return {"json_output": getattr(args, "json_output", False), **params}
+    return {}
 
 
 def add_sim_parser(
@@ -280,7 +314,7 @@ def run_sim_command(
 
     workspace_selector = getattr(args, "workspace", None)
     try:
-        workspace = workspace_for(workspace_selector)
+        workspace = resolve_workspace(workspace_selector)
     except GarDomainError as error:
         print(f"gar: {error}", file=sys.stderr)
         return 1
@@ -309,37 +343,3 @@ def run_sim_command(
     except GarDomainError as error:
         print(f"gar: {error}", file=sys.stderr)
         return 1
-
-
-def _print_help(
-    subcommand_parsers: Mapping[str, argparse.ArgumentParser] | None,
-    target: str,
-) -> None:
-    if subcommand_parsers is not None:
-        subcommand_parsers[target].print_help()
-
-
-def _action_kwargs(command: GarCommand, args: Namespace) -> dict[str, object]:
-    if command.subject == "runtime" and command.action == "start":
-        return {
-            "settings": getattr(args, "settings", None),
-            "profile_name": getattr(args, "profile_name", None),
-            "no_port_forward": getattr(args, "no_port_forward", False),
-        }
-    if command.subject == "runtime" and command.action == "stop":
-        return {"keep_port_forward": getattr(args, "keep_port_forward", False)}
-    if command.subject == "host" and command.action == "start":
-        return {
-            "no_update_ssh": getattr(args, "no_update_ssh", False),
-            "pull": getattr(args, "pull", False),
-        }
-    if (
-        (command.subject == "runtime" and command.action == "diag")
-        or (command.subject == "host" and command.action == "status")
-        or command.subject == "gpio"
-    ):
-        return {"json_output": getattr(args, "json_output", False)}
-    if command.subject == "io":
-        params = {name: value for name in IO_PARAMETERS if (value := getattr(args, name, None)) is not None}
-        return {"json_output": getattr(args, "json_output", False), **params}
-    return {}

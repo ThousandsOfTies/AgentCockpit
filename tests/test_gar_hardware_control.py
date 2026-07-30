@@ -4,7 +4,7 @@ import unittest
 from unittest import mock
 
 from scripts.gar_lib.access.channel import AccessResult
-from scripts.gar_lib.simulation.control import LinuxBridgeHardwareControl
+from scripts.gar_lib.simulation.hardware.control import LinuxBridgeHardwareControl
 
 
 class GarHardwareControlTest(unittest.TestCase):

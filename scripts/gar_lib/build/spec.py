@@ -1,26 +1,17 @@
-"""Build environment interfaces and the artifact-kind-to-script build spec."""
+"""Artifact-kind-to-script build specification."""
 
 from __future__ import annotations
 
 import platform
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol
 
-from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
+from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 
 # simulation host のアーキテクチャ既定値。設定で上書きできる。
 DEFAULT_REMOTE_SIM_ARCH = "aarch64"
-
-
-class BuildEnvironment(Protocol):
-    def build(self, kind: ArtifactKind, workspace: Workspace) -> Artifact: ...
-
-    def clean(self, kind: ArtifactKind, workspace: Workspace) -> None: ...
-
-    def fetch(self, workspace: Workspace) -> None: ...
 
 
 @dataclass(frozen=True)

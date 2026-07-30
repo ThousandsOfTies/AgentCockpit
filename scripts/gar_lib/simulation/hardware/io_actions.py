@@ -2,7 +2,7 @@
 
 Bridge の機械向けクライアントは2つある。
 
-* ``gar sim io``（AI 向け / :mod:`scripts.gar_lib.simulation.linux` が curl を組み立てる）
+* ``gar sim io``（AI 向け / :mod:`scripts.gar_lib.simulation.runtime.linux_commands` が curl を組み立てる）
 * JSON scenario runner（CI 向け / :mod:`scripts.run_scenario` が HTTP を直接叩く）
 
 両者が別々に endpoint を持つと語彙が割れるため、解決はこのモジュールへ集約する。

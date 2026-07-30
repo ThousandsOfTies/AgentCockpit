@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.docker_install import docker_install_hint, install_docker
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
 
 class LocalDockerEnvironment(EnvironmentSetupOption):

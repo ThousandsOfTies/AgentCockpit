@@ -19,7 +19,7 @@ from scripts.gar_lib.core.config import (
     set_default_ec2_instance_id,
     set_default_ec2_region,
 )
-from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
 
 TERRAFORM_DIR = PROJECT_ROOT / "infra" / "terraform"
 

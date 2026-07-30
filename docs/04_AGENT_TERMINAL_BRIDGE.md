@@ -66,7 +66,7 @@ MCP tool `run_in_visible_terminal` は以下の request を作る。
 ```json
 {
   "command": ".venv/bin/gar setup",
-  "cwd": "/home/user/AI/GaplessAgentRuntime",
+  "cwd": "/path/to/GaplessAgentRuntime",
   "title": "Gapless Agent Runtime"
 }
 ```
@@ -74,7 +74,7 @@ MCP tool `run_in_visible_terminal` は以下の request を作る。
 MCP を使わず CLI から同じ request を作る場合:
 
 ```bash
-gar terminal run --title Gapless Agent Runtime --command ".venv/bin/gar setup"
+gar terminal run --title "Gapless Agent Runtime" --command ".venv/bin/gar setup"
 ```
 
 ## 残りの作業

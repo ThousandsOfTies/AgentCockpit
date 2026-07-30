@@ -9,9 +9,9 @@ from scripts.gar_lib.access.aws import AwsCliChannel
 from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.aws_ec2 import AwsEc2SimulationHostController
-from scripts.gar_lib.simulation.backends import simulation_host_for
-from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.simulation.composition import simulation_host_for
+from scripts.gar_lib.simulation.host.aws_ec2 import AwsEc2SimulationHostController
+from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
 
 
 class GarSimulationHostTest(unittest.TestCase):

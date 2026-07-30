@@ -11,8 +11,8 @@ from scripts.gar_lib.api import Gar
 from scripts.gar_lib.cli import main
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.diagnostic import SimulationDiagnostic
-from scripts.gar_lib.simulation.host import SimulationHostState
+from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnostic
+from scripts.gar_lib.simulation.host.contract import SimulationHostState
 
 
 def cli_args(**values: object) -> argparse.Namespace:
@@ -38,7 +38,7 @@ class GarSimulationLifecycleTest(unittest.TestCase):
             returncode=255,
         )
         with (
-            mock.patch("scripts.gar_lib.commands.sim.workspace_for", return_value=self.workspace),
+            mock.patch("scripts.gar_lib.commands.sim.resolve_workspace", return_value=self.workspace),
             mock.patch(
                 "scripts.gar_lib.api.simulation_host_for", return_value=controller
             ),

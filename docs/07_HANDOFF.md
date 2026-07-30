@@ -1,6 +1,6 @@
 # 引き継ぎ資料
 
-最終更新: 2026-06-18
+最終更新: 2026-07-31
 
 この資料は、Gapless Agent Runtime 周辺作業を別セッション・別エージェントへ
 引き継ぐための作業メモである。運用規約の正本は
@@ -23,11 +23,25 @@
 
 | パス | 役割 |
 |---|---|
-| `/home/user/Yurufuwa/GaplessAgentRuntime` | GAR の操作規約、アーキテクチャ、`gar` CLI 正本 |
-| `/home/user/Yurufuwa/gar-tools` | CUSE stubs、ESP32/M5Stack firmware runner、Renode/QEMU 足場 |
-| `/home/user/Yurufuwa/gar-build-env` | Codespaces/devcontainer build hub |
-| `/home/user/Yurufuwa/gar-vibe-ui/vibe-remote` | VS Code extension、M5Stack Vibe Remote、Local bridge |
-| `/home/user/Yurufuwa/embedded-poc-app` | ARM64 target app |
+| `/home/user/Yurufuwa/GAR/GaplessAgentRuntime` | GAR の操作規約、アーキテクチャ、`gar` CLI 正本 |
+| `/home/user/Yurufuwa/GAR/gar-tools` | CUSE stubs、ESP32/M5Stack firmware runner、Renode/QEMU 足場 |
+| `/home/user/Yurufuwa/GAR/gar-build-env` | Codespaces/devcontainer build hub |
+| `/home/user/Yurufuwa/GAR/gar-vibe-ui/vibe-remote` | VS Code extension、M5Stack Vibe Remote、Local bridge |
+| `/home/user/Yurufuwa/GAR/gar-adhoc-app` | ARM64 target app |
+| `/home/user/Yurufuwa/GarAdhocApp` | `gar-build-env`の`GarAdhocApp` product workspace。`sources/gar-adhoc-app`と`sources/gar-tools`をsubmoduleとして保持 |
+
+## GAR coreの現在地（2026-07-31）
+
+- `cli.py`はroot parserとtop-level runner選択を担当し、sim/targetのparser・action解決・
+  workspace解決・接続復旧は`commands/sim.py`と`commands/target.py`へ分離済み。
+- `gar setup`の選択肢は`EnvironmentSetupOption`として依存確認・導入だけを持ち、実行時objectは
+  `build/environment.py`、`simulation/composition.py`、`target/composition.py`が生成する。
+- `simulation/`は`runtime/`、`host/`、`hardware/`、`diagnostics/`、`session/`へ役割別に整理済み。
+- `gar sim app/runtime build`と`gar target build`は選択したlocal/Codespaces BuildEnvironmentを使う。
+  `deploy`はWSL側の最新artifactを使い、build/fetchを暗黙には実行しない。
+- Linux/systemd、Wokwi、MuJoCo runtimeは実装済み。Renode、ESP32 QEMU、AWS SSMは
+  setup IDからerror-only runtimeへ接続済みで、実際のruntime操作は未実装。
+- 現在の回帰確認は215 testsとRuffでgreen。
 
 ## 現在の作業テーマ
 
@@ -69,7 +83,7 @@ Renode、Codespaces build、WSL control plane の役割を整理している。
 確認済みコマンド:
 
 ```bash
-cd /home/user/Yurufuwa/gar-vibe-ui/vibe-remote
+cd /home/user/Yurufuwa/GAR/gar-vibe-ui/vibe-remote
 ./scripts/npm.sh run compile
 ./scripts/npm.sh run typecheck
 ./scripts/npm.sh run local:bridge -- --help
@@ -79,7 +93,7 @@ timeout 2s ./scripts/npm.sh run local:bridge -- --discovery=false --listen-port=
 M5StickC Plus2 最小 firmware の想定ビルド:
 
 ```bash
-cd /home/user/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client
+cd /home/user/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client
 pio run -e m5stickc-plus2-vibe-min
 pio run -e m5stickc-plus2-vibe-min -t upload
 pio device monitor
@@ -94,16 +108,17 @@ PATH=$HOME/.venvs/platformio/bin:$PATH make vm-package PIO_ENV=m5stickc-plus2-vi
 
 WSL へ取得済み artifact:
 
-- `/home/user/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260619-201256-m5stickc-plus2-vibe-min/`
+- `/home/user/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260619-201256-m5stickc-plus2-vibe-min/`
   - `.env.local` から Wi-Fi / token を注入して Codespaces で build/package 済み。
   - `sha256sum -c SHA256SUMS` は `boot_app0.bin` / `bootloader.bin` / `firmware.bin` / `partitions.bin` すべて OK。
-- `/home/user/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260619-063145-m5stickc-plus2-vibe-min/`
+- `/home/user/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260619-063145-m5stickc-plus2-vibe-min/`
 - `sha256sum -c SHA256SUMS` は `boot_app0.bin` / `bootloader.bin` / `firmware.bin` / `partitions.bin` すべて OK。
 
 実機 flash は GAR コマンド化済み:
 
 ```bash
-cd /home/user/Yurufuwa/GaplessAgentRuntime
+cd /home/user/Yurufuwa/GAR/GaplessAgentRuntime
+gar target build
 gar target deploy
 ```
 
@@ -114,7 +129,7 @@ gar target deploy
 Local bridge の利用例:
 
 ```bash
-cd /home/user/Yurufuwa/gar-vibe-ui/vibe-remote
+cd /home/user/Yurufuwa/GAR/gar-vibe-ui/vibe-remote
 ./scripts/npm.sh run local:bridge -- --listen-port=39272 --upstream-port=39271
 ./scripts/npm.sh run local:bridge -- --spp-port=COM5
 ```
@@ -144,7 +159,7 @@ M5 firmware の PlatformIO build は WSL ではなく Codespaces で確認する
 確認済みコマンド:
 
 ```bash
-cd /home/user/Yurufuwa/gar-tools
+cd /home/user/Yurufuwa/GAR/gar-tools
 python3 -m py_compile targets/esp32/probes/spp-jsonl/bin/gar-spp-jsonl-probe
 targets/esp32/probes/spp-jsonl/bin/gar-spp-jsonl-probe --help
 renode-test targets/esp32/renode/m5status-tiny/m5status-tiny.robot
@@ -166,8 +181,8 @@ gh codespace ssh -c friendly-dollop-rq94rwxrxrvfwwv4 -- \
 
 取得済み artifact:
 
-- `/home/user/Yurufuwa/gar-build-env/artifacts/from-codespace`
-- `/home/user/Yurufuwa/gar-tools/artifacts/from-codespace-gar-tools/`
+- `/home/user/Yurufuwa/GAR/gar-build-env/artifacts/from-codespace`
+- `/home/user/Yurufuwa/GAR/gar-tools/artifacts/from-codespace-gar-tools/`
 
 取得した主要 binary は ARM aarch64 ELF として確認済み。
 

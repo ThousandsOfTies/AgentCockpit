@@ -5,7 +5,7 @@ import pkgutil
 from pathlib import Path
 
 import scripts.gar_lib.environments.registry as registry_pkg
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
 
 class EnvironmentDiscoveryError(RuntimeError):

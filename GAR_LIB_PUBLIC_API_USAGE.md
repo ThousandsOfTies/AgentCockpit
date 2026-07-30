@@ -8,24 +8,24 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `AdbShellChannel` | 45 | target.backends(2), tests.test_gar_access_channels(2) |
-| `AdbFileChannel` | 53 | target.backends(2), tests.test_gar_access_channels(1) |
+| `AdbShellChannel` | 45 | target.composition(2), tests.test_gar_access_channels(2) |
+| `AdbFileChannel` | 53 | target.composition(2), tests.test_gar_access_channels(1) |
 
 ## `access.aws` (scripts/gar_lib/access/aws.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `AwsCommandChannel` | 24 | simulation.aws_ec2(1), simulation.aws_ssm(1) |
-| `AwsCliChannel` | 28 | simulation.backends(2), tests.test_gar_simulation_host(1) |
+| `AwsCommandChannel` | 24 | simulation.host.aws_ec2(1), simulation.runtime.aws_ssm(1) |
+| `AwsCliChannel` | 28 | simulation.composition(2), tests.test_gar_simulation_host(1) |
 
 ## `access.channel` (scripts/gar_lib/access/channel.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `AccessResult` | 13 | access.adb(4), access.aws(2), access.docker(6), access.ssh(4), simulation.aws_ec2(1), simulation.control(1), simulation.diagnostic(1), tests.test_gar_docker_simulation_host(16), tests.test_gar_hardware_control(3), tests.test_gar_linux_systemd_environment(5), tests.test_gar_simulation_host(6) |
+| `AccessResult` | 13 | access.adb(4), access.aws(2), access.docker(6), access.ssh(4), simulation.diagnostics.model(1), simulation.hardware.control(1), simulation.host.aws_ec2(1), tests.test_gar_docker_simulation_host(16), tests.test_gar_hardware_control(3), tests.test_gar_linux_systemd_environment(5), tests.test_gar_simulation_host(6) |
 | `ConsoleSession` | 23 | access.serial(2) |
-| `CommandChannel` | 27 | simulation.aws_ec2(1), simulation.control(1), simulation.docker_host(1), simulation.linux_systemd(1), target.file_transfer(1) |
-| `FileChannel` | 31 | simulation.linux_systemd(1), target.file_transfer(1) |
+| `CommandChannel` | 27 | simulation.hardware.control(1), simulation.host.aws_ec2(1), simulation.host.docker(1), simulation.runtime.linux_systemd(1), target.file_transfer(1) |
+| `FileChannel` | 31 | simulation.runtime.linux_systemd(1), target.file_transfer(1) |
 | `ConsoleChannel` | 37 | _(外部参照なし)_ |
 | `run_cli` | 44 | access.adb(2), access.aws(1), access.docker(3), access.ssh(2) |
 
@@ -44,10 +44,10 @@
 | `CONTAINER_FAILURE_MARKERS` | 20 | _(外部参照なし)_ |
 | `docker_executable` | 28 | _(外部参照なし)_ |
 | `connection_reason` | 37 | _(外部参照なし)_ |
-| `DockerCliCommandChannel` | 46 | simulation.docker_host(1) |
-| `DockerCliChannel` | 50 | simulation.backends(1), tests.test_gar_docker_simulation_host(2) |
-| `DockerCommandChannel` | 66 | simulation.backends(3), tests.test_gar_docker_simulation_host(4) |
-| `DockerFileChannel` | 95 | simulation.backends(1), tests.test_gar_docker_simulation_host(2) |
+| `DockerCliCommandChannel` | 46 | simulation.host.docker(1) |
+| `DockerCliChannel` | 50 | simulation.composition(1), tests.test_gar_docker_simulation_host(2) |
+| `DockerCommandChannel` | 66 | simulation.composition(3), tests.test_gar_docker_simulation_host(4) |
+| `DockerFileChannel` | 95 | simulation.composition(1), tests.test_gar_docker_simulation_host(2) |
 
 ## `access.serial` (scripts/gar_lib/access/serial.py)
 
@@ -60,8 +60,8 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `SSH_CONNECTION_OPTIONS` | 11 | _(外部参照なし)_ |
-| `SshCommandChannel` | 38 | simulation.backends(3), target.backends(1), tests.test_gar_access_channels(3) |
-| `ScpFileChannel` | 65 | simulation.backends(1), target.backends(1), tests.test_gar_access_channels(1) |
+| `SshCommandChannel` | 38 | simulation.composition(3), target.composition(1), tests.test_gar_access_channels(3) |
+| `ScpFileChannel` | 65 | simulation.composition(1), target.composition(1), tests.test_gar_access_channels(1) |
 
 ## `api` (scripts/gar_lib/api.py)
 
@@ -91,51 +91,51 @@
 | `find_artifact_manifest` | 172 | _(外部参照なし)_ |
 | `load_artifact_manifest` | 183 | _(外部参照なし)_ |
 | `artifact_deploy_files` | 202 | _(外部参照なし)_ |
-| `resolve_artifact_src` | 240 | simulation.linux_systemd(1), simulation.wokwi(1), target.esp32(1), target.file_transfer(1) |
-| `load_deploy_files` | 255 | artifacts.store(1), simulation.linux_systemd(1), simulation.wokwi(1), target.esp32(1), target.file_transfer(1) |
+| `resolve_artifact_src` | 240 | simulation.runtime.linux_systemd(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1) |
+| `load_deploy_files` | 255 | artifacts.store(1), simulation.runtime.linux_systemd(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1) |
 | `target_dest_path` | 268 | target.file_transfer(1) |
 
 ## `artifacts.store` (scripts/gar_lib/artifacts/store.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactStore` | 15 | api(5), build.backends(1), build.local(1) |
+| `ArtifactStore` | 15 | api(5), build.environment(1), build.local(1) |
 | `LocalArtifactStore` | 19 | api(1), build.codespaces(1), build.esp32(1), tests.test_gar_sim_architecture(2), tests.test_gar_target_architecture(1) |
-
-## `build._base` (scripts/gar_lib/build/_base.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `DEFAULT_REMOTE_SIM_ARCH` | 15 | _(外部参照なし)_ |
-| `BuildEnvironment` | 18 | build.backends(1) |
-| `BuildSpec` | 27 | _(外部参照なし)_ |
-| `compiler_for_architecture` | 32 | _(外部参照なし)_ |
-| `simulation_build_variables` | 40 | _(外部参照なし)_ |
-| `ProductBuildSpecResolver` | 60 | build.codespaces(2), build.local(2), tests.test_gar_build_variables(1) |
-
-## `build.backends` (scripts/gar_lib/build/backends.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `build_environment_for` | 14 | api(5) |
 
 ## `build.codespaces` (scripts/gar_lib/build/codespaces.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `CodespacesBuildEnvironment` | 16 | build.backends(1), tests.test_gar_build_variables(1), tests.test_gar_sim_architecture(1) |
+| `CodespacesBuildEnvironment` | 16 | build.environment(1), tests.test_gar_build_variables(1), tests.test_gar_sim_architecture(1) |
+
+## `build.environment` (scripts/gar_lib/build/environment.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `BuildEnvironment` | 16 | _(外部参照なし)_ |
+| `build_environment_for` | 24 | api(5) |
 
 ## `build.esp32` (scripts/gar_lib/build/esp32.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Esp32BuildEnvironment` | 33 | build.backends(1) |
+| `Esp32BuildEnvironment` | 33 | build.environment(1) |
 
 ## `build.local` (scripts/gar_lib/build/local.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `LocalBuildEnvironment` | 15 | build.backends(1), tests.test_gar_build_variables(1), tests.test_gar_sim_architecture(1), tests.test_gar_target_architecture(1) |
+| `LocalBuildEnvironment` | 15 | build.environment(1), tests.test_gar_build_variables(1), tests.test_gar_sim_architecture(1), tests.test_gar_target_architecture(1) |
+
+## `build.spec` (scripts/gar_lib/build/spec.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `DEFAULT_REMOTE_SIM_ARCH` | 14 | _(外部参照なし)_ |
+| `BuildSpec` | 18 | _(外部参照なし)_ |
+| `compiler_for_architecture` | 23 | _(外部参照なし)_ |
+| `simulation_build_variables` | 31 | _(外部参照なし)_ |
+| `ProductBuildSpecResolver` | 51 | build.codespaces(2), build.local(2), tests.test_gar_build_variables(1) |
 
 ## `cli` (scripts/gar_lib/cli.py)
 
@@ -248,8 +248,8 @@
 |---|---:|---|
 | `IO_PARAMETERS` | 18 | _(外部参照なし)_ |
 | `SIM_ACTIONS` | 22 | _(外部参照なし)_ |
-| `add_sim_parser` | 88 | cli(1) |
-| `run_sim_command` | 252 | cli(1) |
+| `add_sim_parser` | 122 | cli(1) |
+| `run_sim_command` | 286 | cli(1) |
 
 ## `commands.target` (scripts/gar_lib/commands/target.py)
 
@@ -273,22 +273,22 @@
 | `ANDROID_HINTS` | 30 | _(外部参照なし)_ |
 | `ANDROID_VIDS` | 32 | _(外部参照なし)_ |
 | `UsbDevice` | 36 | _(外部参照なし)_ |
-| `parse_usbipd_list` | 78 | tests.test_gar_cli(6) |
-| `list_usb_devices` | 129 | _(外部参照なし)_ |
-| `run_usb_command` | 236 | cli(1), tests.test_gar_cli(5) |
+| `parse_usbipd_list` | 184 | tests.test_gar_cli(6) |
+| `list_usb_devices` | 235 | _(外部参照なし)_ |
+| `run_usb_command` | 243 | cli(1), tests.test_gar_cli(5) |
 
-## `commands.workspace` (scripts/gar_lib/commands/workspace.py)
+## `commands.workspace_resolver` (scripts/gar_lib/commands/workspace_resolver.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `workspace_for` | 10 | commands.sim(1), commands.target(1), tests.test_gar_cli(1), tests.test_gar_sim_architecture(2) |
+| `resolve_workspace` | 46 | commands.sim(1), commands.target(1), tests.test_gar_cli(1), tests.test_gar_sim_architecture(2) |
 
 ## `core.artifact` (scripts/gar_lib/core/artifact.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactKind` | 12 | api(7), artifacts.store(5), build._base(8), build.codespaces(2), build.esp32(4), build.local(2), simulation.linux_systemd(2), simulation.mujoco(1), simulation.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_build_variables(8), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(7), tests.test_gar_wokwi_environment(2) |
-| `Artifact` | 19 | artifacts.store(3), build._base(1), build.codespaces(1), build.esp32(2), build.local(1), simulation.environment(1), simulation.linux_systemd(1), simulation.mujoco(1), simulation.pending(1), simulation.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(2), tests.test_gar_wokwi_environment(2) |
+| `ArtifactKind` | 12 | api(7), artifacts.store(5), build.codespaces(2), build.environment(2), build.esp32(4), build.local(2), build.spec(6), simulation.runtime.linux_systemd(2), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_build_variables(8), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(7), tests.test_gar_wokwi_environment(2) |
+| `Artifact` | 19 | artifacts.store(3), build.codespaces(1), build.environment(1), build.esp32(2), build.local(1), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(2), tests.test_gar_wokwi_environment(2) |
 
 ## `core.command` (scripts/gar_lib/core/command.py)
 
@@ -316,7 +316,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `PROJECT_ROOT` | 13 | artifacts.manifest(1), artifacts.store(1), commands.infra(1), core.hardware(1), core.tools_repository(5), environments.registry.target.esp32_esptool(2), simulation.backends(1), simulation.mujoco(4), simulation.remote_session(1), target.esp32_firmware(1), vscode.terminal_bridge(1), tests.test_gar_cli(3) |
+| `PROJECT_ROOT` | 13 | artifacts.manifest(1), artifacts.store(1), commands.infra(1), core.hardware(1), core.tools_repository(5), environments.registry.target.esp32_esptool(2), simulation.composition(1), simulation.runtime.mujoco(4), simulation.session.remote(1), target.esp32_firmware(1), vscode.terminal_bridge(1), tests.test_gar_cli(3) |
 | `CONFIG_PATH` | 17 | commands.terminal(2) |
 | `VSCODE_EXT_NAME` | 19 | vscode.terminal_bridge(3) |
 | `VSCODE_EXT_VERSION` | 20 | vscode.terminal_bridge(2) |
@@ -326,7 +326,7 @@
 | `RUNTIME_HOST_PATTERN` | 26 | _(外部参照なし)_ |
 | `is_valid_runtime_host` | 29 | commands.setup(1) |
 | `set_active_workspace_root` | 33 | commands.setup(1) |
-| `load_config` | 111 | commands.code(1), commands.infra(2), commands.setup(2), commands.usb(1), commands.workspace(1), environments.registry.target.adb_win(1), target.esptool(1), target.manifest(1), tests.test_gar_cli(5) |
+| `load_config` | 111 | commands.code(1), commands.infra(2), commands.setup(2), commands.usb(1), commands.workspace_resolver(1), environments.registry.target.adb_win(1), target.esptool(1), target.manifest(1), tests.test_gar_cli(5) |
 | `save_config` | 234 | commands.infra(1), commands.setup(11), commands.usb(1), environments.registry.target.adb_win(1), tests.test_gar_cli(10) |
 | `default_config` | 289 | tests.test_gar_cli(2) |
 | `default_ec2_host` | 299 | commands.infra(2), commands.setup(1) |
@@ -339,7 +339,7 @@
 | `set_saved_esp32_serial_port` | 349 | commands.setup(2) |
 | `saved_target_setting` | 357 | commands.setup(2) |
 | `set_saved_target_setting` | 364 | commands.setup(2) |
-| `saved_workspaces` | 372 | commands.setup(1), commands.workspace(1) |
+| `saved_workspaces` | 372 | commands.setup(1), commands.workspace_resolver(1) |
 | `set_saved_workspaces` | 376 | commands.setup(1) |
 | `saved_adb_exe` | 387 | environments.registry.target.adb_win(1) |
 | `set_saved_adb_exe` | 394 | environments.registry.target.adb_win(1) |
@@ -351,7 +351,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(2), build._base(1), build.backends(1), build.codespaces(2), build.esp32(2), build.local(4), commands.sim(5), commands.target(6), commands.workspace(1), core.workspace(5), simulation.aws_ec2(4), simulation.backends(6), simulation.docker_host(4), simulation.linux_systemd(5), simulation.mujoco(5), simulation.pending(1), simulation.wokwi(8), target.backends(4), target.esp32(4), target.esp32_firmware(6), target.file_transfer(6), tests.test_gar_docker_simulation_host(4), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(2), tests.test_gar_wokwi_environment(2) |
+| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(2), build.codespaces(2), build.environment(1), build.esp32(2), build.local(4), build.spec(1), commands.sim(5), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(6), simulation.host.aws_ec2(4), simulation.host.docker(4), simulation.runtime.linux_systemd(5), simulation.runtime.mujoco(5), simulation.runtime.pending(1), simulation.runtime.wokwi(8), target.composition(4), target.esp32(4), target.esp32_firmware(6), target.file_transfer(6), tests.test_gar_docker_simulation_host(4), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(2), tests.test_gar_wokwi_environment(2) |
 | `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1) |
 
 ## `core.hardware` (scripts/gar_lib/core/hardware.py)
@@ -369,7 +369,7 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `DEFAULT_GAR_TOOLS_REPO` | 11 | _(外部参照なし)_ |
-| `gar_tools_root` | 14 | core.hardware(1), simulation.backends(1), target.manifest(1) |
+| `gar_tools_root` | 14 | core.hardware(1), simulation.composition(1), target.manifest(1) |
 | `find_gar_tools_root` | 21 | _(外部参照なし)_ |
 | `gar_tools_root_candidates` | 28 | _(外部参照なし)_ |
 | `ensure_gar_tools_available` | 52 | commands.setup(1), tests.test_gar_cli(1) |
@@ -378,14 +378,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Workspace` | 14 | api(8), artifacts.store(4), build._base(5), build.backends(1), build.codespaces(3), build.esp32(5), build.local(3), commands.recovery(2), commands.workspace(2), core.artifact(1), simulation.backends(8), target.backends(1), tests.test_gar_access_recovery(1), tests.test_gar_build_variables(4), tests.test_gar_cli(3), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(3), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(2), tests.test_gar_target_architecture(5), tests.test_gar_wokwi_environment(2) |
-
-## `environments._base` (scripts/gar_lib/environments/_base.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `CommandStatus` | 11 | environments.registry.simulator.mujoco(2), environments.registry.simulator.renode_mcu(2), environments.registry.simulator.wokwi(2), environments.registry.target.esp32_esptool(2) |
-| `EnvironmentSetupOption` | 20 | commands.setup(19), environments.discovery(6), environments.registry.codespace.github_codespaces(1), environments.registry.codespace.local_docker(1), environments.registry.simulator.aws_ssm(1), environments.registry.simulator.esp32_qemu(1), environments.registry.simulator.local_docker(1), environments.registry.simulator.mujoco(1), environments.registry.simulator.renode_mcu(1), environments.registry.simulator.ssh_remote(1), environments.registry.simulator.wokwi(1), environments.registry.target.adb_usb(1), environments.registry.target.adb_win(1), environments.registry.target.esp32_esptool(1), environments.registry.target.ssh_scp(1), tests.test_gar_cli(6), tests.test_gar_discovery(1) |
+| `Workspace` | 14 | api(8), artifacts.store(4), build.codespaces(3), build.environment(4), build.esp32(5), build.local(3), build.spec(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), target.composition(1), tests.test_gar_access_recovery(1), tests.test_gar_build_variables(4), tests.test_gar_cli(3), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(3), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(2), tests.test_gar_target_architecture(5), tests.test_gar_wokwi_environment(2) |
 
 ## `environments.discovery` (scripts/gar_lib/environments/discovery.py)
 
@@ -500,84 +493,49 @@
 |---|---:|---|
 | `SshScpEnvironment` | 6 | _(外部参照なし)_ |
 
-## `simulation.aws_ec2` (scripts/gar_lib/simulation/aws_ec2.py)
+## `environments.setup_option` (scripts/gar_lib/environments/setup_option.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `AwsEc2SimulationHostController` | 14 | simulation.backends(1), tests.test_gar_simulation_host(3) |
+| `DependencyStatus` | 11 | environments.registry.simulator.mujoco(2), environments.registry.simulator.renode_mcu(3), environments.registry.simulator.wokwi(2), environments.registry.target.esp32_esptool(2) |
+| `EnvironmentSetupOption` | 20 | commands.setup(19), environments.discovery(6), environments.registry.codespace.github_codespaces(1), environments.registry.codespace.local_docker(1), environments.registry.simulator.aws_ssm(1), environments.registry.simulator.esp32_qemu(1), environments.registry.simulator.local_docker(1), environments.registry.simulator.mujoco(1), environments.registry.simulator.renode_mcu(1), environments.registry.simulator.ssh_remote(1), environments.registry.simulator.wokwi(1), environments.registry.target.adb_usb(1), environments.registry.target.adb_win(1), environments.registry.target.esp32_esptool(1), environments.registry.target.ssh_scp(1), tests.test_gar_cli(6), tests.test_gar_discovery(1) |
 
-## `simulation.aws_ssm` (scripts/gar_lib/simulation/aws_ssm.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `AwsSsmSimulationEnvironment` | 9 | simulation.backends(1), tests.test_gar_pending_simulation_environments(1) |
-
-## `simulation.backends` (scripts/gar_lib/simulation/backends.py)
+## `simulation.composition` (scripts/gar_lib/simulation/composition.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `LOCAL_DOCKER` | 52 | _(外部参照なし)_ |
-| `selected_simulator` | 55 | _(外部参照なし)_ |
-| `simulation_environment_for` | 59 | api(8), tests.test_gar_docker_simulation_host(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_wokwi_environment(1) |
-| `simulation_host_for` | 101 | api(3), tests.test_gar_docker_simulation_host(4), tests.test_gar_simulation_host(2), tests.test_gar_wokwi_environment(1) |
-| `hardware_control_for` | 141 | api(2), tests.test_gar_docker_simulation_host(1) |
-| `docker_spec_for` | 170 | _(外部参照なし)_ |
+| `LOCAL_DOCKER` | 50 | _(外部参照なし)_ |
+| `selected_simulator` | 53 | _(外部参照なし)_ |
+| `simulation_environment_for` | 57 | api(8), tests.test_gar_docker_simulation_host(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_wokwi_environment(1) |
+| `simulation_host_for` | 99 | api(3), tests.test_gar_docker_simulation_host(4), tests.test_gar_simulation_host(2), tests.test_gar_wokwi_environment(1) |
+| `hardware_control_for` | 139 | api(2), tests.test_gar_docker_simulation_host(1) |
+| `docker_spec_for` | 168 | _(外部参照なし)_ |
 
-## `simulation.control` (scripts/gar_lib/simulation/control.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `HardwareControlResult` | 15 | simulation.mujoco(6) |
-| `SimulationHardwareControl` | 34 | simulation.backends(1) |
-| `LinuxBridgeHardwareControl` | 44 | simulation.backends(2), tests.test_gar_docker_simulation_host(1), tests.test_gar_hardware_control(4) |
-
-## `simulation.diagnostic` (scripts/gar_lib/simulation/diagnostic.py)
+## `simulation.diagnostics.model` (scripts/gar_lib/simulation/diagnostics/model.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `SimulationDiagnosticReport` | 13 | simulation.environment(1), simulation.pending(1) |
-| `PayloadSimulationDiagnostic` | 21 | simulation.mujoco(2), simulation.wokwi(2) |
-| `SimulationDiagnostic` | 34 | simulation.linux_systemd(2), tests.test_gar_sim_lifecycle(1) |
+| `SimulationDiagnosticReport` | 13 | simulation.runtime.contract(1), simulation.runtime.pending(1) |
+| `PayloadSimulationDiagnostic` | 21 | simulation.runtime.mujoco(2), simulation.runtime.wokwi(2) |
+| `SimulationDiagnostic` | 34 | simulation.runtime.linux_systemd(2), tests.test_gar_sim_lifecycle(1) |
 
-## `simulation.docker_host` (scripts/gar_lib/simulation/docker_host.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `BACKEND_ID` | 13 | simulation.backends(1) |
-| `DEFAULT_CONTAINER` | 15 | simulation.backends(1) |
-| `DEFAULT_ADDRESS` | 16 | _(外部参照なし)_ |
-| `ABSENT_STATE` | 18 | tests.test_gar_docker_simulation_host(1) |
-| `DockerSimulationHostController` | 21 | simulation.backends(1), tests.test_gar_docker_simulation_host(4) |
-
-## `simulation.docker_spec` (scripts/gar_lib/simulation/docker_spec.py)
+## `simulation.diagnostics.parse` (scripts/gar_lib/simulation/diagnostics/parse.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `DEFAULT_BRIDGE_PORT` | 10 | _(外部参照なし)_ |
-| `DockerHostSpec` | 14 | simulation.backends(3), simulation.docker_host(1), tests.test_gar_docker_simulation_host(1) |
-| `docker_host_spec` | 24 | simulation.backends(1), tests.test_gar_docker_simulation_host(1) |
+| `parse_sim_diag` | 7 | simulation.diagnostics.model(1), tests.test_gar_cli(2) |
+| `parse_gpio_runtime_status` | 60 | simulation.hardware.control(1), tests.test_gar_cli(1) |
+| `parse_gpio_sim_check` | 108 | simulation.hardware.control(1), tests.test_gar_cli(1) |
 
-## `simulation.environment` (scripts/gar_lib/simulation/environment.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `SimulationEnvironment` | 11 | simulation.backends(1) |
-
-## `simulation.esp32_qemu` (scripts/gar_lib/simulation/esp32_qemu.py)
+## `simulation.hardware.control` (scripts/gar_lib/simulation/hardware/control.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Esp32QemuSimulationEnvironment` | 9 | simulation.backends(1), tests.test_gar_pending_simulation_environments(1) |
+| `HardwareControlResult` | 15 | simulation.hardware.mujoco(6) |
+| `SimulationHardwareControl` | 34 | simulation.composition(1) |
+| `LinuxBridgeHardwareControl` | 44 | simulation.composition(2), tests.test_gar_docker_simulation_host(1), tests.test_gar_hardware_control(4) |
 
-## `simulation.host` (scripts/gar_lib/simulation/host.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `SimulationHostState` | 11 | simulation.aws_ec2(2), simulation.docker_host(2), tests.test_gar_sim_lifecycle(1) |
-| `SimulationHostStartResult` | 39 | simulation.aws_ec2(2), simulation.docker_host(2) |
-| `SimulationHostController` | 46 | simulation.backends(1) |
-
-## `simulation.io_actions` (scripts/gar_lib/simulation/io_actions.py)
+## `simulation.hardware.io_actions` (scripts/gar_lib/simulation/hardware/io_actions.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
@@ -589,9 +547,74 @@
 | `IO_DEVICES` | 31 | _(外部参照なし)_ |
 | `IoRequest` | 35 | _(外部参照なし)_ |
 | `resolve_button_line` | 43 | _(外部参照なし)_ |
-| `resolve` | 53 | simulation.linux(1), tests.test_gar_cli(1) |
+| `resolve` | 53 | simulation.runtime.linux_commands(1), tests.test_gar_cli(1) |
 
-## `simulation.linux` (scripts/gar_lib/simulation/linux.py)
+## `simulation.hardware.mujoco` (scripts/gar_lib/simulation/hardware/mujoco.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `DEFAULT_BRIDGE_URL` | 12 | simulation.runtime.mujoco(1) |
+| `MujocoBridgeHardwareControl` | 15 | simulation.composition(1) |
+| `bridge_state` | 58 | simulation.runtime.mujoco(1) |
+
+## `simulation.host.aws_ec2` (scripts/gar_lib/simulation/host/aws_ec2.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `AwsEc2SimulationHostController` | 14 | simulation.composition(1), tests.test_gar_simulation_host(3) |
+
+## `simulation.host.contract` (scripts/gar_lib/simulation/host/contract.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `SimulationHostState` | 11 | simulation.host.aws_ec2(2), simulation.host.docker(2), tests.test_gar_sim_lifecycle(1) |
+| `SimulationHostStartResult` | 39 | simulation.host.aws_ec2(2), simulation.host.docker(2) |
+| `SimulationHostController` | 46 | simulation.composition(1) |
+
+## `simulation.host.docker` (scripts/gar_lib/simulation/host/docker.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `BACKEND_ID` | 13 | simulation.composition(1) |
+| `DEFAULT_CONTAINER` | 15 | simulation.composition(1) |
+| `DEFAULT_ADDRESS` | 16 | _(外部参照なし)_ |
+| `ABSENT_STATE` | 18 | tests.test_gar_docker_simulation_host(1) |
+| `DockerSimulationHostController` | 21 | simulation.composition(1), tests.test_gar_docker_simulation_host(4) |
+
+## `simulation.host.docker_spec` (scripts/gar_lib/simulation/host/docker_spec.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `DEFAULT_BRIDGE_PORT` | 10 | _(外部参照なし)_ |
+| `DockerHostSpec` | 14 | simulation.composition(3), simulation.host.docker(1), tests.test_gar_docker_simulation_host(1) |
+| `docker_host_spec` | 24 | simulation.composition(1), tests.test_gar_docker_simulation_host(1) |
+
+## `simulation.host.ssh_config` (scripts/gar_lib/simulation/host/ssh_config.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `HostAddressUpdater` | 10 | simulation.host.aws_ec2(1) |
+| `SshConfigHostAddressUpdater` | 14 | commands.infra(1), simulation.composition(1), tests.test_gar_cli(2), tests.test_gar_simulation_host(1) |
+
+## `simulation.runtime.aws_ssm` (scripts/gar_lib/simulation/runtime/aws_ssm.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `AwsSsmSimulationEnvironment` | 9 | simulation.composition(1), tests.test_gar_pending_simulation_environments(1) |
+
+## `simulation.runtime.contract` (scripts/gar_lib/simulation/runtime/contract.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `SimulationEnvironment` | 11 | simulation.composition(1) |
+
+## `simulation.runtime.esp32_qemu` (scripts/gar_lib/simulation/runtime/esp32_qemu.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `Esp32QemuSimulationEnvironment` | 9 | simulation.composition(1), tests.test_gar_pending_simulation_environments(1) |
+
+## `simulation.runtime.linux_commands` (scripts/gar_lib/simulation/runtime/linux_commands.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
@@ -610,85 +633,68 @@
 | `GAR_CUSE_SPI` | 25 | _(外部参照なし)_ |
 | `PANEL_BASE_URL` | 26 | _(外部参照なし)_ |
 | `SIM_GPIO_SIM_CHECK_COMMAND` | 28 | _(外部参照なし)_ |
-| `gpio_sim_plan` | 141 | simulation.control(1), tests.test_gar_cli(1) |
-| `LinuxSystemdCommandBuilder` | 168 | simulation.backends(4), simulation.control(1), simulation.linux_systemd(1), tests.test_gar_cli(9) |
+| `gpio_sim_plan` | 141 | simulation.hardware.control(1), tests.test_gar_cli(1) |
+| `LinuxSystemdCommandBuilder` | 168 | simulation.composition(4), simulation.hardware.control(1), simulation.runtime.linux_systemd(1), tests.test_gar_cli(9) |
 
-## `simulation.linux_systemd` (scripts/gar_lib/simulation/linux_systemd.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `LinuxSystemdSimulationEnvironment` | 16 | simulation.backends(2), tests.test_gar_docker_simulation_host(1), tests.test_gar_linux_systemd_environment(5) |
-
-## `simulation.mujoco` (scripts/gar_lib/simulation/mujoco.py)
+## `simulation.runtime.linux_systemd` (scripts/gar_lib/simulation/runtime/linux_systemd.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `DEFAULT_MODEL_PATH` | 21 | _(外部参照なし)_ |
-| `DEFAULT_WORKSPACE_DIR` | 22 | _(外部参照なし)_ |
-| `DEFAULT_BRIDGE_URL` | 23 | _(外部参照なし)_ |
-| `MujocoSimulationEnvironment` | 26 | simulation.backends(1), tests.test_gar_discovery(1) |
-| `MujocoBridgeHardwareControl` | 200 | simulation.backends(1) |
+| `LinuxSystemdSimulationEnvironment` | 16 | simulation.composition(2), tests.test_gar_docker_simulation_host(1), tests.test_gar_linux_systemd_environment(5) |
 
-## `simulation.parse` (scripts/gar_lib/simulation/parse.py)
+## `simulation.runtime.mujoco` (scripts/gar_lib/simulation/runtime/mujoco.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `parse_sim_diag` | 7 | simulation.diagnostic(1), tests.test_gar_cli(2) |
-| `parse_gpio_runtime_status` | 60 | simulation.control(1), tests.test_gar_cli(1) |
-| `parse_gpio_sim_check` | 108 | simulation.control(1), tests.test_gar_cli(1) |
+| `DEFAULT_MODEL_PATH` | 19 | _(外部参照なし)_ |
+| `DEFAULT_WORKSPACE_DIR` | 20 | _(外部参照なし)_ |
+| `MujocoSimulationEnvironment` | 21 | simulation.composition(1), tests.test_gar_discovery(1) |
 
-## `simulation.pending` (scripts/gar_lib/simulation/pending.py)
+## `simulation.runtime.pending` (scripts/gar_lib/simulation/runtime/pending.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `PendingSimulationEnvironment` | 12 | simulation.aws_ssm(1), simulation.esp32_qemu(1), simulation.renode(1) |
+| `PendingSimulationEnvironment` | 12 | simulation.runtime.aws_ssm(1), simulation.runtime.esp32_qemu(1), simulation.runtime.renode(1) |
 
-## `simulation.process` (scripts/gar_lib/simulation/process.py)
+## `simulation.runtime.process` (scripts/gar_lib/simulation/runtime/process.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `ProcessLaunchResult` | 15 | tests.test_gar_wokwi_environment(1) |
-| `ProcessChannel` | 20 | simulation.esp32_qemu(1), simulation.mujoco(1), simulation.renode(1), simulation.wokwi(1) |
-| `LocalProcessChannel` | 36 | simulation.backends(4), simulation.mujoco(1), tests.test_gar_simulation_process(1) |
+| `ProcessChannel` | 20 | simulation.runtime.esp32_qemu(1), simulation.runtime.mujoco(1), simulation.runtime.renode(1), simulation.runtime.wokwi(1) |
+| `LocalProcessChannel` | 36 | simulation.composition(4), simulation.runtime.mujoco(1), tests.test_gar_simulation_process(1) |
 
-## `simulation.remote_session` (scripts/gar_lib/simulation/remote_session.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `start_sim_port_forward` | 14 | simulation.session(1) |
-| `stop_sim_port_forward` | 18 | simulation.session(1) |
-| `status_sim_port_forward` | 22 | simulation.session(1) |
-| `write_sim_terminal_profile` | 33 | simulation.session(1) |
-| `sim_terminal_script` | 60 | _(外部参照なし)_ |
-
-## `simulation.renode` (scripts/gar_lib/simulation/renode.py)
+## `simulation.runtime.renode` (scripts/gar_lib/simulation/runtime/renode.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `RenodeSimulationEnvironment` | 9 | simulation.backends(1), tests.test_gar_pending_simulation_environments(1) |
+| `RenodeSimulationEnvironment` | 9 | simulation.composition(1), tests.test_gar_pending_simulation_environments(1) |
 
-## `simulation.session` (scripts/gar_lib/simulation/session.py)
+## `simulation.runtime.wokwi` (scripts/gar_lib/simulation/runtime/wokwi.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `DEFAULT_TIMEOUT_MS` | 17 | _(外部参照なし)_ |
+| `WokwiSimulationEnvironment` | 20 | simulation.composition(1), tests.test_gar_wokwi_environment(6) |
+
+## `simulation.session.manager` (scripts/gar_lib/simulation/session/manager.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `SimulationSessionManager` | 15 | _(外部参照なし)_ |
 | `VsCodeSimulationSessionManager` | 31 | api(3) |
 
-## `simulation.ssh_config` (scripts/gar_lib/simulation/ssh_config.py)
+## `simulation.session.remote` (scripts/gar_lib/simulation/session/remote.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `HostAddressUpdater` | 10 | simulation.aws_ec2(1) |
-| `SshConfigHostAddressUpdater` | 14 | commands.infra(1), simulation.backends(1), tests.test_gar_cli(2), tests.test_gar_simulation_host(1) |
+| `start_sim_port_forward` | 14 | simulation.session.manager(1) |
+| `stop_sim_port_forward` | 18 | simulation.session.manager(1) |
+| `status_sim_port_forward` | 22 | simulation.session.manager(1) |
+| `write_sim_terminal_profile` | 33 | simulation.session.manager(1) |
+| `sim_terminal_script` | 60 | _(外部参照なし)_ |
 
-## `simulation.wokwi` (scripts/gar_lib/simulation/wokwi.py)
-
-| メンバ | 行 | 参照元module (回数) |
-|---|---:|---|
-| `DEFAULT_TIMEOUT_MS` | 17 | _(外部参照なし)_ |
-| `WokwiSimulationEnvironment` | 20 | simulation.backends(1), tests.test_gar_wokwi_environment(6) |
-
-## `target.backends` (scripts/gar_lib/target/backends.py)
+## `target.composition` (scripts/gar_lib/target/composition.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
@@ -698,13 +704,13 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `TargetEnvironment` | 10 | target.backends(1), target.file_transfer(1) |
+| `TargetEnvironment` | 10 | target.composition(1), target.file_transfer(1) |
 
 ## `target.esp32` (scripts/gar_lib/target/esp32.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Esp32TargetEnvironment` | 14 | target.backends(1), tests.test_gar_target_architecture(2) |
+| `Esp32TargetEnvironment` | 14 | target.composition(1), tests.test_gar_target_architecture(2) |
 
 ## `target.esp32_firmware` (scripts/gar_lib/target/esp32_firmware.py)
 
@@ -740,7 +746,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `FileTransferTargetEnvironment` | 19 | target.backends(3), tests.test_gar_target_architecture(1) |
+| `FileTransferTargetEnvironment` | 19 | target.composition(3), tests.test_gar_target_architecture(1) |
 
 ## `target.manifest` (scripts/gar_lib/target/manifest.py)
 
@@ -748,14 +754,14 @@
 |---|---:|---|
 | `TargetManifest` | 16 | commands.setup(12), tests.test_gar_cli(14), tests.test_gar_docker_simulation_host(3) |
 | `discover_target_manifests` | 29 | commands.setup(1), tests.test_gar_cli(2) |
-| `active_target_manifest` | 40 | simulation.backends(1) |
+| `active_target_manifest` | 40 | simulation.composition(1) |
 | `target_by_id` | 44 | commands.setup(2) |
 
 ## `vscode.profile_manage` (scripts/gar_lib/vscode/profile_manage.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `write_vscode_terminal_profile` | 10 | commands.code(1), simulation.remote_session(1) |
+| `write_vscode_terminal_profile` | 10 | commands.code(1), simulation.session.remote(1) |
 | `remove_vscode_terminal_profile` | 25 | commands.code(1) |
 
 ## `vscode.terminal_bridge` (scripts/gar_lib/vscode/terminal_bridge.py)
@@ -808,10 +814,11 @@
 | `artifacts.manifest` | `gh_codespace_cp` | 158 |
 | `artifacts.manifest` | `load_artifact_manifest` | 183 |
 | `artifacts.manifest` | `select_codespace` | 36 |
-| `build._base` | `BuildSpec` | 27 |
-| `build._base` | `DEFAULT_REMOTE_SIM_ARCH` | 15 |
-| `build._base` | `compiler_for_architecture` | 32 |
-| `build._base` | `simulation_build_variables` | 40 |
+| `build.environment` | `BuildEnvironment` | 16 |
+| `build.spec` | `BuildSpec` | 18 |
+| `build.spec` | `DEFAULT_REMOTE_SIM_ARCH` | 14 |
+| `build.spec` | `compiler_for_architecture` | 23 |
+| `build.spec` | `simulation_build_variables` | 31 |
 | `cli` | `CODE_COMMAND_MAP` | 29 |
 | `cli` | `add_code_start_arguments` | 115 |
 | `cli` | `enable_argcomplete` | 63 |
@@ -874,7 +881,7 @@
 | `commands.usb` | `ANDROID_HINTS` | 30 |
 | `commands.usb` | `ANDROID_VIDS` | 32 |
 | `commands.usb` | `UsbDevice` | 36 |
-| `commands.usb` | `list_usb_devices` | 129 |
+| `commands.usb` | `list_usb_devices` | 235 |
 | `core.command` | `SIM_RUNTIME_LOG` | 36 |
 | `core.command` | `SIM_RUNTIME_STATUS` | 35 |
 | `core.command` | `SIM_RUNTIME_STOP` | 34 |
@@ -908,39 +915,38 @@
 | `environments.registry.target.adb_win` | `AdbWinEnvironment` | 30 |
 | `environments.registry.target.adb_win` | `WINGET_PACKAGE_ID` | 27 |
 | `environments.registry.target.ssh_scp` | `SshScpEnvironment` | 6 |
-| `simulation.backends` | `LOCAL_DOCKER` | 52 |
-| `simulation.backends` | `docker_spec_for` | 170 |
-| `simulation.backends` | `selected_simulator` | 55 |
-| `simulation.docker_host` | `DEFAULT_ADDRESS` | 16 |
-| `simulation.docker_spec` | `DEFAULT_BRIDGE_PORT` | 10 |
-| `simulation.io_actions` | `BUTTON_LINE_ALIASES` | 21 |
-| `simulation.io_actions` | `DEFAULT_BUTTON_LINE` | 18 |
-| `simulation.io_actions` | `DEFAULT_PRESS_DURATION_MS` | 19 |
-| `simulation.io_actions` | `IO_DEVICES` | 31 |
-| `simulation.io_actions` | `IoRequest` | 35 |
-| `simulation.io_actions` | `STATE_PATH` | 16 |
-| `simulation.io_actions` | `resolve_button_line` | 43 |
-| `simulation.linux` | `GAR_BRIDGE_DIR` | 20 |
-| `simulation.linux` | `GAR_BRIDGE_START` | 21 |
-| `simulation.linux` | `GAR_CUSE_I2C` | 24 |
-| `simulation.linux` | `GAR_CUSE_SPI` | 25 |
-| `simulation.linux` | `GAR_ETC_DIR` | 14 |
-| `simulation.linux` | `GAR_GPIO_SIM_START` | 22 |
-| `simulation.linux` | `GAR_GPIO_SIM_STOP` | 23 |
-| `simulation.linux` | `GAR_HARDWARE_DIR` | 15 |
-| `simulation.linux` | `GAR_HW_SIM_SOCK` | 19 |
-| `simulation.linux` | `GAR_LIB_DIR` | 17 |
-| `simulation.linux` | `GAR_RUN_DIR` | 18 |
-| `simulation.linux` | `GAR_SBIN_DIR` | 16 |
-| `simulation.linux` | `PANEL_BASE_URL` | 26 |
-| `simulation.linux` | `SIM_DIAG_DEVICES` | 13 |
-| `simulation.linux` | `SIM_GPIO_SIM_CHECK_COMMAND` | 28 |
-| `simulation.mujoco` | `DEFAULT_BRIDGE_URL` | 23 |
-| `simulation.mujoco` | `DEFAULT_MODEL_PATH` | 21 |
-| `simulation.mujoco` | `DEFAULT_WORKSPACE_DIR` | 22 |
-| `simulation.remote_session` | `sim_terminal_script` | 60 |
-| `simulation.session` | `SimulationSessionManager` | 15 |
-| `simulation.wokwi` | `DEFAULT_TIMEOUT_MS` | 17 |
+| `simulation.composition` | `LOCAL_DOCKER` | 50 |
+| `simulation.composition` | `docker_spec_for` | 168 |
+| `simulation.composition` | `selected_simulator` | 53 |
+| `simulation.hardware.io_actions` | `BUTTON_LINE_ALIASES` | 21 |
+| `simulation.hardware.io_actions` | `DEFAULT_BUTTON_LINE` | 18 |
+| `simulation.hardware.io_actions` | `DEFAULT_PRESS_DURATION_MS` | 19 |
+| `simulation.hardware.io_actions` | `IO_DEVICES` | 31 |
+| `simulation.hardware.io_actions` | `IoRequest` | 35 |
+| `simulation.hardware.io_actions` | `STATE_PATH` | 16 |
+| `simulation.hardware.io_actions` | `resolve_button_line` | 43 |
+| `simulation.host.docker` | `DEFAULT_ADDRESS` | 16 |
+| `simulation.host.docker_spec` | `DEFAULT_BRIDGE_PORT` | 10 |
+| `simulation.runtime.linux_commands` | `GAR_BRIDGE_DIR` | 20 |
+| `simulation.runtime.linux_commands` | `GAR_BRIDGE_START` | 21 |
+| `simulation.runtime.linux_commands` | `GAR_CUSE_I2C` | 24 |
+| `simulation.runtime.linux_commands` | `GAR_CUSE_SPI` | 25 |
+| `simulation.runtime.linux_commands` | `GAR_ETC_DIR` | 14 |
+| `simulation.runtime.linux_commands` | `GAR_GPIO_SIM_START` | 22 |
+| `simulation.runtime.linux_commands` | `GAR_GPIO_SIM_STOP` | 23 |
+| `simulation.runtime.linux_commands` | `GAR_HARDWARE_DIR` | 15 |
+| `simulation.runtime.linux_commands` | `GAR_HW_SIM_SOCK` | 19 |
+| `simulation.runtime.linux_commands` | `GAR_LIB_DIR` | 17 |
+| `simulation.runtime.linux_commands` | `GAR_RUN_DIR` | 18 |
+| `simulation.runtime.linux_commands` | `GAR_SBIN_DIR` | 16 |
+| `simulation.runtime.linux_commands` | `PANEL_BASE_URL` | 26 |
+| `simulation.runtime.linux_commands` | `SIM_DIAG_DEVICES` | 13 |
+| `simulation.runtime.linux_commands` | `SIM_GPIO_SIM_CHECK_COMMAND` | 28 |
+| `simulation.runtime.mujoco` | `DEFAULT_MODEL_PATH` | 19 |
+| `simulation.runtime.mujoco` | `DEFAULT_WORKSPACE_DIR` | 20 |
+| `simulation.runtime.wokwi` | `DEFAULT_TIMEOUT_MS` | 17 |
+| `simulation.session.manager` | `SimulationSessionManager` | 15 |
+| `simulation.session.remote` | `sim_terminal_script` | 60 |
 | `target.esp32_firmware` | `DEFAULT_ESP32_LOCAL_PROJECT_ROOT` | 24 |
 | `target.esp32_firmware` | `fetch_esp32_codespace_artifact` | 96 |
 | `target.esp32_firmware` | `find_latest_esp32_artifact` | 34 |

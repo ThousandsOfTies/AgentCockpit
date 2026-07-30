@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.simulation.process import LocalProcessChannel
+from scripts.gar_lib.simulation.runtime.process import LocalProcessChannel
 
 
 class GarSimulationProcessTest(unittest.TestCase):
@@ -15,7 +15,7 @@ class GarSimulationProcessTest(unittest.TestCase):
             log_path = root / "runtime.log"
             process = mock.Mock(pid=1234)
             with mock.patch(
-                "scripts.gar_lib.simulation.process.subprocess.Popen", return_value=process
+                "scripts.gar_lib.simulation.runtime.process.subprocess.Popen", return_value=process
             ) as popen:
                 result = LocalProcessChannel().start(
                     ("simulator", "--project", str(root)),

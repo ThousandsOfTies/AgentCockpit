@@ -13,7 +13,7 @@ from scripts.gar_lib.api import Gar
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.local import LocalBuildEnvironment
-from scripts.gar_lib.commands.workspace import workspace_for
+from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
@@ -44,10 +44,10 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             "target": {"host": "raspi", "dest": "/opt/product"},
         }
         with (
-            mock.patch("scripts.gar_lib.commands.workspace.load_config", return_value={"workspaces": [entry]}),
-            mock.patch("scripts.gar_lib.commands.workspace.saved_workspaces", return_value=[entry]),
+            mock.patch("scripts.gar_lib.commands.workspace_resolver.load_config", return_value={"workspaces": [entry]}),
+            mock.patch("scripts.gar_lib.commands.workspace_resolver.saved_workspaces", return_value=[entry]),
         ):
-            workspace = workspace_for("Local/Product")
+            workspace = resolve_workspace("Local/Product")
 
         self.assertEqual("ws_test", workspace.id)
         self.assertEqual("local", workspace.selected_environments["codespace"])
@@ -64,11 +64,11 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             for index in (1, 2)
         ]
         with (
-            mock.patch("scripts.gar_lib.commands.workspace.load_config", return_value={"workspaces": entries}),
-            mock.patch("scripts.gar_lib.commands.workspace.saved_workspaces", return_value=entries),
+            mock.patch("scripts.gar_lib.commands.workspace_resolver.load_config", return_value={"workspaces": entries}),
+            mock.patch("scripts.gar_lib.commands.workspace_resolver.saved_workspaces", return_value=entries),
         ):
             with self.assertRaises(GarDomainError):
-                workspace_for(None)
+                resolve_workspace(None)
 
     def test_local_build_environment_runs_product_hook_and_returns_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

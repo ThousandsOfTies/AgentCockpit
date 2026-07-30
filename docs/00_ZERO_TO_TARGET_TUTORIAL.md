@@ -138,20 +138,28 @@ cat ~/.config/codespace-dev/env
 ls ~/codespace-dev 2>/dev/null || true
 ```
 
-## 4. Codespace 側で ARM64 成果物をビルドする
+## 4. 選択したBuildEnvironmentで成果物をビルドする
 
-ビルドは Gapless Agent Runtime ではなく、`gar-build-env` Codespace 内の target repo で行います。
+`gar setup`で選択した開発環境が`github_codespaces`なら、GARがCodespace内のproduct hookを
+実行し、成果物をWSL側artifact storeへ同期します。`local`ならworkspace内の同じhookを
+ローカル実行します。EC2や実機ではビルドしません。
 
-Codespace のターミナルで:
+用途ごとの標準コマンド:
 
 ```bash
-cd /workspaces/gar-build-env
-bash scripts/post-create.sh
+gar sim app build       # simulation application
+gar sim runtime build   # Linux runtime artifact。不要なenvironmentではno-op
+gar target build        # 実機用application / firmware
 ```
 
-その後は target software ごとの README / build script に従ってビルドします。
+内部ではproduct workspaceの`product-sim-build.sh`、`product-sim-env-build.sh`、
+`product-target-build.sh`をartifact種別に応じて呼び分けます。ESP32は
+`Esp32BuildEnvironment`がPlatformIO buildとartifact materializeを担当します。
 
-ビルド後、artifact bundle ができていることを確認します。既定では次の場所を `gar target fetch` / `gar sim runtime deploy` が見に行きます。
+Codespaces側の既存bundleだけを再取得する場合は`gar target fetch`を使います。
+`deploy`はbuild/fetchを暗黙実行しないため、先にartifactを用意してください。
+
+Codespaces側を手動診断する場合の既定bundle:
 
 ```bash
 ls -la /workspaces/gar-build-env/artifacts/from-codespace
@@ -168,8 +176,11 @@ WSL Hub 側で:
 
 ```bash
 gar sim host start
+gar sim runtime build
 gar sim runtime deploy
 gar sim runtime start
+gar sim app build
+gar sim app deploy
 gar sim runtime diag --json
 ```
 
@@ -315,7 +326,7 @@ gar target deploy --workspace Local/Product
 gar target deploy --workspace Network/Product
 ```
 
-deploy だけやり直す場合:
+CodespacesでGAR外から作成済みのbundleを再取得してdeployする場合:
 
 ```bash
 gar target fetch
@@ -450,7 +461,7 @@ chmod +x ~/sensor_demo
 思い出し用の最短版です。
 
 ```bash
-cd ~/Yurufuwa/GaplessAgentRuntime
+cd ~/Yurufuwa/GAR/GaplessAgentRuntime
 git pull
 make init
 make start

@@ -21,7 +21,7 @@ from scripts.gar_lib.core.config import (
     saved_adb_exe,
     set_saved_adb_exe,
 )
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
 # winget の Android Platform Tools パッケージ ID。
 WINGET_PACKAGE_ID = "Google.PlatformTools"

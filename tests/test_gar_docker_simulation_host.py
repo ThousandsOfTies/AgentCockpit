@@ -14,18 +14,18 @@ from scripts.gar_lib.access.docker import (
 )
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.backends import (
+from scripts.gar_lib.simulation.composition import (
     hardware_control_for,
     simulation_environment_for,
     simulation_host_for,
 )
-from scripts.gar_lib.simulation.control import LinuxBridgeHardwareControl
-from scripts.gar_lib.simulation.docker_host import (
+from scripts.gar_lib.simulation.hardware.control import LinuxBridgeHardwareControl
+from scripts.gar_lib.simulation.host.docker import (
     ABSENT_STATE,
     DockerSimulationHostController,
 )
-from scripts.gar_lib.simulation.docker_spec import DockerHostSpec, docker_host_spec
-from scripts.gar_lib.simulation.linux_systemd import LinuxSystemdSimulationEnvironment
+from scripts.gar_lib.simulation.host.docker_spec import DockerHostSpec, docker_host_spec
+from scripts.gar_lib.simulation.runtime.linux_systemd import LinuxSystemdSimulationEnvironment
 from scripts.gar_lib.target.manifest import TargetManifest
 
 LINUX_DEVICE_DOCKER = {
@@ -58,7 +58,7 @@ def target_manifest(manifest: TargetManifest | None) -> Iterator[None]:
     """container の形を決める target 定義を差し替える。"""
 
     with mock.patch(
-        "scripts.gar_lib.simulation.backends.active_target_manifest", return_value=manifest
+        "scripts.gar_lib.simulation.composition.active_target_manifest", return_value=manifest
     ):
         yield
 

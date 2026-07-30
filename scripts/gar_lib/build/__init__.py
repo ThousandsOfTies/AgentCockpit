@@ -1,11 +1,10 @@
 """Concrete build environments."""
 
-from scripts.gar_lib.build._base import (
-    BuildEnvironment,
+from scripts.gar_lib.build.environment import BuildEnvironment, build_environment_for
+from scripts.gar_lib.build.spec import (
     BuildSpec,
     ProductBuildSpecResolver,
 )
-from scripts.gar_lib.build.backends import build_environment_for
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.local import LocalBuildEnvironment
 

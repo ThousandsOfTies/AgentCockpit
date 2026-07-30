@@ -5,8 +5,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
 
 class AwsSsmEnvironment(EnvironmentSetupOption):

@@ -24,9 +24,9 @@ from scripts.gar_lib.core.config import (
     set_saved_workspaces,
 )
 from scripts.gar_lib.core.tools_repository import ensure_gar_tools_available
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.simulator.wokwi import WokwiEnvironment  # noqa: F401
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 from scripts.gar_lib.target.manifest import (
     TargetManifest,
     discover_target_manifests,

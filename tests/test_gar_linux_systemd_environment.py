@@ -9,7 +9,7 @@ from unittest import mock
 from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.linux_systemd import LinuxSystemdSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.linux_systemd import LinuxSystemdSimulationEnvironment
 
 
 class GarLinuxSystemdEnvironmentTest(unittest.TestCase):

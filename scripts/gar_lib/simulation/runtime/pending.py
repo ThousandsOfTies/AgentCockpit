@@ -6,7 +6,7 @@ from typing import NoReturn
 
 from scripts.gar_lib.core.artifact import Artifact
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.simulation.diagnostic import SimulationDiagnosticReport
+from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnosticReport
 
 
 class PendingSimulationEnvironment:

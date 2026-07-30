@@ -14,7 +14,7 @@
 - **GAR のコア = シミュレータではなく「接続先(environment)の抽象化 + コマンド実行 + ファイル運搬 + 端末ブリッジ + `--json`」** という *接続と運搬の統一層*。シミュレーション機能はその上に乗る応用。
 - **市場観**: 出荷「個数」は MCU が当面圧勝。だが **ソフトの価値・複雑性・AI が触る価値の総量は組み込み Linux が急成長**。ツールビジネスは個数でなく価値に追従するため、**GAR は価値側（Linux エッジ）を主戦場に取る**。
 - **GAR が今・強い**: Linux 系エッジの shift-left（**EC2 Graviton = 同 aarch64 実機 → Raspberry Pi 5 = HIL**）。エミュ不要で実速・高忠実。
-- **GAR のフロンティア**: MCU/RTOS の CPU エミュ統合（ESP-IDF linux target / STM32・Pico の Renode など）。現状ほぼ未配線。
+- **GAR のフロンティア**: MCU/RTOS の CPU エミュ統合（ESP-IDF linux target / STM32・Pico の Renode など）。setup選択肢とerror-only runtimeまでは接続済みだが、実際のmodel起動は未実装。
 - **差別化の核**: 組み込みは **Linux + RTOS の 2CPU（AMP）構成が多く、不具合はコア間の境界(IPC)に集中**する。**両コア + コア間 IPC を「1 本の統一 trace」で観測・shift-left する**ことが GAR 独自のポジション。
 
 ---
@@ -59,7 +59,7 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 - **Renode 本体に ESP32(Xtensa) は事実上無し**（XTENSA は `xtensa-sample-controller` のみ）。
 - **Renode 本体に RP2040 / RP2350 の repl は無い**（直接 404 で確認）。RP2040 はコミュニティ製 `matgla/Renode_RP2040` で可、ただし "Frozen"。
 - **Renode 本体に STM32 は手厚い**（`stm32f103.repl` ほか多数同梱）→ 追加実装ゼロで即動く。
-- ローカル `embedded-poc-app/mcu-renode/sim/pico_blink.resc` は `@platforms/cpus/rp2040.repl`（本体同梱）を前提にしており、**stock Renode では動かない**。
+- ローカル `gar-adhoc-app/mcu-renode/sim/pico_blink.resc` は `@platforms/cpus/rp2040.repl`（本体同梱）を前提にしており、**stock Renode では動かない**。
 
 ---
 
@@ -76,6 +76,10 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 | ハードウェア定義 CSV | `gar hw init` | ✅ |
 | 機械可読出力（AI/CI 向け） | 各所 `--json` | ✅（順次拡大中） |
 
+実機targetはADB（WSL / Windows）、SSH/scp、ESP32 esptoolを`target/composition.py`で
+切り替えられる。ESP32は`gar target build`でfirmware bundleを作り、`gar target deploy`で
+serial flashする標準経路に接続済み。
+
 ### Linux 系シミュレーション（実装済み・GAR の主戦場）
 
 - `LinuxSystemdSimulationEnvironment` が実体。**systemd サービス / カーネル `gpio-sim` / CUSE(i2c・spi) / `/dev/*` / web-bridge** で実機互換の周辺を提供。
@@ -85,8 +89,7 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 
 | 項目 | 根拠 | 影響 |
 |---|---|---|
-| **Renode runtime 操作が未実装** | setupは`environments/registry/simulator/renode_mcu.py`、runtime stubは`simulation/renode.py`（resolver接続済み、操作は明示的に失敗） | Cortex-M/RISC-V MCU の②エミュ |
-| **ESP32 esptool target** | `target/esptool.py` | ESP32 実機シリアル / firmware flash |
+| **Renode runtime 操作が未実装** | setupは`environments/registry/simulator/renode_mcu.py`、runtime stubは`simulation/runtime/renode.py`（resolver接続済み、操作は明示的に失敗） | Cortex-M/RISC-V MCU の②エミュ |
 | **STM32 / Pico 専用 environment が存在しない** | registry に無し | これらの MCU 実機 deploy/flash |
 
 > 整理すると、3 バックエンドのうち **GAR が実装済みなのは ①(Linux sim / Graviton) と ③(adb/ssh/esp32 flash) の一部**。**②(CPU エミュ) はほぼ空白**。これが現在地である。

@@ -1,14 +1,14 @@
 # GaplessAgentRuntime 全体レビュー — 改善点の指摘
 
 > **対象**: `ThousandsOfTies/GaplessAgentRuntime` の全ソースコード・ドキュメント・テスト・CI
-> **時点**: 2026-07-08
-> **レビュー範囲**: Python ソース約 8,000 行 / テスト約 3,900 行 / ドキュメント 15 ファイル / CI / MCP / VSCode 拡張
+> **時点**: 2026-07-30
+> **レビュー範囲**: `scripts/`配下Python 105ファイル・約10,800行 / テスト17ファイル・約5,000行 / Markdown 29ファイル / CI / MCP / VSCode拡張
 
 ---
 
 ## 総評
 
-プロジェクトの **設計思想は明確で一貫している**。「異種環境間の文脈の載せ替えコストをエージェントが吸収する」というコアバリューが、README・info/・AGENT.md まで貫かれている。CLI の構造（`gar setup` → `gar code/sim/target`）は make-target 的な抽象として筋が通っており、environment discovery パターンでの拡張性設計も適切。テストカバレッジは 144 tests、ruff は green、CI は Python 3.11〜3.13 で回っている。
+プロジェクトの **設計思想は明確で一貫している**。「異種環境間の文脈の載せ替えコストをエージェントが吸収する」というコアバリューが、README・info/・AGENT.md まで貫かれている。CLI の構造（`gar setup` → `gar code/sim/target`）は make-target 的な抽象として筋が通っており、environment discovery パターンでの拡張性設計も適切。現在は215 testsとRuffがgreenで、CIはPython 3.11〜3.13で回っている。
 
 以下、**今の完成度を踏まえたうえで次のステップに進むための改善点**を、優先度順に整理する。
 
@@ -21,11 +21,12 @@
 `cli.py` の互換 re-exportを廃止し、CLI dispatchに必要なimportだけを残した。
 テストも各実装モジュールを直接importする。
 
-### 2. `cli.py` の dispatch が if-elif の手書き連鎖
+### 2. `cli.py` のsim/target dispatch分離（対応済み）
 
-`main()` 関数の後半は `if args.command == "sim": if args.sim_command == "env": if args.sim_env_command == "build": ...` という 3〜4 段のネストが続く。現在は動いているが、**コマンド追加のたびにここに手で分岐を足す**必要があり、argparse のサブパーサー定義と dispatch が物理的に分離しているため、対応漏れが起きやすい。
-
-- **提案**: サブコマンドごとに `set_defaults(func=...)` を使って dispatch を argparse に委ねるか、コマンドテーブル（dict[str, Callable]）で解決する。パーサー定義と dispatch を同じ場所に書くだけでもかなり改善する。
+`sim`と`target`のparser定義・action検証・workspace解決・CLI recoveryは
+`commands/sim.py`と`commands/target.py`へ移動した。leaf parserは`GarCommand`を保持し、
+`SIM_ACTIONS` / `TARGET_ACTIONS`を単一の許可表として内部API methodを解決する。
+`cli.py`は426行まで縮小され、top-level plumbing commandのrunner選択に集中している。
 
 ### 3. `config.py` のハードコードされたデフォルト値
 
@@ -39,7 +40,7 @@ DEFAULT_EC2_REGION = None
 
 ### 4. テストファイルの巨大化
 
-[test_gar_cli.py](file:///home/user/Yurufuwa/GaplessAgentRuntime/tests/test_gar_cli.py) が **3,304 行**の単一ファイル。CLI・sim・target・usb・hw・code・MCP のテストがすべて 1 ファイルに混在している。
+[test_gar_cli.py](tests/test_gar_cli.py) は **2,474行**あり、依然としてsetup・usb・hw・code等の広い範囲を含む。一方、access、build、simulation、target、MCPは専用テストへ分離され、テスト全体は17ファイルになった。
 
 - **提案**: `tests/test_cli_setup.py`、`tests/test_cli_sim.py`、`tests/test_cli_target.py`、`tests/test_cli_code.py` 等にコマンドグループ単位で分割する。テストの発見性と並列実行が改善する。
 
@@ -52,8 +53,8 @@ DEFAULT_EC2_REGION = None
 多くのコマンドが成功時に `return 0`、失敗時に `return 1` を返すが、例外が起きた場合のハンドリングが場所によって異なる。
 
 - `subprocess.run` の `check=False` は全体的に適切だが、**stdout/stderr の出し分けが不統一**。成功メッセージが stdout に出る箇所と stderr に出る箇所が混在。
-- `NotImplementedError` を catch してユーザーガイダンスを出すパターンは良いが、一部のコマンド（`target build`、`target flash`）ではメッセージが英語混在（`Run \`gar setup\` and choose ESP32 esptool.`）。
-- **提案**: エラーメッセージの日英混在を統一する（日本語ベースなら日本語に揃える）。`gar` 全体で共通のエラー出力ヘルパーを用意すると良い。
+- domain上の利用者向け失敗は`GarDomainError`、接続失敗は`AccessConnectionError`へ整理され、sim/target CLIは`commands/recovery.py`で復旧案内を生成する。
+- stdout/stderrや一部具体environmentの直接`print()`はまだ統一されていない。表示結果型または共通rendererへ寄せる余地がある。
 
 ### 6. setup候補とruntime environmentの分離（完了）
 
@@ -81,7 +82,7 @@ accessの実行契約はそれぞれの専用層へ分離済み。
 
 ### 10. MCP サーバーのプロトコル不完全性
 
-[server.py](file:///home/user/Yurufuwa/GaplessAgentRuntime/tools/gar-mcp/server.py) は最小限の JSON-RPC を手書きしているが、`resources/list` や `prompts/list` への応答がない。MCP クライアントによっては `error` を返されることで機能低下する可能性がある。
+[server.py](tools/gar-mcp/server.py) は最小限のJSON-RPCを手書きしている。`initialize`、`tools/list`、`tools/call`、`notifications/initialized`には対応するが、`resources/list`や`prompts/list`は未対応。
 
 - **提案**: 未対応メソッドには空リスト（`{"resources": []}` 等）を返すか、MCP SDK（`mcp` パッケージ）を使って標準準拠にする。`notifications/cancelled` 等の通知も無視でよいが、明示的に `return None` するハンドラを足すと堅牢になる。
 
@@ -99,13 +100,13 @@ accessの実行契約はそれぞれの専用層へ分離済み。
 
 ### 13. `Makefile` の役割縮小の明示
 
-`Makefile` は `make init` / `make start` が入口だが、日常操作は完全に `gar` CLI に移行済み。`make sim-test` / `make sim-scenario` もまだ残っているが、これらは `gar sim` 経由に置き換え済みのはず。
+`Makefile` は `make init` / `make start` がbootstrap入口で、日常操作は`gar` CLIに移行済み。`make sim-test` / `make sim-scenario`は`gar sim`とJSON scenario runnerを束ねる開発者向けショートカットとして残る。
 
 - **提案**: `Makefile` の冒頭に「このファイルは初期セットアップ（`make init`）と開発者用 venv 起動（`make start`）のためのもの。日常操作は `gar` コマンドを使ってください」と明記し、`sim-test` / `sim-scenario` は deprecated 表示にするか削除する。
 
 ### 14. VSCode 拡張のテストがない
 
-[extension.js](file:///home/user/Yurufuwa/GaplessAgentRuntime/tools/vscode-gar/extension.js) は 130 行ほどだが、ユニットテストがない。`processRequest` のロジック（JSON parse → terminal 起動 → status 書き込み → move）は十分テスト可能。
+[extension.js](tools/vscode-gar/extension.js) は156行で、ユニットテストがない。`processRequest`のロジック（JSON parse → terminal起動 → status書き込み → move）は十分テスト可能。
 
 - **提案**: `jest` または `vitest` で最小限のテストを追加する。少なくとも `shellQuote()` のエスケープテストと、`processRequest` の異常系（invalid JSON、空 command）テストがあるとよい。
 
@@ -147,41 +148,26 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 ## 🏗️ アーキテクチャの評価
 
 ```
-                    ┌─────────────────────────────┐
-                    │       gar CLI (cli.py)       │  ← 1,067行。dispatch 肥大化
-                    └──────────┬──────────────────┘
-                               │
-            ┌──────────────────┼──────────────────┐
-            │                  │                  │
-     commands/code       commands/sim       commands/target
-     commands/setup      commands/usb       commands/hw
-     commands/terminal   commands/infra
-            │                  │                  │
-            └──────────────────┼──────────────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    │  environments/base  │  ← EnvironmentSetupOption
-                    │  environments/      │     environment discovery
-                    │    registry/        │     (pkgutil.walk_packages)
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┼───────────────────┐
-              │                │                   │
-        codespace/        simulator/          target/
-        github_codespaces                     adb_usb
-        local              aws_ssm            adb_win
-                           esp32_qemu         esp32_esptool
-                           renode_mcu         ssh_scp
-                           ssh_remote
-                           wokwi
+cli.py（root parser / top-level runner選択）
+  ├─ commands/sim.py ─┐
+  └─ commands/target.py ─→ api.py（Gar(workspace).sim / target）
+                              ├─ build/environment.py
+                              ├─ simulation/composition.py
+                              └─ target/composition.py
+                                       ↓
+                         concrete environment / access channel
+
+environments/setup_option.py + registry/ + discovery.py
+  └─ gar setupの選択肢・依存確認専用（runtime操作は持たない）
 ```
 
 **良い点**:
 - Environment discovery が `pkgutil.walk_packages` ＋ クラス検査で自動的に動く。新しい environment を追加するのにレジストリを手で更新する必要がない。
-- `simulation/` レイヤーでコマンド生成（`SimCommandBuilder`）と実行（`SimEnvProcessor`）が分離されており、テスタビリティが高い。
+- build / simulation / targetのobject生成が`environment.py`または`composition.py`へ集約され、CLIから具体backend判断が外れている。
+- simulationは`runtime/`、`host/`、`hardware/`、`diagnostics/`、`session/`へ役割別に整理されている。
 
 **改善すべき点**:
-- `gar_tools.py`（target manifest discovery）と `environments/discovery.py`（environment discovery）が似た仕組みだが独立している。将来的に target manifest と environment を紐付ける場合に統合が必要。
+- `target/manifest.py`（JSON manifest discovery）と`environments/discovery.py`（Python class discovery）は別方式で、TargetManifestと利用可能environmentの結合はsetup時の暗黙ルールに残る。
 
 ---
 
@@ -190,10 +176,10 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 | # | 項目 | 優先度 | 工数 | 効果 |
 |---|---|---|---|---|
 | 1 | cli.py re-export 整理 | ✅ 完了 | - | 保守コスト削減 |
-| 2 | cli.py dispatch のテーブル化 | 🔴 高 | 中 | 新コマンド追加の安全性 |
-| 3 | config.py のハードコード除去 | 🔴 高 | 小 | 安全性・汎用性 |
-| 4 | テストファイル分割 | 🔴 高 | 中 | 開発体験 |
-| 5 | エラーメッセージの日英統一 | 🟡 中 | 小 | ユーザー体験 |
+| 2 | sim/target dispatch のcommand module化 | ✅ 完了 | - | 新コマンド追加の安全性 |
+| 3 | config.py のハードコード除去 | 🟡 一部残存 | 小 | `DEFAULT_EC2_HOST`の汎用化 |
+| 4 | テストファイル分割 | 🟡 進行中 | 中 | `test_gar_cli.py`の縮小 |
+| 5 | エラー・表示責務の統一 | 🟡 中 | 中 | ユーザー体験・構造化出力 |
 | 6 | setup候補とruntime environmentの分離 | ✅ 完了 | - | 責務分離 |
 | 7 | pyproject.toml 整備 | 🟡 中 | 小 | 標準化 |
 | 8 | config の TypedDict 化 | 🟡 中 | 中 | 型安全性 |
@@ -209,7 +195,7 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 
 ---
 
-> **推奨する最初の一手**: #3（ハードコード除去）→ #1（re-export 整理）→ #2（dispatch テーブル化）の順で cli.py / config.py を軽量化する。これだけで日常の開発速度が上がり、新コマンド追加時の事故率が下がる。
+> **現在の優先候補**: #3（`DEFAULT_EC2_HOST`の汎用化）→ #4（`test_gar_cli.py`分割）→ #5（結果表示の構造化）の順。sim/target dispatchとsetup/runtime分離は完了済み。
 
 ---
 
@@ -221,7 +207,7 @@ runtime経路で使われない旧`gar shim`と実装を削除した。
 
 - `target/esptool.py` — esptool によるflash実装
 - `environments/registry/target/esp32_esptool.py` — setup用の依存確認と導入
-- `environments/registry/simulator/wokwi.py`（115行）+ `simulation/wokwi.py`（613行）— Wokwi simulation
+- `environments/registry/simulator/wokwi.py`（115行）+ `simulation/runtime/wokwi.py` — Wokwi simulation
 - `scripts/gar_lib/target/esp32_firmware.py` — ESP32 ビルド・artifact 管理
 - `scripts/gar_lib/build/esp32.py` — `gar target build` に統合された ESP32 build environment
 - `docs/07_HANDOFF.md` の vibe-remote 作業記録

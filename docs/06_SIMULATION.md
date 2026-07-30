@@ -98,7 +98,7 @@ gar sim runtime start    # systemd services + port forward 起動
 
 ### SSH/scp 接続エラーからの復旧
 
-AWS EC2 用の SSH Remote environment を使う `gar sim runtime deploy` / `gar sim app deploy`、および将来の EC2 上の build などが SSH/scp 接続エラーで終了した場合、GAR は無限に待機・再試行しません。接続処理を持つ environment 共通の復旧処理が、VS Code Terminal Bridge を通じて、見える terminal に次のログイン要求を送ります。
+AWS EC2用のSSH Remote environmentを使う`gar sim runtime deploy` / `gar sim app deploy`などがSSH/scp接続エラーで終了した場合、GARは無限に待機・再試行しません。接続処理を持つenvironment共通の復旧処理が、VS Code Terminal Bridgeを通じて、見えるterminalに次のログイン要求を送ります。
 
 ```bash
 aws login --remote --region <設定済みの region>
@@ -121,18 +121,16 @@ gar sim runtime diag --json   # プロセス・デバイス・API 状態
 `gar setup` で simulation environment に `MuJoCo（ロボット物理）` を選択すると、必要に応じて現在の Python 環境へ `mujoco` package を導入する。標準では動作確認用の振り子モデルを使う。`gar sim runtime start` は MuJoCo Python SDK を駆動するローカル JSON bridge を起動し、標準 viewer はその bridge と同じ物理状態を表示する。
 
 ```bash
-gar sim runtime build                         # MJCF を読み込めるか検証
-gar sim runtime start --no-port-forward       # MuJoCo viewer をローカルで起動
+gar sim runtime start --no-port-forward       # model検証後にMuJoCo viewerをローカルで起動
 gar sim runtime diag --json
 gar sim runtime log
-gar sim runtime stop --no-port-forward
+gar sim runtime stop
 ```
 
 実ロボットではプロダクト側の MJCF/URDF を指定する。
 
 ```bash
 export GAR_MUJOCO_MODEL=/path/to/biped.xml
-gar sim runtime build
 gar sim runtime start --no-port-forward
 ```
 
@@ -246,7 +244,7 @@ VS Code 拡張で手動確認する場合、`gar sim runtime start` は毎回必
 `diagram.json` を Wokwi Diagram Editor で開き、Editor ペイン左上の再生ボタンを押して確認します。
 
 ```bash
-cd ~/Yurufuwa/GaplessAgentRuntime/.gar/wokwi/m5stackc
+cd ~/Yurufuwa/GAR/GaplessAgentRuntime/.gar/wokwi/m5stackc
 pio run
 code .
 ```
@@ -259,9 +257,9 @@ Wokwi 側へ送信してシミュレーションを開始します。
 現時点の Wokwi 向けシナリオは Wokwi CLI の `--scenario` を使います。
 
 ```bash
-cd ~/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client
+cd ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client
 make wokwi-workspace                  # Wokwi workspace を準備。
-cd ~/Yurufuwa/GaplessAgentRuntime/.gar/wokwi/m5stackc
+cd ~/Yurufuwa/GAR/GaplessAgentRuntime/.gar/wokwi/m5stackc
 pio run
 wokwi-cli --scenario button.test.yaml .
 ```
@@ -282,7 +280,7 @@ GAR_WOKWI_TIMEOUT_MS=30000
 アプリ側 Makefile target では同じ意味の値を次の変数で指定できます。
 
 ```bash
-cd ~/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client
+cd ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client
 make wokwi-workspace \
   GAR_ROOT=../../../GaplessAgentRuntime \
   GAR_TOOLS_ROOT=../../../gar-tools \
@@ -300,7 +298,7 @@ Vibe Remote は、AI/MCP が送る `agentStatus` と小さな Decision UI を表
 現在の確認経路は MCP tool または protocol smoke test を使う。
 
 ```bash
-cd ~/Yurufuwa/gar-vibe-ui/vibe-remote
+cd ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote
 npm install
 VIBE_REMOTE_TOKEN=... npm run smoke:protocol
 ```
@@ -320,21 +318,21 @@ flash imageにまとめ、Espressif QEMUでファームウェアとして起動�
 
 GARとしての長期理想は Renode 上の M5Stack/ESP32 仮想ボード。QEMU runner は
 Renodeが育つまでのboot smoke test兼比較対象として残す。Renode化の段階表は
-`~/Yurufuwa/gar-tools/targets/esp32/renode/ROADMAP.md` を参照。
+`~/Yurufuwa/GAR/gar-tools/targets/esp32/renode/ROADMAP.md` を参照。
 
 既定 artifact:
 
 ```bash
-~/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min
+~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min
 ```
 
 手動確認:
 
 ```bash
-~/Yurufuwa/gar-tools/targets/esp32/qemu/bin/gar-esp32-flash-image \
-  --artifact ~/Yurufuwa/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min \
+~/Yurufuwa/GAR/gar-tools/targets/esp32/qemu/bin/gar-esp32-flash-image \
+  --artifact ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min \
   --output /tmp/gar-m5stickc-flash.bin
-~/Yurufuwa/gar-tools/targets/esp32/qemu/bin/gar-esp32-qemu-run \
+~/Yurufuwa/GAR/gar-tools/targets/esp32/qemu/bin/gar-esp32-qemu-run \
   /tmp/gar-m5stickc-flash.bin
 ```
 
@@ -534,7 +532,7 @@ python scripts/run_scenario.py path/to/scenario.json
 ```
 
 virtual H/W への操作 step は `gar sim io` と同じ語彙（`action` + `device`）を使う。
-endpoint 解決は `scripts/gar_lib/simulation/io_actions.py` を両者が共有するため、
+endpoint 解決は `scripts/gar_lib/simulation/hardware/io_actions.py` を両者が共有するため、
 シナリオと CLI で語彙が割れることはない。
 
 | action | device | 用途 |

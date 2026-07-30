@@ -6,17 +6,17 @@ import json
 import sys
 
 from scripts.gar_lib.artifacts.store import ArtifactStore, LocalArtifactStore
-from scripts.gar_lib.build.backends import build_environment_for
+from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.hardware import load_hw_definition
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.backends import (
+from scripts.gar_lib.simulation.composition import (
     hardware_control_for,
     simulation_environment_for,
     simulation_host_for,
 )
-from scripts.gar_lib.simulation.session import VsCodeSimulationSessionManager
-from scripts.gar_lib.target.backends import target_environment_for
+from scripts.gar_lib.simulation.session.manager import VsCodeSimulationSessionManager
+from scripts.gar_lib.target.composition import target_environment_for
 
 
 class Gar:

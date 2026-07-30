@@ -8,7 +8,7 @@ from typing import ClassVar
 
 
 @dataclass(frozen=True)
-class CommandStatus:
+class DependencyStatus:
     name: str
     path: str | None
 
@@ -34,9 +34,9 @@ class EnvironmentSetupOption(ABC):
     required_commands: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
-    def dependency_status(cls) -> list[CommandStatus]:
+    def dependency_status(cls) -> list[DependencyStatus]:
         return [
-            CommandStatus(name=command, path=shutil.which(command))
+            DependencyStatus(name=command, path=shutil.which(command))
             for command in cls.required_commands
         ]
 

@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Mapping
 
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
-from scripts.gar_lib.build._base import ProductBuildSpecResolver
+from scripts.gar_lib.build.spec import ProductBuildSpecResolver
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace

@@ -1,4 +1,4 @@
-"""Linux simulation target implementations."""
+"""Linux/systemd simulation command construction and GPIO planning."""
 from __future__ import annotations
 
 import csv
@@ -7,7 +7,7 @@ import shlex
 import textwrap
 from urllib.parse import urlencode
 
-from . import io_actions
+from scripts.gar_lib.simulation.hardware import io_actions
 
 # Linux constants
 SIM_DIAG_DEVICES = ("/dev/i2c-1", "/dev/gpiochip0", "/dev/spidev0.0")

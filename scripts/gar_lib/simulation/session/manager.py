@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from scripts.gar_lib.simulation.remote_session import (
+from scripts.gar_lib.simulation.session.remote import (
     start_sim_port_forward,
     status_sim_port_forward,
     stop_sim_port_forward,

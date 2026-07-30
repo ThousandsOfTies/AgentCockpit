@@ -5,12 +5,12 @@
 | レイヤ | 実体 | 役割 |
 |---|---|---|
 | 1. 統合開発環境 | VSCode + `gar` CLI | AI・人間が共有する操作面。ビルド/デプロイ/観察の起点 |
-| 2. クラウドビルド環境 | GitHub Codespaces | ARM64 クロスビルド。ツールチェーン定義を IaC 化 |
+| 2. ビルド環境 | Local Docker / GitHub Codespaces | product hookをローカルまたはクラウドで実行。CodespacesはARM64クロスビルド等に利用 |
 | 3. シミュレーション環境 | AWS EC2 Graviton | 実機と同一 ARM64 バイナリを動かす仮想 H/W 実行環境 |
 | 4. デバイス互換 Runtime | CUSE / gpio-sim + bridge | `/dev/i2c-*` `/dev/spidev*` `/dev/gpiochip*` を OS レベルで再現しアプリを無改造で動かす |
 | 5. 実機接続環境 | RasPi5（adb / SSH） | 同一バイナリを実機で検証。接続経路は config で切り替え |
 
-ビルド成果物は Codespaces → WSL → EC2/実機 の一方向で流れる。EC2 上でのビルドは行わない。
+ビルド成果物は、選択したBuildEnvironment（local / Codespaces）→ WSL側artifact store → simulation/実機の一方向で流れる。EC2や実機上ではビルドしない。
 
 ---
 
@@ -21,11 +21,11 @@ GAR のコマンドは make の target に近い考え方に寄せる。ユー�
 抽象 target であり、個別の実行方法（PlatformIO、Codespaces、esptool、adb、scp など）は
 `gar setup` で選ばれた target 定義と接続設定から解決する。
 
-`deploy` は単なる転送コマンドではない。依存する artifact が無い、または古い場合は、
-依存 target を再帰的にたどって必要な build / package を先に実行し、その最新 artifact を
-対象 runtime へ反映する。低レベルコマンドは互換・診断用に残すが、日常操作の文法には出さない。
+現在の`deploy`は、WSL側artifact storeにある最新bundleを対象runtimeへ反映する操作であり、
+buildやfetchを暗黙には実行しない。新しい成果物が必要な場合は先に`build`を実行し、
+既存Codespaces bundleだけを取り直す場合は`fetch`を明示的に実行する。
 
-Codespace は build target の実行場所のひとつ。ユーザーは通常 `gar sim app build` /
+Codespace は BuildEnvironment の実装のひとつ。ユーザーは通常 `gar sim app build` /
 `gar sim app deploy` / `gar target build` / `gar target deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。
 
@@ -137,10 +137,10 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 | Linux Bridge 手動操作 | Virtual Hardware Panel |
 | Linux Bridge シナリオ | `python scripts/run_scenario.py path/to/scenario.json` |
 | Wokwi 手動確認 | VS Code Wokwi 拡張 / Diagram Editor |
-| Wokwi シナリオ | `wokwi-cli --scenario button.test.yaml .` |
-| MuJoCo | `gar sim runtime build` / `gar sim runtime start --no-port-forward` |
-| ESP32 QEMU | `gar-esp32-flash-image` / `gar-esp32-qemu-run` |
-| Renode | `renode` / `renode-test` |
+| Wokwi シナリオ | `wokwi-cli --scenario button.test.yaml .`（共通control plane未接続） |
+| MuJoCo | `gar sim runtime start --no-port-forward`（start時にmodelを検証） |
+| ESP32 QEMU | setup選択肢とerror-only runtimeのみ。`gar-esp32-flash-image` / `gar-esp32-qemu-run`はgar-tools側の手動検証入口 |
+| Renode | setup選択肢とerror-only runtimeのみ。`renode` / `renode-test`は手動検証入口 |
 | Vibe Remote smoke | `npm run smoke:protocol` |
 
 具体的なセットアップ手順と確認手順は [06_SIMULATION.md](06_SIMULATION.md) を参照。

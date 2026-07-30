@@ -13,7 +13,11 @@
 | `make init` | `.venv` 作成・`gar` symlink・VSCode extension install |
 | `make start` | venv + bash completion を有効化したサブシェルを開く |
 | `gar setup` | target 選択・gar-tools 確認/取得・依存 target graph と接続設定の保存・依存コマンド確認・既定 host 保存。local product workspace は複数登録でき、対話画面で追加/削除します |
+| `gar setup --no-install` | 不足依存をインストールせず、導入案内を表示 |
+| `gar setup --ec2-host HOST` | simulation runtime用SSH host aliasを保存 |
+| `gar setup --esp32-port PORT` | ESP32 esptool用serial portを保存 |
 | `gar hw init` | `gar-tools` の target テンプレートから `hardware/` に CSV を生成 |
+| `gar hw init --dir DIR [--force]` | 出力先を変更し、必要なら既存CSVを上書き |
 
 ### Workspace ごとの設定
 
@@ -28,10 +32,14 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
       "name": "Local/GarStreamRx",
       "connection": {
         "type": "local",
-        "path": "/home/user/Yurufuwa/GarStreamRx"
+        "path": "/home/user/Yurufuwa/GAR/gar-stream-rx"
       },
       "branch": "main",
-      "selected_environments": {"codespace": "local", "simulator": "ssh_remote"},
+      "selected_environments": {
+        "codespace": "local",
+        "simulator": "ssh_remote",
+        "target": "ssh_scp"
+      },
       "selected_target": "linux-device",
       "ec2": {
         "host": "vibecode-graviton",
@@ -114,6 +122,10 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 | `gar code shutdown` | Codespace VM を停止 |
 | `gar code status` | Codespace VM / 接続状態を確認 |
 
+各commandは`--target NAME`（互換alias: `--codespace NAME`）でdevelopment targetを指定できます。
+`start`は`--remote-path`、`--mount-dir`、`--settings`、`--profile-name`、`--no-mount`、
+`stop`は同種のlocal接続設定と`--shutdown`に対応します。
+
 ---
 
 ## 2. シミュレーション (`gar sim`)
@@ -133,7 +145,7 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 | `gar sim io` | **仮想H/W操作** | Bridge control plane | button 押下・RFID タップなど virtual H/W への入力注入（AI / CI 向け） |
 | `gar sim infra` | **インフラ** | AWS等インフラ設備 (Terraform) | テスト用インスタンス自体の作成・破棄（開発初期のみ実行） |
 
-`gar target` の subject は現在 `app` のみで、実機向けの build / deploy / fetch を担当します。
+`gar target` はsubjectを持たず、`gar target build/deploy/fetch`の2語で実機向けartifactを扱います。
 
 ---
 
@@ -188,23 +200,25 @@ gar sim host stop
 #### ホスト管理 (`gar sim host`)
 | コマンド | 内容 |
 |---|---|
-| `gar sim host start [--pull]` | シミュレーションホストを起動し、SSH接続設定を更新（`--pull` で最新の `gar-tools` 等を git pull） |
+| `gar sim host start [--pull] [--no-update-ssh]` | シミュレーションホストを起動し、SSH接続設定を更新（`--pull` はworkspaceの `ec2.repo_dir` / `docker.repo_dir` で `git pull`） |
 | `gar sim host stop` | シミュレーションホストを停止（インスタンスは削除されず、課金が抑えられます） |
-| `gar sim host status` | ホストの現在の実行状態を表示 |
-| `gar sim host <start/stop/status> --workspace NAME` | 指定 workspace に保存された EC2 設定を使う |
+| `gar sim host status [--json]` | ホストの現在の実行状態を表示 |
+| `gar sim host <start/stop/status> --workspace NAME` | 指定workspaceのsimulator選択に応じ、DockerまたはEC2 host設定を使う |
 
 #### 仮想デバイス環境管理 (`gar sim runtime`)
 | コマンド | 内容 |
 |---|---|
-| `gar sim runtime build` | 仮想デバイススタブ（CUSE I2C/SPI など）や Wokwi firmware をビルド |
-| `gar sim runtime build --workspace NAME` | Wokwi など複数登録した workspace のうち、登録名でビルド対象を指定 |
+| `gar sim runtime build` | runtime artifactが必要なenvironmentで`product-sim-env-build.sh`を実行。Wokwi/MuJoCoなど不要なenvironmentでは何も作らない |
+| `gar sim runtime build --workspace NAME` | 複数登録したworkspaceのうち、登録名でruntime build対象を指定 |
 | `gar sim runtime deploy` | ビルドしたスタブや接続用Webブリッジをホストへ転送・配置 |
 | `gar sim runtime deploy --workspace NAME` | 指定 workspace の `deploy.sim_env` artifact bundle を転送・配置 |
-| `gar sim runtime start` | 仮想環境（systemd サービス群）とポートフォワードを起動 |
-| `gar sim runtime stop` | 仮想環境（systemd サービス群）を停止 |
-| `gar sim runtime status [--json]` | 各サービスの状態やポートフォワードの接続状態を表示 |
+| `gar sim runtime start [--no-port-forward]` | 選択したruntimeを起動。remote runtimeではterminal profileとHardware Panel用port forwardも構成 |
+| `gar sim runtime stop [--keep-port-forward]` | 選択したruntimeを停止し、既定ではremote runtimeのport forwardも停止 |
+| `gar sim runtime status` | runtimeとport forwardの状態を表示 |
 | `gar sim runtime diag [--json]` | プロセス、仮想デバイス、APIの動作状況をまとめて診断（AIエージェントの診断時は `--json` 推奨） |
 | `gar sim runtime log` | 仮想環境の主要ログ（ブリッジやドライバ等）を表示 |
+
+`runtime start` は `--settings PATH` と `--profile-name NAME` で起動設定を上書きできます。
 
 #### 仮想GPIO管理 (`gar sim gpio`)
 | コマンド | 内容 |
@@ -222,7 +236,7 @@ gar sim host stop
 #### アプリケーション配置 (`gar sim app`)
 | コマンド | 内容 |
 |---|---|
-| `gar sim app build` | シミュレーション用のアプリケーション成果物をビルド (※現在は移行中のため、一部ターゲットは Makefile を経由) |
+| `gar sim app build` | 選択したBuildEnvironmentで`product-sim-build.sh`を実行し、simulation application artifactを作成 |
 | `gar sim app build --workspace NAME` | `gar setup` 一覧の workspace名でビルド対象を指定 |
 | `gar sim app clean [--workspace NAME]` | 選択した product workspace の simulation build artifact を削除 |
 | `gar sim app deploy` | 最新のアプリケーション成果物をシミュレーションホストの実行可能パスへ反映 |
@@ -234,6 +248,8 @@ gar sim host stop
 | `gar sim infra setup` | 現在のシミュレーションホスト設定値を表示し、Terraform による作成計画を確認 |
 | `gar sim infra apply` | インフラを実際に適用してインスタンスを作成し、`.gar/config.json` と SSH config を更新 |
 | `gar sim infra destroy` | インスタンスを完全に破棄 |
+
+各infra actionは`--key-name`、`--region`、`--auto-approve`をTerraformへ渡せます。
 
 ---
 
@@ -282,7 +298,10 @@ usbipd bind --busid <busid>
 | `gar usb attach` | USB-C デバイスを usbipd-win 経由で WSL2 に attach |
 | `gar usb detach` | detach |
 | `gar usb status` | 接続状態確認 |
-| `gar usb list` | 接続可能デバイス一覧 |
+| `gar usb list [--json]` | 接続可能デバイス一覧 |
+
+`attach` / `bind`は`--busid`、`--match`、`--no-remember`、`detach`は`--busid` / `--match`、
+`status`は`--busid` / `--match` / `--json`に対応します。
 
 adb 実機は Windows 側 `adb.exe` を直接使う environment もあり、その場合は `usbipd-win`
 不要。USB serial flash など WSL2 の device node が必要な経路では `gar usb` を使う。
@@ -294,5 +313,5 @@ adb 実機は Windows 側 `adb.exe` を直接使う environment もあり、そ�
 | コマンド | 内容 |
 |---|---|
 | `gar terminal run -- <cmd>` | VSCode integrated terminal でコマンドを実行（sudo 等の人間入力が必要な場合） |
-| `gar terminal gc` | terminal-requests の古いエントリを削除 |
+| `gar terminal gc [--keep-days N] [--dry-run]` | terminal request/statusの古いエントリを削除 |
 | `gar completion bash` | bash completion script を出力 |

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from scripts.gar_lib.access.channel import AccessResult
-from scripts.gar_lib.simulation.parse import parse_sim_diag
+from scripts.gar_lib.simulation.diagnostics.parse import parse_sim_diag
 
 
 class SimulationDiagnosticReport(Protocol):

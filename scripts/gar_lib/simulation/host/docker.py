@@ -7,8 +7,8 @@ import shlex
 from scripts.gar_lib.access.channel import CommandChannel
 from scripts.gar_lib.access.docker import DockerCliCommandChannel
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.simulation.docker_spec import DockerHostSpec
-from scripts.gar_lib.simulation.host import SimulationHostStartResult, SimulationHostState
+from scripts.gar_lib.simulation.host.contract import SimulationHostStartResult, SimulationHostState
+from scripts.gar_lib.simulation.host.docker_spec import DockerHostSpec
 
 BACKEND_ID = "docker"
 

@@ -4,7 +4,7 @@ import platform
 import unittest
 from pathlib import Path
 
-from scripts.gar_lib.build._base import ProductBuildSpecResolver
+from scripts.gar_lib.build.spec import ProductBuildSpecResolver
 from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.workspace import Workspace
 

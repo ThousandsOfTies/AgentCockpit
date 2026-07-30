@@ -1,4 +1,4 @@
-"""workspace が選んだ target backend から、実機を操作するオブジェクトを作る。"""
+"""Compose a target runtime from the environment selected by a workspace."""
 
 from __future__ import annotations
 

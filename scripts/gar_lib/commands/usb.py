@@ -75,65 +75,6 @@ def _run_usbipd(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def parse_usbipd_list(output: str) -> list[UsbDevice]:
-    """``usbipd list`` の Connected セクションを行ごとに解析する。"""
-    devices: list[UsbDevice] = []
-    in_connected = False
-    # BUSID  VID:PID  DEVICE...  STATE  という列。BUSID は数字-数字 で始まる。
-    row_pattern = re.compile(
-        r"^(?P<busid>\d+-\d+)\s+"
-        r"(?P<vidpid>[0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+"
-        r"(?P<rest>.+?)\s*$"
-    )
-    known_states = ("not shared", "shared (forced)", "shared", "attached")
-
-    for raw_line in output.splitlines():
-        line = raw_line.rstrip()
-        stripped = line.strip()
-        if stripped.lower().startswith("connected:"):
-            in_connected = True
-            continue
-        if stripped.lower().startswith("persisted:"):
-            in_connected = False
-            continue
-        if not in_connected or not stripped:
-            continue
-        if stripped.lower().startswith("busid"):
-            continue
-
-        match = row_pattern.match(line)
-        if not match:
-            continue
-
-        rest = match.group("rest")
-        state = ""
-        lowered = rest.lower()
-        for candidate in known_states:
-            index = lowered.rfind(candidate)
-            if index != -1:
-                state = rest[index:].strip()
-                rest = rest[:index].strip()
-                break
-
-        devices.append(
-            UsbDevice(
-                busid=match.group("busid"),
-                vid_pid=match.group("vidpid"),
-                description=rest,
-                state=state,
-            )
-        )
-    return devices
-
-
-def list_usb_devices() -> list[UsbDevice]:
-    result = _run_usbipd(["list"])
-    if result.returncode != 0:
-        print(result.stderr.strip() or result.stdout.strip(), file=sys.stderr)
-        return []
-    return parse_usbipd_list(result.stdout)
-
-
 def _format_device(device: UsbDevice) -> str:
     return f"{device.busid:>6}  {device.vid_pid}  {device.description}  [{device.state}]"
 
@@ -231,6 +172,72 @@ def _device_to_dict(device: UsbDevice) -> dict:
         "is_attached": device.is_attached,
         "looks_like_android": device.looks_like_android,
     }
+
+
+def _remember(config: dict, busid: str) -> None:
+    if saved_usb_busid(config) == busid:
+        return
+    set_saved_usb_busid(config, busid)
+    save_config(config)
+
+
+def parse_usbipd_list(output: str) -> list[UsbDevice]:
+    """``usbipd list`` の Connected セクションを行ごとに解析する。"""
+    devices: list[UsbDevice] = []
+    in_connected = False
+    # BUSID  VID:PID  DEVICE...  STATE  という列。BUSID は数字-数字 で始まる。
+    row_pattern = re.compile(
+        r"^(?P<busid>\d+-\d+)\s+"
+        r"(?P<vidpid>[0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+"
+        r"(?P<rest>.+?)\s*$"
+    )
+    known_states = ("not shared", "shared (forced)", "shared", "attached")
+
+    for raw_line in output.splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.lower().startswith("connected:"):
+            in_connected = True
+            continue
+        if stripped.lower().startswith("persisted:"):
+            in_connected = False
+            continue
+        if not in_connected or not stripped:
+            continue
+        if stripped.lower().startswith("busid"):
+            continue
+
+        match = row_pattern.match(line)
+        if not match:
+            continue
+
+        rest = match.group("rest")
+        state = ""
+        lowered = rest.lower()
+        for candidate in known_states:
+            index = lowered.rfind(candidate)
+            if index != -1:
+                state = rest[index:].strip()
+                rest = rest[:index].strip()
+                break
+
+        devices.append(
+            UsbDevice(
+                busid=match.group("busid"),
+                vid_pid=match.group("vidpid"),
+                description=rest,
+                state=state,
+            )
+        )
+    return devices
+
+
+def list_usb_devices() -> list[UsbDevice]:
+    result = _run_usbipd(["list"])
+    if result.returncode != 0:
+        print(result.stderr.strip() or result.stdout.strip(), file=sys.stderr)
+        return []
+    return parse_usbipd_list(result.stdout)
 
 
 def run_usb_command(
@@ -373,10 +380,3 @@ def run_usb_command(
 
     print(f"unknown usb command: {command}", file=sys.stderr)
     return 1
-
-
-def _remember(config: dict, busid: str) -> None:
-    if saved_usb_busid(config) == busid:
-        return
-    set_saved_usb_busid(config, busid)
-    save_config(config)

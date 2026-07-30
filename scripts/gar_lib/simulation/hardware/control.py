@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from scripts.gar_lib.access.channel import AccessResult, CommandChannel
-from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder, gpio_sim_plan
-from scripts.gar_lib.simulation.parse import parse_gpio_runtime_status, parse_gpio_sim_check
+from scripts.gar_lib.simulation.diagnostics.parse import parse_gpio_runtime_status, parse_gpio_sim_check
+from scripts.gar_lib.simulation.runtime.linux_commands import LinuxSystemdCommandBuilder, gpio_sim_plan
 
 
 @dataclass(frozen=True)

@@ -27,6 +27,10 @@ Gapless Agent Runtime は、この受け渡しを人間ではなく、AI エー�
 
 手元の Windows PC に VS Code と WSL2 があれば、上記すべてを `gar` コマンドひとつで操作できます。
 
+実装上は、product hookをWSL上で実行する`local` BuildEnvironmentと、Docker containerを
+simulation hostにする`local_docker`にも対応しています。上表はPoCで実機確認した
+Codespaces → EC2 Graviton → Raspberry Pi 5の代表経路です。
+
 ## セットアップ資産
 
 Runtime 本体とは別に、target ごとのテンプレート・配線定義・シミュレーション資産は
@@ -40,18 +44,18 @@ Runtime 本体とは別に、target ごとのテンプレート・配線定義�
 依存しない standalone script を使います。
 
 ```bash
-scripts/create-product-devspace.sh GarStreamTx \
-  https://github.com/ThousandsOfTies/gar-stream-tx \
-  --destination ../GarStreamTx
+scripts/create-product-devspace.sh GarAdhocApp \
+  https://github.com/ThousandsOfTies/gar-adhoc-app \
+  --destination /home/user/Yurufuwa/GarAdhocApp
 ```
 
-この script は `gar-build-env` を clone し、`GarStreamTx` branch、アプリと
+この script は `gar-build-env` を clone し、product名と同名のbranch、アプリと
 `gar-tools` の submodule、`product-sim-build.sh` の template を作成します。
 product 固有の simulation command を編集した後に、作成先を指定して `gar setup` を
 実行してください。リモート branch まで公開する場合だけ `--push` を付けます。
 
 target app のソースは `GaplessAgentRuntime/app` ではなく、兄弟リポジトリ
-`embedded-poc-app/app` などの target app repo に置きます。Runtime はそれらの成果物を
+`gar-adhoc-app/app` などの target app repo に置きます。Runtime はそれらの成果物を
 ビルド環境・シミュレーション環境・実機へ運ぶ操作面です。
 
 開発者が `gar-tools` も編集する場合は、`GaplessAgentRuntime` と同じ親ディレクトリに
@@ -59,7 +63,8 @@ target app のソースは `GaplessAgentRuntime/app` ではなく、兄弟リポ
 
 シミュレーションの操作は、人間の手動確認と AI / CI の再現確認で入口を分けます。
 Linux / RasPi-compatible では Web UI、Wokwi では VS Code Wokwi Simulator / Diagram UI を
-人間が操作し、AI / CI は GAR 共通の JSON シナリオを実行単位にします。
+人間が操作します。AI / CI の共通JSONシナリオは現在Linux bridgeで利用でき、Wokwiは
+Wokwi CLI固有scenarioを使う移行中の例外です。
 
 ## 読者別の入口
 

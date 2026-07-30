@@ -10,7 +10,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.codespace.github_codespaces import (
     GitHubCodespacesEnvironment,
@@ -31,7 +30,8 @@ from scripts.gar_lib.environments.registry.target.adb_usb import AdbUsbEnvironme
 from scripts.gar_lib.environments.registry.target.esp32_esptool import (
     Esp32EsptoolEnvironment,
 )
-from scripts.gar_lib.simulation.mujoco import MujocoSimulationEnvironment
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.simulation.runtime.mujoco import MujocoSimulationEnvironment
 
 
 class GarDiscoveryTest(unittest.TestCase):
@@ -119,9 +119,9 @@ class GarDiscoveryTest(unittest.TestCase):
                     {"GAR_MUJOCO_MODEL": str(model), "GAR_MUJOCO_WORKSPACE": str(workspace)},
                     clear=False,
                 ),
-                mock.patch("scripts.gar_lib.simulation.mujoco.subprocess.run", return_value=completed),
-                mock.patch("scripts.gar_lib.simulation.mujoco.LocalProcessChannel") as channel_type,
-                mock.patch("scripts.gar_lib.simulation.mujoco._bridge_state", return_value={"ok": True}),
+                mock.patch("scripts.gar_lib.simulation.runtime.mujoco.subprocess.run", return_value=completed),
+                mock.patch("scripts.gar_lib.simulation.runtime.mujoco.LocalProcessChannel") as channel_type,
+                mock.patch("scripts.gar_lib.simulation.runtime.mujoco.bridge_state", return_value={"ok": True}),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 channel = channel_type.return_value

@@ -9,8 +9,8 @@ from scripts.gar_lib.access.channel import CommandChannel, FileChannel
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.simulation.diagnostic import SimulationDiagnostic
-from scripts.gar_lib.simulation.linux import LinuxSystemdCommandBuilder
+from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnostic
+from scripts.gar_lib.simulation.runtime.linux_commands import LinuxSystemdCommandBuilder
 
 
 class LinuxSystemdSimulationEnvironment:

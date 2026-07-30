@@ -8,7 +8,7 @@ Cortex-M / RISC-V などの MCU ファームウェアを未改変のまま仮想
 Linux SBC だけでなく MCU / ベアメタル領域へ拡張できる。
 
 本ファイルが担うのは「setup で選択 → Renode を導入 → 検証」まで。
-runtime componentは`simulation/renode.py`にありresolverへ接続済みだが、
+runtime componentは`simulation/runtime/renode.py`にありresolverへ接続済みだが、
 `.resc`生成・ペリフェラルモデルの起動などは今後の作業である。現時点の
 runtime componentは各操作で明示的な未実装エラーを返す。
 """
@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from scripts.gar_lib.environments._base import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
 
 RENODE_RELEASES_API = "https://api.github.com/repos/renode/renode/releases/latest"
 RENODE_RELEASES_PAGE = "https://github.com/renode/renode/releases/latest"
@@ -51,16 +51,14 @@ class RenodeMcuEnvironment(EnvironmentSetupOption):
     required_commands = ("renode", "renode-test")
 
     @classmethod
-    def dependency_status(cls):
+    def dependency_status(cls) -> list[DependencyStatus]:
         renode_path = shutil.which("renode")
         renode_test_path = shutil.which("renode-test")
         if renode_test_path and not _renode_test_works(renode_test_path):
             renode_test_path = None
-        from scripts.gar_lib.environments._base import CommandStatus
-
         return [
-            CommandStatus(name="renode", path=renode_path),
-            CommandStatus(name="renode-test", path=renode_test_path),
+            DependencyStatus(name="renode", path=renode_path),
+            DependencyStatus(name="renode-test", path=renode_test_path),
         ]
 
     @classmethod

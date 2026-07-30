@@ -7,7 +7,7 @@ generate and execute it without a dedicated test framework.
 
 virtual H/W への操作 step は ``gar sim io`` と同じ語彙（``action`` +
 ``device``）を使い、endpoint 解決は
-:mod:`scripts.gar_lib.simulation.io_actions` を共有する。
+:mod:`scripts.gar_lib.simulation.hardware.io_actions` を共有する。
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
-    from scripts.gar_lib.simulation import io_actions  # noqa: E402
+    from scripts.gar_lib.simulation.hardware import io_actions  # noqa: E402
 except ImportError:  # simulation host へは run_scenario.py と io_actions.py だけを配る
     import io_actions  # type: ignore[no-redef]  # noqa: E402
 

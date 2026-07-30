@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from scripts.gar_lib.api import Gar
 from scripts.gar_lib.commands.recovery import report_access_failure
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
-from scripts.gar_lib.commands.workspace import workspace_for
+from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 
@@ -67,7 +67,7 @@ def run_target_command(
 
     workspace_selector = getattr(args, "workspace", None)
     try:
-        workspace = workspace_for(workspace_selector)
+        workspace = resolve_workspace(workspace_selector)
     except GarDomainError as error:
         print(f"gar: {error}", file=sys.stderr)
         return 1

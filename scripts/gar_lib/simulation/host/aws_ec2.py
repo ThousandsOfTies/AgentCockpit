@@ -7,8 +7,8 @@ import shlex
 from scripts.gar_lib.access.aws import AwsCommandChannel
 from scripts.gar_lib.access.channel import AccessResult, CommandChannel
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.simulation.host import SimulationHostStartResult, SimulationHostState
-from scripts.gar_lib.simulation.ssh_config import HostAddressUpdater
+from scripts.gar_lib.simulation.host.contract import SimulationHostStartResult, SimulationHostState
+from scripts.gar_lib.simulation.host.ssh_config import HostAddressUpdater
 
 
 class AwsEc2SimulationHostController:
