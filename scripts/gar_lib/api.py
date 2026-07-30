@@ -2,32 +2,35 @@
 
 from __future__ import annotations
 
-import json
-import sys
-
-from scripts.gar_lib.artifacts.store import ArtifactStore, LocalArtifactStore
+from scripts.gar_lib.artifacts.store import BuildArtifactStore, LocalArtifactStore
 from scripts.gar_lib.build.environment import build_environment_for
-from scripts.gar_lib.core.artifact import ArtifactKind
-from scripts.gar_lib.core.hardware import load_hw_definition
+from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
+from scripts.gar_lib.core.hardware import HardwareDefinition, load_hw_definition
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.composition import (
     hardware_control_for,
     simulation_environment_for,
     simulation_host_for,
 )
+from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnosticReport
+from scripts.gar_lib.simulation.hardware.control import HardwareControlResult
+from scripts.gar_lib.simulation.host.contract import (
+    SimulationHostStartResult,
+    SimulationHostState,
+)
 from scripts.gar_lib.simulation.session.manager import VsCodeSimulationSessionManager
 from scripts.gar_lib.target.composition import target_environment_for
 
 
 class Gar:
-    def __init__(self, workspace: Workspace, artifacts: ArtifactStore | None = None):
+    def __init__(self, workspace: Workspace, artifacts: BuildArtifactStore | None = None):
         artifact_store = artifacts if artifacts is not None else LocalArtifactStore()
         self.sim = Simulation(workspace, artifact_store)
         self.target = Target(workspace, artifact_store)
 
 
 class Simulation:
-    def __init__(self, workspace: Workspace, artifacts: ArtifactStore):
+    def __init__(self, workspace: Workspace, artifacts: BuildArtifactStore):
         self.workspace = workspace
         self.artifacts = artifacts
         self.app = SimulationApp(workspace, artifacts)
@@ -38,54 +41,44 @@ class Simulation:
 
 
 class SimulationApp:
-    def __init__(self, workspace: Workspace, artifacts: ArtifactStore):
+    def __init__(self, workspace: Workspace, artifacts: BuildArtifactStore):
         self.workspace = workspace
         self.artifacts = artifacts
 
-    def build(self) -> int:
+    def build(self) -> Artifact:
         build = build_environment_for(self.workspace, self.artifacts)
-        artifact = build.build(ArtifactKind.SIM_APP, self.workspace)
-        print(f"Artifact: {artifact.bundle_path}")
-        return 0
+        return build.build(ArtifactKind.SIM_APP, self.workspace)
 
-    def clean(self) -> int:
-        build_environment_for(self.workspace, self.artifacts).clean(
-            ArtifactKind.SIM_APP, self.workspace
-        )
-        print("Simulation artifactを削除しました。")
-        return 0
+    def clean(self) -> None:
+        build_environment_for(self.workspace, self.artifacts).clean(ArtifactKind.SIM_APP, self.workspace)
 
-    def deploy(self) -> int:
+    def deploy(self) -> Artifact:
         artifact = self.artifacts.latest(ArtifactKind.SIM_APP, self.workspace)
         simulation_environment_for(self.workspace).deploy(artifact)
-        print(f"Artifact: {artifact.bundle_path}")
-        return 0
+        return artifact
 
 
 class SimulationRuntime:
-    def __init__(self, workspace: Workspace, artifacts: ArtifactStore):
+    def __init__(self, workspace: Workspace, artifacts: BuildArtifactStore):
         self.workspace = workspace
         self.artifacts = artifacts
 
-    def build(self) -> int:
-        if not simulation_environment_for(self.workspace).requires_runtime_artifact:
-            print("このsimulation environmentには個別のruntime artifactは不要です。")
-            return 0
-        artifact = build_environment_for(self.workspace, self.artifacts).build(
-            ArtifactKind.SIM_RUNTIME, self.workspace
-        )
-        print(f"Artifact: {artifact.bundle_path}")
-        return 0
+    @property
+    def session_host(self) -> str | None:
+        return simulation_environment_for(self.workspace).session_host
 
-    def deploy(self) -> int:
+    def build(self) -> Artifact | None:
+        if not simulation_environment_for(self.workspace).requires_runtime_artifact:
+            return None
+        return build_environment_for(self.workspace, self.artifacts).build(ArtifactKind.SIM_RUNTIME, self.workspace)
+
+    def deploy(self) -> Artifact | None:
         environment = simulation_environment_for(self.workspace)
         if not environment.requires_runtime_artifact:
-            print("このsimulation environmentには個別のruntime artifactは不要です。")
-            return 0
+            return None
         artifact = self.artifacts.latest(ArtifactKind.SIM_RUNTIME, self.workspace)
         environment.deploy(artifact)
-        print(f"Artifact: {artifact.bundle_path}")
-        return 0
+        return artifact
 
     def start(
         self,
@@ -95,8 +88,8 @@ class SimulationRuntime:
         no_port_forward: bool = False,
     ) -> int:
         environment = simulation_environment_for(self.workspace)
-        exit_code = environment.start(load_hw_definition())
-        host = environment.runtime_host
+        exit_code = environment.start(_workspace_hardware(self.workspace))
+        host = environment.session_host
         if exit_code != 0 or host is None:
             return exit_code
 
@@ -108,168 +101,119 @@ class SimulationRuntime:
 
     def stop(self, *, keep_port_forward: bool = False) -> int:
         environment = simulation_environment_for(self.workspace)
-        exit_code = environment.stop(load_hw_definition())
-        host = environment.runtime_host
+        exit_code = environment.stop(_workspace_hardware(self.workspace))
+        host = environment.session_host
         if exit_code != 0 or host is None or keep_port_forward:
             return exit_code
         return VsCodeSimulationSessionManager().stop(host)
 
     def status(self) -> int:
         environment = simulation_environment_for(self.workspace)
-        host = environment.runtime_host
+        host = environment.session_host
         session_exit = VsCodeSimulationSessionManager().status(host) if host is not None else 0
-        runtime_exit = environment.status(load_hw_definition())
+        runtime_exit = environment.status(_workspace_hardware(self.workspace))
         return session_exit or runtime_exit
 
     def log(self) -> int:
         return simulation_environment_for(self.workspace).log()
 
-    def diag(self, *, json_output: bool = False) -> int:
-        report = simulation_environment_for(self.workspace).diag(load_hw_definition())
-        host = self.workspace.ec2.get("host")
-        payload = report.to_payload(host=host if isinstance(host, str) else None)
-        if json_output:
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
-        else:
-            _print_diagnostic(payload)
-        return report.exit_code
+    def diag(self) -> SimulationDiagnosticReport:
+        environment = simulation_environment_for(self.workspace)
+        return environment.diag(_workspace_hardware(self.workspace))
 
 
 class SimulationHost:
     def __init__(self, workspace: Workspace):
         self.workspace = workspace
 
-    def start(self, *, no_update_ssh: bool = False, pull: bool = False) -> int:
-        result = simulation_host_for(self.workspace).start(
+    def start(
+        self,
+        *,
+        no_update_ssh: bool = False,
+        pull: bool = False,
+    ) -> SimulationHostStartResult:
+        return simulation_host_for(self.workspace).start(
             update_address=not no_update_ssh,
             update_repository=pull,
         )
-        print(f"gar sim host: running. address = {result.state.address or '(local)'}")
-        if result.address_updated:
-            print(
-                f"gar sim host: SSH config の Host {result.state.host} を "
-                f"{result.state.address} に更新しました。"
-            )
-        if result.repository_updated:
-            print("gar sim host: simulation hostのrepositoryを更新しました。")
-        if result.repository_update_skipped:
-            print(
-                "gar sim host: --pullが指定されましたがrepo_dirが未設定のため、"
-                "git pullをスキップしました。",
-                file=sys.stderr,
-            )
-        return 0
 
-    def stop(self) -> int:
+    def stop(self) -> None:
         simulation_host_for(self.workspace).stop()
-        print("gar sim host: shutdown要求を送信しました。")
-        return 0
 
-    def status(self, *, json_output: bool = False) -> int:
-        state = simulation_host_for(self.workspace).status()
-        if json_output:
-            print(json.dumps(state.to_payload(), ensure_ascii=False, indent=2))
-            return 0
-        print(f"backend : {state.backend}")
-        print(f"id      : {state.id}")
-        print(f"state   : {state.state}")
-        print(f"address : {state.address or '(none)'}")
-        for name, value in state.details.items():
-            print(f"{name:8}: {value}")
-        return 0
+    def status(self) -> SimulationHostState:
+        return simulation_host_for(self.workspace).status()
 
 
 class SimulationGpio:
     def __init__(self, workspace: Workspace):
         self.workspace = workspace
 
-    def install(self, *, json_output: bool = False) -> int:
-        return self._run("install", json_output=json_output)
+    def install(self) -> HardwareControlResult:
+        return self._run("install")
 
-    def start(self, *, json_output: bool = False) -> int:
-        return self._run("start", json_output=json_output)
+    def start(self) -> HardwareControlResult:
+        return self._run("start")
 
-    def stop(self, *, json_output: bool = False) -> int:
-        return self._run("stop", json_output=json_output)
+    def stop(self) -> HardwareControlResult:
+        return self._run("stop")
 
-    def plan(self, *, json_output: bool = False) -> int:
-        return self._run("plan", json_output=json_output)
+    def plan(self) -> HardwareControlResult:
+        return self._run("plan")
 
-    def status(self, *, json_output: bool = False) -> int:
-        return self._run("status", json_output=json_output)
+    def status(self) -> HardwareControlResult:
+        return self._run("status")
 
-    def check(self, *, json_output: bool = False) -> int:
-        return self._run("check", json_output=json_output)
+    def check(self) -> HardwareControlResult:
+        return self._run("check")
 
-    def _run(self, action: str, *, json_output: bool) -> int:
-        result = hardware_control_for(self.workspace).gpio(action, load_hw_definition())
-        result.render(json_output=json_output)
-        return result.exit_code
+    def _run(self, action: str) -> HardwareControlResult:
+        return hardware_control_for(self.workspace).gpio(
+            action,
+            _workspace_hardware(self.workspace),
+        )
 
 
 class SimulationIo:
     def __init__(self, workspace: Workspace):
         self.workspace = workspace
 
-    def state(self, **params: object) -> int:
+    def state(self, **params: object) -> HardwareControlResult:
         return self._run("state", params)
 
-    def press(self, **params: object) -> int:
+    def press(self, **params: object) -> HardwareControlResult:
         return self._run("press", params)
 
-    def set(self, **params: object) -> int:
+    def set(self, **params: object) -> HardwareControlResult:
         return self._run("set", params)
 
-    def clear(self, **params: object) -> int:
+    def clear(self, **params: object) -> HardwareControlResult:
         return self._run("clear", params)
 
-    def _run(self, action: str, params: dict[str, object]) -> int:
-        json_output = bool(params.pop("json_output", False))
-        result = hardware_control_for(self.workspace).io(action, params)
-        result.render(json_output=json_output)
-        return result.exit_code
+    def _run(self, action: str, params: dict[str, object]) -> HardwareControlResult:
+        return hardware_control_for(self.workspace).io(action, params)
 
 
-def _print_diagnostic(payload: dict[str, object]) -> None:
-    print(f"status: {'ok' if payload.get('ok') is True else 'error'}")
-    if payload.get("host"):
-        print(f"host: {payload['host']}")
-    if payload.get("error"):
-        print(f"error: {payload['error']}")
-    processes = payload.get("processes")
-    if isinstance(processes, list):
-        print(f"processes: {len(processes)}")
-        for process in processes:
-            if isinstance(process, dict):
-                print(f"  {process.get('pid', '?')}: {process.get('cmd', '')}")
-    devices = payload.get("devices")
-    if isinstance(devices, dict):
-        print("devices:")
-        for path, available in devices.items():
-            print(f"  {path}: {'OK' if available else 'missing'}")
-    if payload.get("api") is not None:
-        print("api:")
-        print(json.dumps(payload["api"], ensure_ascii=False, indent=2))
+def _workspace_hardware(workspace: Workspace) -> HardwareDefinition:
+    hardware_dir = str(workspace.hardware_dir) if workspace.hardware_dir is not None else None
+    return load_hw_definition(hw_dir=hardware_dir)
 
 
 class Target:
-    def __init__(self, workspace: Workspace, artifacts: ArtifactStore):
+    def __init__(self, workspace: Workspace, artifacts: BuildArtifactStore):
         self.workspace = workspace
         self.artifacts = artifacts
 
-    def build(self) -> int:
+    def build(self) -> Artifact:
         build = build_environment_for(self.workspace, self.artifacts)
-        artifact = build.build(ArtifactKind.TARGET_APP, self.workspace)
-        print(f"Artifact: {artifact.bundle_path}")
-        return 0
+        return build.build(ArtifactKind.TARGET_APP, self.workspace)
 
-    def deploy(self) -> int:
+    def deploy(self) -> Artifact:
         artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
         target_environment_for(self.workspace).deploy(artifact)
-        print(f"Artifact: {artifact.bundle_path}")
-        return 0
+        return artifact
 
-    def fetch(self) -> int:
-        build_environment_for(self.workspace, self.artifacts).fetch(self.workspace)
-        print("artifact bundle を WSL hub へ取得しました。")
-        return 0
+    def fetch(self) -> Artifact:
+        return build_environment_for(self.workspace, self.artifacts).fetch(
+            ArtifactKind.TARGET_APP,
+            self.workspace,
+        )

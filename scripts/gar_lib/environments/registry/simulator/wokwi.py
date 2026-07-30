@@ -6,10 +6,13 @@ import os
 import shutil
 from pathlib import Path
 
-from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import (
+    DependencyStatus,
+    SimulationEnvironmentSetupOption,
+)
 
 
-class WokwiEnvironment(EnvironmentSetupOption):
+class WokwiEnvironment(SimulationEnvironmentSetupOption):
     environment_id = "wokwi"
     display_name = "Wokwi"
     description = "ローカルCLIから Wokwi CI のクラウドESP32/M5StackCシミュレーションを実行します"

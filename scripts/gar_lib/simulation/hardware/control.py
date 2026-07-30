@@ -18,18 +18,6 @@ class HardwareControlResult:
     stdout: str = ""
     stderr: str = ""
 
-    def render(self, *, json_output: bool) -> None:
-        if json_output and self.payload is not None:
-            print(json.dumps(self.payload, ensure_ascii=False, indent=2))
-            return
-        if self.stdout:
-            print(self.stdout, end="" if self.stdout.endswith("\n") else "\n")
-        if self.stderr:
-            print(self.stderr, end="" if self.stderr.endswith("\n") else "\n")
-        if self.payload is not None and not self.stdout:
-            for key, value in self.payload.items():
-                print(f"{key}: {value}")
-
 
 class SimulationHardwareControl(Protocol):
     def gpio(
@@ -63,22 +51,13 @@ class LinuxBridgeHardwareControl:
         if action == "install":
             return self._command(self.command_builder.build_gpio_systemd_install(hardware))
         if action == "start":
-            command = (
-                self.command_builder.build_gpio_systemd_install(hardware)
-                + "; sudo systemctl restart gar-gpio-sim.service; "
-                "sudo systemctl --no-pager --full status gar-gpio-sim.service"
-            )
-            return self._command(command)
+            return self._command(self.command_builder.build_gpio_systemd_start(hardware))
         if action == "stop":
             return self._command("sudo systemctl stop gar-gpio-sim.service")
         if action == "status":
-            result = self.command_channel.run(
-                self.command_builder.build_gpio_runtime_status(hardware)
-            )
+            result = self.command_channel.run(self.command_builder.build_gpio_runtime_status(hardware))
             payload = (
-                parse_gpio_runtime_status(result.stdout)
-                if result.returncode == 0
-                else self._error_payload(result)
+                parse_gpio_runtime_status(result.stdout) if result.returncode == 0 else self._error_payload(result)
             )
             return HardwareControlResult(
                 result.returncode if result.returncode else (0 if payload.get("ok") else 1),
@@ -88,11 +67,7 @@ class LinuxBridgeHardwareControl:
             )
         if action == "check":
             result = self.command_channel.run(self.command_builder.build_gpio_sim_check())
-            payload = (
-                parse_gpio_sim_check(result.stdout)
-                if result.returncode == 0
-                else self._error_payload(result)
-            )
+            payload = parse_gpio_sim_check(result.stdout) if result.returncode == 0 else self._error_payload(result)
             return HardwareControlResult(
                 result.returncode if result.returncode else (0 if payload.get("ok") else 1),
                 self._with_host(payload),
@@ -111,7 +86,8 @@ class LinuxBridgeHardwareControl:
             payload = {"ok": False, "raw": result.stdout.strip()}
         if not isinstance(payload, dict):
             payload = {"ok": False, "state": payload}
-        return HardwareControlResult(result.returncode, payload, result.stdout, result.stderr)
+        exit_code = result.returncode or (1 if payload.get("ok") is False else 0)
+        return HardwareControlResult(exit_code, payload, result.stdout, result.stderr)
 
     def _command(self, command: str) -> HardwareControlResult:
         result = self.command_channel.run(command)

@@ -36,6 +36,10 @@ Yurufuwa/
     sources/
       gar-adhoc-app/     # target app submodule
       gar-tools/         # runtime tools submodule
+  GarVibeRemote/         # gar-build-envのVibe Remote product workspace
+    sources/
+      gar-vibe-ui/       # VS Code bridge / M5StickC app submodule
+      gar-tools/         # runtime tools submodule
 ```
 
 AI agent は sibling repo で作業を始める場合でも、
@@ -95,7 +99,7 @@ gar code stop    # アンマウント・profile 削除
 Hardware Panel を WSL2/VS Code から見る場合:
 
 ```bash
-gar sim runtime start   # EC2:8080/8765 を WSL2:127.0.0.1 に転送
+gar sim runtime start   # EC2:8080 を WSL2:127.0.0.1 に転送（HTTP + WebSocket）
 gar sim runtime status
 gar sim runtime stop
 ```
@@ -128,19 +132,20 @@ USB-C 実機への adb も、`usbipd-win` を WSL2 から呼び出す `gar usb a
 ### ESP32 / USB serial の build と flash
 
 M5StickC Plus2 Vibe Remote も、workspace の target 定義（`esp32_esptool`）に従って
-`gar target build` / `gar target deploy` の統一コマンドで扱う。build 側は PlatformIO
-ビルド＋artifact 取得、deploy 側は esptool flash に自動で解決される。
+`gar target build` / `gar target deploy` の統一コマンドで扱う。build 側は選択した
+local/Codespaces環境でproduct workspaceの`product-target-build.sh`を実行し、deploy側は
+esptool flashに解決される。
 
 ```bash
-# workspace の target 定義から PlatformIO ビルド＋artifact 取得
+# product hookでPlatformIOビルドし、TARGET_APP snapshotを作成
 gar target build
 
 # 取得済み artifact を esptool で実機へ書き込み
 gar target deploy
 ```
 
-PlatformIO environment などの ESP32 固有パラメータ（`pio_env` / `remote_project_root`）は
-`gar setup` で workspace に保存する。serial port も workspace に保存され、WSL 上では
+PlatformIO environmentやproject pathはproduct workspaceのhookと設定が管理する。
+GAR側ではserial portをworkspaceに保存し、WSL上では
 `COM3` を `/dev/ttyS3` に自動変換する。`esptool` が見つからない場合は
 `~/.local/share/gar/esptool-venv` に自動導入する。
 

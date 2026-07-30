@@ -5,12 +5,12 @@
 | レイヤ | 実体 | 役割 |
 |---|---|---|
 | 1. 統合開発環境 | VSCode + `gar` CLI | AI・人間が共有する操作面。ビルド/デプロイ/観察の起点 |
-| 2. ビルド環境 | Local Docker / GitHub Codespaces | product hookをローカルまたはクラウドで実行。CodespacesはARM64クロスビルド等に利用 |
+| 2. ビルド環境 | Local / GitHub Codespaces | product hookをローカルまたはクラウドで実行。CodespacesはARM64クロスビルド等に利用 |
 | 3. シミュレーション環境 | AWS EC2 Graviton | 実機と同一 ARM64 バイナリを動かす仮想 H/W 実行環境 |
 | 4. デバイス互換 Runtime | CUSE / gpio-sim + bridge | `/dev/i2c-*` `/dev/spidev*` `/dev/gpiochip*` を OS レベルで再現しアプリを無改造で動かす |
 | 5. 実機接続環境 | RasPi5（adb / SSH） | 同一バイナリを実機で検証。接続経路は config で切り替え |
 
-ビルド成果物は、選択したBuildEnvironment（local / Codespaces）→ WSL側artifact store → simulation/実機の一方向で流れる。EC2や実機上ではビルドしない。
+ビルド成果物は、選択したBuildEnvironment（local / Codespaces）→ WSL側artifact store → simulation/実機の一方向で流れる。EC2や実機上ではビルドしない。ESP32を含む全targetで同じBuildEnvironmentを使い、target固有のbuild手順はproduct hookに置く。
 
 ---
 
@@ -28,6 +28,8 @@ buildやfetchを暗黙には実行しない。新しい成果物が必要な場�
 Codespace は BuildEnvironment の実装のひとつ。ユーザーは通常 `gar sim app build` /
 `gar sim app deploy` / `gar target build` / `gar target deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。
+WSL側ではworkspace ID・artifact種別・build IDごとに不変snapshotを作り、`latest.json`で
+最新snapshotを選ぶ。これにより`SIM_APP`、`SIM_RUNTIME`、`TARGET_APP`が互いに上書きされない。
 
 実機操作も make 的な依存 target として扱う。
 
@@ -45,7 +47,8 @@ target.build
 ```
 
 `gar setup` は、この graph の各 node が何を意味するかを保存する。たとえば ESP32/M5StickC
-なら `target.access` は USB serial 接続先、`target.build` は PlatformIO/Codespaces build、
+なら `target.access` は USB serial 接続先、`target.build` はproduct workspaceの
+`product-target-build.sh`をlocalまたはCodespacesで実行する処理、
 `target.deploy` は最新 firmware artifact の flash になる。RasPi/Linux device なら
 `target.deploy` は adb または SSH/scp での配置になる。
 
@@ -82,7 +85,7 @@ CUSE/gpio-sim / Wokwi / MuJoCo SDK / Renode
 
 このため、Web Panel は Linux 仮想デバイス runtime だけの付属機能ではない。人間向け panel と AI / CI 向け scenario は、同じ Bridge のクライアントである。新しい simulator environment を追加するとき、標準 viewer や environment 固有 UI だけで完結させてはならない。必ず Bridge を持つか、environment 固有の操作 API を GAR の JSON command/state 契約へ変換する adapter を実装する。
 
-現在の Wokwi は Wokwi CLI scenario を使う移行中の例外である。共通 JSON scenario からの起動は長期的な統一対象であり、environment 固有 UI を共通 control plane の代わりと見なさない。
+Wokwi の自動操作を製品が追加する場合、現状は Wokwi CLI 固有 scenario を使う移行中の例外になる。共有 scenario はまだなく、共通 JSON scenario からの起動は長期的な統一対象である。environment 固有 UI を共通 control plane の代わりと見なさない。
 
 ---
 
@@ -137,11 +140,16 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 | Linux Bridge 手動操作 | Virtual Hardware Panel |
 | Linux Bridge シナリオ | `python scripts/run_scenario.py path/to/scenario.json` |
 | Wokwi 手動確認 | VS Code Wokwi 拡張 / Diagram Editor |
-| Wokwi シナリオ | `wokwi-cli --scenario button.test.yaml .`（共通control plane未接続） |
+| Wokwi 自動確認 | 共有scenarioは未提供。製品がscenarioをartifactへ含めた場合だけ`wokwi-cli --scenario`を使用 |
 | MuJoCo | `gar sim runtime start --no-port-forward`（start時にmodelを検証） |
 | ESP32 QEMU | setup選択肢とerror-only runtimeのみ。`gar-esp32-flash-image` / `gar-esp32-qemu-run`はgar-tools側の手動検証入口 |
 | Renode | setup選択肢とerror-only runtimeのみ。`renode` / `renode-test`は手動検証入口 |
 | Vibe Remote smoke | `npm run smoke:protocol` |
+
+WokwiとMuJoCoのlocal processは共通のstate storeを使う。stateはatomicに置換し、
+start/stopはfile lockで直列化する。停止時はPIDだけでなくargvと`/proc` start timeを照合し、
+PID再利用で無関係なprocessを停止しない。MuJoCoのproduct assetは`gar sim app deploy`で
+`.gar/mujoco/`へmaterializeしてからmodelを検証する。
 
 具体的なセットアップ手順と確認手順は [06_SIMULATION.md](06_SIMULATION.md) を参照。
 

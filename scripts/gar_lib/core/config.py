@@ -19,21 +19,13 @@ CONFIG_PATH = PROJECT_ROOT / ".gar" / "config.json"
 VSCODE_EXT_NAME = "gar-terminal-bridge"
 VSCODE_EXT_VERSION = "0.0.3"
 
-DEFAULT_EC2_HOST = "vibecode-graviton"
 DEFAULT_EC2_INSTANCE_ID: str | None = None
 DEFAULT_EC2_REGION: str | None = None
-_ACTIVE_WORKSPACE_ROOT: str | None = None
 RUNTIME_HOST_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 
 
 def is_valid_runtime_host(value: str) -> bool:
     return bool(RUNTIME_HOST_PATTERN.fullmatch(value))
-
-
-def set_active_workspace_root(root: str | None) -> None:
-    """Select the workspace whose settings subsequent config calls use."""
-    global _ACTIVE_WORKSPACE_ROOT
-    _ACTIVE_WORKSPACE_ROOT = root
 
 
 def _workspace_entries(data: dict) -> list[dict]:
@@ -72,16 +64,26 @@ def _workspace_entries(data: dict) -> list[dict]:
     return entries
 
 
-def _select_workspace_entry(entries: list[dict]) -> dict | None:
-    requested_root = _ACTIVE_WORKSPACE_ROOT
-    if requested_root:
-        exact = next((entry for entry in entries if entry["id"] == requested_root), None)
+def _select_workspace_entry(
+    entries: list[dict],
+    workspace_selector: str | Path | None,
+) -> dict | None:
+    """Select one workspace without retaining selection in module state.
+
+    An explicit selector may be a workspace id, its display name, or the path
+    of a local workspace.  When omitted, selection follows the historical
+    current-directory/single-workspace behavior.
+    """
+
+    if workspace_selector is not None:
+        selector = str(workspace_selector)
+        exact = next((entry for entry in entries if entry["id"] == selector), None)
         if exact is not None:
             return exact
-        name_matches = [entry for entry in entries if entry["name"] == requested_root]
+        name_matches = [entry for entry in entries if entry["name"] == selector]
         if len(name_matches) == 1:
             return name_matches[0]
-        resolved = str(Path(requested_root).expanduser().resolve())
+        resolved = str(Path(selector).expanduser().resolve())
         return next(
             (
                 entry
@@ -96,10 +98,7 @@ def _select_workspace_entry(entries: list[dict]) -> dict | None:
         entry
         for entry in entries
         if entry["connection"]["type"] == "local"
-        and (
-            current == Path(entry["connection"]["path"])
-            or current.is_relative_to(Path(entry["connection"]["path"]))
-        )
+        and (current == Path(entry["connection"]["path"]) or current.is_relative_to(Path(entry["connection"]["path"])))
     ]
     if matching:
         return max(matching, key=lambda entry: len(entry["connection"]["path"]))
@@ -108,7 +107,13 @@ def _select_workspace_entry(entries: list[dict]) -> dict | None:
     return None
 
 
-def load_config() -> dict:
+def load_config(*, workspace_selector: str | Path | None = None) -> dict:
+    """Load settings for one explicitly selected or inferred workspace.
+
+    ``workspace_selector`` is intentionally scoped to this call.  Selecting a
+    workspace for setup must not change which workspace a later command reads.
+    """
+
     if not CONFIG_PATH.exists():
         return default_config()
 
@@ -139,7 +144,7 @@ def load_config() -> dict:
         return default_config()
 
     entries = _workspace_entries(data)
-    selected_entry = _select_workspace_entry(entries)
+    selected_entry = _select_workspace_entry(entries, workspace_selector)
     if selected_entry is None:
         return default_config(workspaces=entries)
     data = selected_entry
@@ -196,6 +201,9 @@ def load_config() -> dict:
     target = data.get("target")
     target_settings = dict(target) if isinstance(target, dict) else {}
 
+    hardware = data.get("hardware")
+    hardware_settings = dict(hardware) if isinstance(hardware, dict) else {}
+
     return {
         "workspace_id": data["id"],
         "workspace_name": data["name"],
@@ -204,11 +212,10 @@ def load_config() -> dict:
         "workspaces": entries,
         **({"selected_target": selected_target} if selected_target else {}),
         "selected_environments": {
-            str(category_id): str(environment_id)
-            for category_id, environment_id in selected_environments.items()
+            str(category_id): str(environment_id) for category_id, environment_id in selected_environments.items()
         },
         "ec2": {
-            "host": ec2_host or DEFAULT_EC2_HOST,
+            **({"host": ec2_host} if ec2_host else {}),
             **({"instance_id": ec2_instance_id} if ec2_instance_id else {}),
             **({"region": ec2_region} if ec2_region else {}),
             **({"repo_dir": ec2_repo_dir} if ec2_repo_dir else {}),
@@ -218,6 +225,7 @@ def load_config() -> dict:
         **({"usb": {"busid": usb_busid}} if usb_busid else {}),
         **({"esp32": {"port": esp32_port}} if esp32_port else {}),
         **({"target": target_settings} if target_settings else {}),
+        **({"hardware": hardware_settings} if hardware_settings else {}),
         **(
             {
                 "adb": {
@@ -290,17 +298,15 @@ def default_config(*, workspaces: list[dict] | None = None) -> dict:
     return {
         "workspaces": workspaces or [],
         "selected_environments": {},
-        "ec2": {
-            "host": DEFAULT_EC2_HOST,
-        },
+        "ec2": {},
     }
 
 
-def default_ec2_host(config: dict) -> str:
+def default_ec2_host(config: dict) -> str | None:
     ec2 = config.get("ec2")
     if isinstance(ec2, dict) and isinstance(ec2.get("host"), str) and ec2["host"]:
         return ec2["host"]
-    return DEFAULT_EC2_HOST
+    return None
 
 
 def default_ec2_instance_id(config: dict) -> str | None:

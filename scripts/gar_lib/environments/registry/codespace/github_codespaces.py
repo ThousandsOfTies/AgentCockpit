@@ -4,10 +4,10 @@ import platform
 import shutil
 
 from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import DevelopmentEnvironmentSetupOption
 
 
-class GitHubCodespacesEnvironment(EnvironmentSetupOption):
+class GitHubCodespacesEnvironment(DevelopmentEnvironmentSetupOption):
     environment_id = "github_codespaces"
     display_name = "GitHub Codespaces"
     description = "GitHub CLI を使って Codespaces に接続します"
@@ -16,11 +16,7 @@ class GitHubCodespacesEnvironment(EnvironmentSetupOption):
 
     @classmethod
     def install_hint(cls, missing: list[str]) -> str:
-        supported_missing = [
-            command
-            for command in missing
-            if command in ("gh", "sshfs")
-        ]
+        supported_missing = [command for command in missing if command in ("gh", "sshfs")]
         if not supported_missing:
             return super().install_hint(missing)
 

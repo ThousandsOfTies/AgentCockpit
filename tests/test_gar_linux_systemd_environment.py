@@ -9,6 +9,7 @@ from unittest import mock
 from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.workspace import Workspace
+from scripts.gar_lib.simulation.runtime.linux_commands import LinuxSystemdCommandBuilder
 from scripts.gar_lib.simulation.runtime.linux_systemd import LinuxSystemdSimulationEnvironment
 
 
@@ -20,17 +21,7 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
             source.parent.mkdir()
             source.write_text("app", encoding="utf-8")
             (root / "artifact.json").write_text(
-                json.dumps(
-                    {
-                        "deploy": {
-                            "app": {
-                                "files": [
-                                    {"src": "files/app", "dest": "~/app", "mode": "0755"}
-                                ]
-                            }
-                        }
-                    }
-                ),
+                json.dumps({"deploy": {"app": {"files": [{"src": "files/app", "dest": "~/app", "mode": "0755"}]}}}),
                 encoding="utf-8",
             )
             workspace = Workspace("ws", "Local/App", "App", {"type": "local", "path": tmp})
@@ -59,6 +50,7 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
 
         self.assertIn("sudo cp", command)
         self.assertIn("/usr/local/sbin/cuse_i2c", command)
+        self.assertIn("trap 'rm -rf -- /tmp/cuse_i2c' EXIT", command)
 
     def test_lifecycle_uses_command_builder_and_injected_channel(self) -> None:
         commands = mock.Mock()
@@ -106,3 +98,104 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
         self.assertEqual(1, diagnostic.exit_code)
         self.assertEqual("diagnostic command exited 7", diagnostic.error)
         self.assertEqual("not running", diagnostic.stderr)
+
+
+class LinuxSystemdCommandBuilderTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.builder = LinuxSystemdCommandBuilder()
+        self.hardware: dict[str, list[dict[str, str]]] = {
+            "gpio": [],
+            "i2c": [],
+            "spi": [],
+        }
+
+    def test_generated_install_script_uses_one_gar_runtime_directory(self) -> None:
+        command = self.builder.build_systemd_install(self.hardware)
+
+        self.assertIn("RuntimeDirectory=gar", command)
+        self.assertNotIn("RuntimeDirectory=Gapless Agent Runtime", command)
+        self.assertIn("sudo rm -f /etc/gar/hardware/*.csv", command)
+        self.assertIn(
+            "PassEnvironment=GAR_BRIDGE_HOST GAR_BRIDGE_PORT GAR_BRIDGE_ALLOWED_HOSTS",
+            command,
+        )
+
+    def test_bridge_prefers_bundled_venv_before_system_python(self) -> None:
+        command = self.builder.build_systemd_install(self.hardware)
+
+        bundled_python = '"/usr/local/lib/gar/venv/bin/python3"'
+        system_python = '"/usr/bin/python3"'
+        self.assertIn("${GAR_BRIDGE_PYTHON:-}", command)
+        self.assertIn("import aiohttp", command)
+        self.assertLess(command.index(bundled_python), command.index(system_python))
+
+    def test_lifecycle_scripts_are_fail_fast_and_do_not_kill_by_process_name(self) -> None:
+        start = self.builder.build_systemd_start(self.hardware)
+        stop = self.builder.build_systemd_stop(self.hardware)
+
+        self.assertTrue(start.startswith("set -eu\n"))
+        self.assertTrue(stop.startswith("set -eu\n"))
+        self.assertNotIn("pkill", start)
+        self.assertNotIn("pkill", stop)
+        self.assertIn("systemctl is-active", start)
+
+    def test_process_probe_cannot_match_its_own_literal_pattern(self) -> None:
+        command = self.builder.build_sim_diag_json(self.hardware)
+
+        self.assertIn("[b]ridge.py|[c]use_i2c|[c]use_spi", command)
+        self.assertNotIn('pgrep -af "bridge.py|cuse_i2c|cuse_spi"', command)
+
+    def test_bridge_requests_fail_on_http_errors_and_have_timeouts(self) -> None:
+        command = self.builder.build_io("state", {})
+
+        self.assertIn("--fail", command)
+        self.assertIn("--connect-timeout 2", command)
+        self.assertIn("--max-time 5", command)
+
+    def test_runtime_starts_only_declared_bus_simulators(self) -> None:
+        hardware = {
+            "gpio": [
+                {"name": "lcd_dc", "line": "23", "direction": "output", "role": "display_ctrl"},
+            ],
+            "i2c": [
+                {"name": "camera_ctrl", "dev": "/dev/i2c-3", "driver": "sc3336", "sim": ""},
+            ],
+            "spi": [
+                {
+                    "name": "ili9341_lcd",
+                    "dev": "/dev/spidev0.0",
+                    "driver": "ili9341",
+                    "sim": "ili9341",
+                },
+            ],
+        }
+
+        command = self.builder.build_systemd_install(hardware)
+
+        self.assertIn("ExecStart=/usr/local/sbin/cuse_spi -f --devname=%i --dc-line=23", command)
+        self.assertIn(
+            "Wants=gar-gpio-sim.service gar-bridge.service gar-cuse-spi@spidev0.0.service",
+            command,
+        )
+        self.assertNotIn("Wants=gar-gpio-sim.service gar-bridge.service gar-cuse-i2c@i2c-3.service", command)
+
+    def test_physical_spi_driver_does_not_enable_simulator_options(self) -> None:
+        hardware = {
+            "gpio": [
+                {"name": "lcd_dc", "line": "23", "direction": "output", "role": "display_ctrl"},
+            ],
+            "i2c": [],
+            "spi": [
+                {
+                    "name": "ili9341_lcd",
+                    "dev": "/dev/spidev0.0",
+                    "driver": "ili9341",
+                    "sim": "",
+                },
+            ],
+        }
+
+        command = self.builder.build_systemd_install(hardware)
+
+        self.assertNotIn("gar-cuse-spi@spidev0.0.service", command)
+        self.assertNotIn("--dc-line=23", command)

@@ -2,7 +2,10 @@
 
 VSCode integrated terminal に Gapless Agent Runtime の実行要求を流すための拡張です。
 
-Agent は `.gar/terminal-requests/*.json` に要求を書きます。拡張はそのファイルを監視し、VSCode の見える terminal を開いてコマンドを送ります。`sudo` のパスワード入力が必要な場合は、その terminal に人間が入力します。
+Agentは共通request store経由で`.gar/terminal-requests/*.json`に要求を書きます。拡張は
+そのファイルを監視し、VSCodeの見えるterminalを開いてコマンドを送ります。requestは
+`sendText()`成功後だけ`processed/`へ移動します。`sudo`のパスワード入力が必要な場合は、
+そのterminalに人間が入力します。
 
 ## Agent からの使い方
 
@@ -39,3 +42,6 @@ terminal にコマンドを送ったら status を書きます。
 ```text
 .gar/terminal-status/<request-id>.json
 ```
+
+request validationとshell quotingはVS Code APIから分離した純粋ロジックとして
+`node:test`で確認します。開発時はrepository rootで`make check`を実行してください。

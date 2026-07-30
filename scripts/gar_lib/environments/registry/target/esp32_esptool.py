@@ -1,4 +1,5 @@
 """ESP32 esptool setup option."""
+
 from __future__ import annotations
 
 import os
@@ -7,10 +8,13 @@ import sys
 from pathlib import Path
 
 from scripts.gar_lib.core.config import PROJECT_ROOT
-from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import (
+    DependencyStatus,
+    TargetEnvironmentSetupOption,
+)
 
 
-class Esp32EsptoolEnvironment(EnvironmentSetupOption):
+class Esp32EsptoolEnvironment(TargetEnvironmentSetupOption):
     environment_id = "esp32_esptool"
     display_name = "ESP32 esptool"
     description = "esptool で ESP32/M5Stack firmware を USBシリアル経由で実機へ書き込みます"

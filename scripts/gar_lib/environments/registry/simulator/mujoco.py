@@ -5,10 +5,13 @@ from __future__ import annotations
 import shutil
 import sys
 
-from scripts.gar_lib.environments.setup_option import DependencyStatus, EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import (
+    DependencyStatus,
+    SimulationEnvironmentSetupOption,
+)
 
 
-class MujocoEnvironment(EnvironmentSetupOption):
+class MujocoEnvironment(SimulationEnvironmentSetupOption):
     """Local MuJoCo installation used for articulated-robot simulation."""
 
     environment_id = "mujoco"

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from scripts.gar_lib.environments.docker_install import docker_install_hint, install_docker
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import SimulationEnvironmentSetupOption
 
 
-class LocalDockerEnvironment(EnvironmentSetupOption):
+class LocalDockerSimulationSetup(SimulationEnvironmentSetupOption):
     environment_id = "local_docker"
     display_name = "Local Docker"
     description = (
@@ -19,8 +19,7 @@ class LocalDockerEnvironment(EnvironmentSetupOption):
         if "docker" not in missing:
             return super().install_hint(missing)
         return (
-            f"{docker_install_hint()}\n"
-            "導入後に `gar sim gpio check` で host kernel の gpio-sim 有無を確認できます。"
+            f"{docker_install_hint()}\n" "導入後に `gar sim gpio check` で host kernel の gpio-sim 有無を確認できます。"
         )
 
     @classmethod
@@ -32,3 +31,7 @@ class LocalDockerEnvironment(EnvironmentSetupOption):
         if result == 0:
             print("導入後に `gar sim gpio check` で host kernel の gpio-sim 有無を確認できます。")
         return result
+
+
+# Import compatibility for integrations that used the old ambiguous name.
+LocalDockerEnvironment = LocalDockerSimulationSetup

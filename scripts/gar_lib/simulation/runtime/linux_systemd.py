@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
 
 from scripts.gar_lib.access.channel import CommandChannel, FileChannel
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
@@ -31,12 +32,12 @@ class LinuxSystemdSimulationEnvironment:
         command_channel: CommandChannel,
         file_channel: FileChannel,
         command_builder: LinuxSystemdCommandBuilder,
-        runtime_host: str | None = None,
+        session_host: str | None = None,
     ):
         self.command_channel = command_channel
         self.file_channel = file_channel
         self.command_builder = command_builder
-        self.runtime_host = runtime_host
+        self.session_host = session_host
 
     def deploy(self, artifact: Artifact) -> None:
         section = self._SECTIONS.get(artifact.kind)
@@ -88,7 +89,11 @@ class LinuxSystemdSimulationEnvironment:
         if result.stdout:
             print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
         if result.stderr:
-            print(result.stderr, end="" if result.stderr.endswith("\n") else "\n")
+            print(
+                result.stderr,
+                end="" if result.stderr.endswith("\n") else "\n",
+                file=sys.stderr,
+            )
         return result.returncode
 
     def _destination(self, destination: str) -> str:
@@ -110,7 +115,12 @@ class LinuxSystemdSimulationEnvironment:
             destination_expr = shlex.quote(destination)
 
         sudo = "" if destination.startswith("~") else "sudo "
-        commands = [f"{sudo}mkdir -p $(dirname {destination_expr})"]
+        cleanup_command = shlex.quote(f"rm -rf -- {staging_expr}")
+        commands = [
+            "set -eu",
+            f"trap {cleanup_command} EXIT",
+            f"{sudo}mkdir -p $(dirname {destination_expr})",
+        ]
         if source_is_dir:
             commands.extend(
                 [
@@ -122,4 +132,4 @@ class LinuxSystemdSimulationEnvironment:
             commands.append(f"{sudo}cp {staging_expr} {destination_expr}")
         if mode:
             commands.append(f"{sudo}chmod {shlex.quote(mode)} {destination_expr}")
-        return "; ".join(commands)
+        return "\n".join(commands)

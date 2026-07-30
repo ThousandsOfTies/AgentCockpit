@@ -6,7 +6,7 @@ import shlex
 import subprocess
 from collections.abc import Mapping
 
-from scripts.gar_lib.artifacts.store import LocalArtifactStore
+from scripts.gar_lib.artifacts.store import BuildArtifactStore
 from scripts.gar_lib.build.spec import ProductBuildSpecResolver
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
@@ -14,7 +14,7 @@ from scripts.gar_lib.core.workspace import Workspace
 
 
 class CodespacesBuildEnvironment:
-    def __init__(self, artifacts: LocalArtifactStore, specs: ProductBuildSpecResolver | None = None):
+    def __init__(self, artifacts: BuildArtifactStore, specs: ProductBuildSpecResolver | None = None):
         self.artifacts = artifacts
         self.specs = specs or ProductBuildSpecResolver()
 
@@ -30,8 +30,7 @@ class CodespacesBuildEnvironment:
         )
         if result.returncode != 0:
             raise GarDomainError(f"{kind.value} Codespaces build が失敗しました (exit {result.returncode})")
-        self.artifacts.sync_from_codespaces(workspace)
-        return self.artifacts.latest(kind, workspace)
+        return self.artifacts.sync_from_codespaces(kind, workspace)
 
     def clean(self, kind: ArtifactKind, workspace: Workspace) -> None:
         spec = self.specs.for_artifact(kind, workspace)
@@ -45,9 +44,10 @@ class CodespacesBuildEnvironment:
         )
         if result.returncode != 0:
             raise GarDomainError(f"{kind.value} Codespaces clean が失敗しました (exit {result.returncode})")
+        self.artifacts.remove(kind, workspace)
 
-    def fetch(self, workspace: Workspace) -> None:
-        self.artifacts.sync_from_codespaces(workspace)
+    def fetch(self, kind: ArtifactKind, workspace: Workspace) -> Artifact:
+        return self.artifacts.sync_from_codespaces(kind, workspace)
 
 
 def _assignments(variables: Mapping[str, str]) -> str:

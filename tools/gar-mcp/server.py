@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import json
 import sys
-import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GAR_DIR = ROOT / ".gar"
 REQUEST_DIR = GAR_DIR / "terminal-requests"
 STATUS_DIR = GAR_DIR / "terminal-status"
+
+sys.path.insert(0, str(ROOT))
+
+from scripts.gar_lib.vscode.terminal_requests import TerminalRequestStore  # noqa: E402, I001
 
 
 TOOLS = [
@@ -75,6 +77,8 @@ def main() -> int:
         try:
             request = json.loads(line)
             response = handle_request(request)
+        except json.JSONDecodeError as exc:
+            response = error_response(None, -32700, f"Parse error: {exc.msg}")
         except Exception as exc:  # Keep the MCP process alive on bad input.
             response = error_response(None, -32603, str(exc))
 
@@ -84,9 +88,31 @@ def main() -> int:
     return 0
 
 
-def handle_request(request: dict) -> dict | None:
-    method = request.get("method")
+def handle_request(request: object) -> dict | None:
+    if not isinstance(request, dict):
+        return error_response(None, -32600, "Request must be a JSON object")
+
     request_id = request.get("id")
+    if request.get("jsonrpc") != "2.0":
+        return error_response(request_id, -32600, "jsonrpc must be '2.0'")
+
+    method = request.get("method")
+    if not isinstance(method, str) or not method:
+        return error_response(request_id, -32600, "method must be a non-empty string")
+
+    raw_params = request.get("params", {})
+    if raw_params is None:
+        params = {}
+    elif isinstance(raw_params, dict):
+        params = raw_params
+    else:
+        return error_response(request_id, -32602, "params must be a JSON object")
+
+    # JSON-RPC notifications deliberately have no response. MCP clients may
+    # send initialized, cancellation, progress, and future notifications that
+    # this small server does not otherwise need to understand.
+    if "id" not in request:
+        return None
 
     if method == "initialize":
         return result_response(
@@ -101,17 +127,27 @@ def handle_request(request: dict) -> dict | None:
             },
         )
 
-    if method == "notifications/initialized":
-        return None
-
     if method == "tools/list":
         return result_response(request_id, {"tools": TOOLS})
 
     if method == "tools/call":
-        params = request.get("params") or {}
         name = params.get("name")
-        arguments = params.get("arguments") or {}
+        if not isinstance(name, str) or not name:
+            return error_response(request_id, -32602, "tools/call requires a tool name")
+
+        arguments = params.get("arguments", {})
+        if not isinstance(arguments, dict):
+            return error_response(request_id, -32602, "tool arguments must be a JSON object")
         return result_response(request_id, call_tool(name, arguments))
+
+    if method == "resources/list":
+        return result_response(request_id, {"resources": []})
+
+    if method == "prompts/list":
+        return result_response(request_id, {"prompts": []})
+
+    if method == "ping":
+        return result_response(request_id, {})
 
     return error_response(request_id, -32601, f"Unknown method: {method}")
 
@@ -131,47 +167,25 @@ def call_tool(name: str, arguments: dict) -> dict:
 
 
 def create_terminal_request(arguments: dict) -> str:
-    command = str(arguments.get("command", "")).strip()
-    if not command:
-        raise ValueError("command is required")
-    if len(command) > 4000:
-        raise ValueError("command exceeds 4000 character limit")
-    if "\x00" in command:
-        raise ValueError("command must not contain NUL bytes")
-
+    command = str(arguments.get("command", ""))
     title = str(arguments.get("title") or "Gapless Agent Runtime User Action")
-    if len(title) > 200:
-        raise ValueError("title exceeds 200 character limit")
-
     raw_cwd = arguments.get("cwd")
     cwd = Path(str(raw_cwd)).resolve() if raw_cwd else ROOT
     try:
         cwd.relative_to(ROOT)
     except ValueError as exc:
-        raise ValueError(
-            f"cwd must be inside the Gapless Agent Runtime repository ({ROOT}); got {cwd}"
-        ) from exc
+        raise ValueError(f"cwd must be inside the Gapless Agent Runtime repository ({ROOT}); got {cwd}") from exc
 
-    request_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    request_id = f"{request_id}-{uuid.uuid4().hex[:8]}"
-
-    REQUEST_DIR.mkdir(parents=True, exist_ok=True)
-    request_path = REQUEST_DIR / f"{request_id}.json"
-    request = {
-        "id": request_id,
-        "created_at": datetime.now(UTC).isoformat(),
-        "title": title,
-        "cwd": str(cwd),
-        "command": command,
-    }
-    request_path.write_text(
-        json.dumps(request, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    store = TerminalRequestStore(request_dir=REQUEST_DIR, status_dir=STATUS_DIR)
+    request, request_path = store.create_request(
+        command=command,
+        title=title,
+        cwd=cwd,
     )
 
     return json.dumps(
         {
-            "id": request_id,
+            "id": request.id,
             "request_path": str(request_path),
             "message": "Terminal request created. The VSCode extension will run it.",
         },
@@ -181,16 +195,8 @@ def create_terminal_request(arguments: dict) -> str:
 
 
 def list_terminal_status() -> list[dict]:
-    if not STATUS_DIR.exists():
-        return []
-
-    statuses: list[dict] = []
-    for path in sorted(STATUS_DIR.glob("*.json")):
-        try:
-            statuses.append(json.loads(path.read_text(encoding="utf-8")))
-        except json.JSONDecodeError:
-            statuses.append({"id": path.stem, "status": "invalid-json"})
-    return statuses
+    store = TerminalRequestStore(request_dir=REQUEST_DIR, status_dir=STATUS_DIR)
+    return store.list_statuses()
 
 
 def get_terminal_status(arguments: dict) -> dict:
@@ -198,11 +204,8 @@ def get_terminal_status(arguments: dict) -> dict:
     if not request_id:
         raise ValueError("id is required")
 
-    status_path = STATUS_DIR / f"{request_id}.json"
-    if not status_path.exists():
-        return {"id": request_id, "status": "unknown"}
-
-    return json.loads(status_path.read_text(encoding="utf-8"))
+    store = TerminalRequestStore(request_dir=REQUEST_DIR, status_dir=STATUS_DIR)
+    return store.read_status(request_id)
 
 
 def text_result(text: str) -> dict:

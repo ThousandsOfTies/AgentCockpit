@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 import textwrap
-import uuid
-from datetime import UTC, datetime
 from pathlib import Path
+
+from scripts.gar_lib.vscode.terminal_requests import TerminalRequestStore
 
 
 def sudo_block_reason() -> str | None:
@@ -58,22 +57,12 @@ def print_user_terminal_handoff(
 
 
 def create_visible_terminal_request(title: str, commands: list[str]) -> Path:
-    request_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    request_id = f"{request_id}-{uuid.uuid4().hex[:8]}"
     cwd = Path.cwd()
-    request_dir = cwd / ".gar" / "terminal-requests"
-    request_dir.mkdir(parents=True, exist_ok=True)
-    request_path = request_dir / f"{request_id}.json"
-    request = {
-        "id": request_id,
-        "created_at": datetime.now(UTC).isoformat(),
-        "title": "Gapless Agent Runtime User Action",
-        "cwd": str(cwd),
-        "command": " && ".join(commands),
-        "reason": title,
-    }
-    request_path.write_text(
-        json.dumps(request, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    store = TerminalRequestStore.under(cwd / ".gar")
+    _, request_path = store.create_request(
+        command=" && ".join(commands),
+        title="Gapless Agent Runtime User Action",
+        cwd=cwd,
+        reason=title,
     )
     return request_path

@@ -2,7 +2,10 @@
 
 Gapless Agent Runtime 用の最小 MCP server です。
 
-VSCode integrated terminal を直接制御するのではなく、`.gar/terminal-requests/*.json` に request を作成します。`tools/vscode-gar` の VSCode extension がそれを拾い、人間が見える integrated terminal にコマンドを送ります。
+VSCode integrated terminal を直接制御するのではなく、共通のtyped request storeから
+`.gar/terminal-requests/*.json`をatomic publishします。`tools/vscode-gar`のVSCode extensionが
+それを拾い、人間が見えるintegrated terminalにコマンドを送ります。status IDは単純な
+request IDだけを受け付け、status directory外のpathは読みません。
 
 AI の運用ルールは [`../../AGENT.md`「Terminal 操作の原則」](../../AGENT.md) を優先します。通常作業は裏で実行し、sudo password / GitHub 認証 / cloud auth など人間入力が必要な時だけ、この MCP server で visible terminal に handoff します。
 
@@ -46,3 +49,9 @@ VSCode integrated terminal で実行する request を作成します。
 ### get_terminal_status
 
 指定 id の status を取得します。
+
+## Protocol support
+
+`initialize`、`tools/list`、`tools/call`に加え、空の`resources/list`・`prompts/list`と
+`ping`へ応答します。JSON-RPC notification（idなし）は応答せず、invalid request/paramsや
+malformed JSONを受けてもserver processを終了しません。

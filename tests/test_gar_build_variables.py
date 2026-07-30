@@ -15,8 +15,7 @@ def workspace_with(simulator: str | None, **sections: object) -> Workspace:
         name="Local/Product",
         branch="Product",
         connection={"type": "local", "path": "/tmp/product"},
-        selected_environments={"codespace": "local"}
-        | ({"simulator": simulator} if simulator else {}),
+        selected_environments={"codespace": "local"} | ({"simulator": simulator} if simulator else {}),
         **sections,
     )
 
@@ -26,18 +25,14 @@ class BuildSpecVariablesTest(unittest.TestCase):
         self.specs = ProductBuildSpecResolver()
 
     def test_local_docker_builds_for_the_host_architecture(self) -> None:
-        spec = self.specs.for_artifact(
-            ArtifactKind.SIM_RUNTIME, workspace_with("local_docker")
-        )
+        spec = self.specs.for_artifact(ArtifactKind.SIM_RUNTIME, workspace_with("local_docker"))
 
         self.assertEqual("local_docker", spec.variables["GAR_SIM_ENVIRONMENT"])
         self.assertEqual(platform.machine(), spec.variables["GAR_SIM_ARCH"])
         self.assertEqual("gcc", spec.variables["CC"])
 
     def test_ssh_remote_cross_compiles_for_aarch64_by_default(self) -> None:
-        spec = self.specs.for_artifact(
-            ArtifactKind.SIM_RUNTIME, workspace_with("ssh_remote")
-        )
+        spec = self.specs.for_artifact(ArtifactKind.SIM_RUNTIME, workspace_with("ssh_remote"))
 
         self.assertEqual("aarch64", spec.variables["GAR_SIM_ARCH"])
         self.assertEqual("aarch64-linux-gnu-gcc", spec.variables["CC"])
@@ -51,20 +46,14 @@ class BuildSpecVariablesTest(unittest.TestCase):
         self.assertEqual("x86_64", spec.variables["GAR_SIM_ARCH"])
 
     def test_docker_and_ssh_remote_produce_different_build_commands(self) -> None:
-        docker = self.specs.for_artifact(
-            ArtifactKind.SIM_RUNTIME, workspace_with("local_docker")
-        )
-        remote = self.specs.for_artifact(
-            ArtifactKind.SIM_RUNTIME, workspace_with("ssh_remote")
-        )
+        docker = self.specs.for_artifact(ArtifactKind.SIM_RUNTIME, workspace_with("local_docker"))
+        remote = self.specs.for_artifact(ArtifactKind.SIM_RUNTIME, workspace_with("ssh_remote"))
 
         self.assertEqual(docker.script, remote.script)
         self.assertNotEqual(docker.variables, remote.variables)
 
     def test_target_build_is_not_affected_by_the_simulator_choice(self) -> None:
-        spec = self.specs.for_artifact(
-            ArtifactKind.TARGET_APP, workspace_with("local_docker")
-        )
+        spec = self.specs.for_artifact(ArtifactKind.TARGET_APP, workspace_with("local_docker"))
 
         self.assertEqual({}, dict(spec.variables))
 
@@ -90,9 +79,7 @@ class LocalBuildEnvironmentVariablesTest(unittest.TestCase):
             )
             artifacts = mock.Mock()
             completed = mock.Mock(returncode=0)
-            with mock.patch(
-                "scripts.gar_lib.build.local.subprocess.run", return_value=completed
-            ) as run:
+            with mock.patch("scripts.gar_lib.build.local.subprocess.run", return_value=completed) as run:
                 LocalBuildEnvironment(artifacts).build(ArtifactKind.SIM_RUNTIME, workspace)
 
         env = run.call_args.kwargs["env"]
@@ -116,9 +103,7 @@ class CodespacesBuildEnvironmentVariablesTest(unittest.TestCase):
         )
         artifacts = mock.Mock()
         completed = mock.Mock(returncode=0)
-        with mock.patch(
-            "scripts.gar_lib.build.codespaces.subprocess.run", return_value=completed
-        ) as run:
+        with mock.patch("scripts.gar_lib.build.codespaces.subprocess.run", return_value=completed) as run:
             CodespacesBuildEnvironment(artifacts).build(ArtifactKind.SIM_RUNTIME, workspace)
 
         command = run.call_args.args[0][-1]

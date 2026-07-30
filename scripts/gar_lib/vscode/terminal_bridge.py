@@ -28,12 +28,7 @@ def installed_vscode_terminal_bridge_path() -> Path | None:
 
 def install_vscode_terminal_bridge() -> int:
     src = PROJECT_ROOT / "tools" / "vscode-gar"
-    dest = (
-        Path.home()
-        / ".vscode-server"
-        / "extensions"
-        / f"{VSCODE_EXT_NAME}-{VSCODE_EXT_VERSION}"
-    )
+    dest = Path.home() / ".vscode-server" / "extensions" / f"{VSCODE_EXT_NAME}-{VSCODE_EXT_VERSION}"
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         for existing in dest.parent.glob(f"{VSCODE_EXT_NAME}-*"):

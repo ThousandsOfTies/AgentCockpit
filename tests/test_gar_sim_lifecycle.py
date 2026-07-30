@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
-import json
 import unittest
+from dataclasses import replace
+from pathlib import Path
 from unittest import mock
 
 from scripts.gar_lib.api import Gar
@@ -39,12 +40,8 @@ class GarSimulationLifecycleTest(unittest.TestCase):
         )
         with (
             mock.patch("scripts.gar_lib.commands.sim.resolve_workspace", return_value=self.workspace),
-            mock.patch(
-                "scripts.gar_lib.api.simulation_host_for", return_value=controller
-            ),
-            mock.patch(
-                "scripts.gar_lib.commands.sim.run_terminal_run_command", return_value=0
-            ) as terminal_request,
+            mock.patch("scripts.gar_lib.api.simulation_host_for", return_value=controller),
+            mock.patch("scripts.gar_lib.commands.sim.run_terminal_run_command", return_value=0) as terminal_request,
             contextlib.redirect_stderr(io.StringIO()),
         ):
             result = main(["sim", "host", "status", "--workspace", "Local/Product"])
@@ -66,17 +63,12 @@ class GarSimulationLifecycleTest(unittest.TestCase):
             details={"region": "ap-northeast-1"},
         )
 
-        output = io.StringIO()
         with (
-            mock.patch(
-                "scripts.gar_lib.api.simulation_host_for", return_value=controller
-            ) as host_for,
-            contextlib.redirect_stdout(output),
+            mock.patch("scripts.gar_lib.api.simulation_host_for", return_value=controller) as host_for,
         ):
-            exit_code = Gar(self.workspace).sim.host.status(json_output=True)
+            state = Gar(self.workspace).sim.host.status()
 
-        payload = json.loads(output.getvalue())
-        self.assertEqual(0, exit_code)
+        payload = state.to_payload()
         self.assertEqual("aws_ec2", payload["backend"])
         self.assertEqual("i-test", payload["id"])
         self.assertTrue(payload["running"])
@@ -85,6 +77,7 @@ class GarSimulationLifecycleTest(unittest.TestCase):
 
     def test_diag_builds_environment_and_loads_hardware(self) -> None:
         environment = mock.Mock()
+        environment.session_host = "sim-host"
         environment.diag.return_value = SimulationDiagnostic(
             processes=[{"pid": 123, "cmd": "bridge.py"}],
             devices={"/dev/i2c-1": True},
@@ -92,23 +85,21 @@ class GarSimulationLifecycleTest(unittest.TestCase):
             ok=True,
         )
 
-        output = io.StringIO()
         with (
             mock.patch(
                 "scripts.gar_lib.api.simulation_environment_for",
                 return_value=environment,
             ),
             mock.patch("scripts.gar_lib.api.load_hw_definition", return_value={}),
-            contextlib.redirect_stdout(output),
         ):
-            Gar(self.workspace).sim.runtime.diag(json_output=True)
+            report = Gar(self.workspace).sim.runtime.diag()
 
-        self.assertEqual("sim-host", json.loads(output.getvalue())["host"])
+        self.assertTrue(report.to_payload()["ok"])
         environment.diag.assert_called_once_with({})
 
     def test_status_checks_runtime_even_when_session_is_stopped(self) -> None:
         environment = mock.Mock()
-        environment.runtime_host = "sim-host"
+        environment.session_host = "sim-host"
         environment.status.return_value = 0
         sessions = mock.Mock()
         sessions.status.return_value = 1
@@ -131,7 +122,7 @@ class GarSimulationLifecycleTest(unittest.TestCase):
 
     def test_start_can_skip_session_management(self) -> None:
         environment = mock.Mock()
-        environment.runtime_host = "sim-host"
+        environment.session_host = "sim-host"
         environment.start.return_value = 0
         sessions = mock.Mock()
 
@@ -153,7 +144,7 @@ class GarSimulationLifecycleTest(unittest.TestCase):
 
     def test_wokwi_lifecycle_does_not_use_terminal_or_session(self) -> None:
         environment = mock.Mock()
-        environment.runtime_host = None
+        environment.session_host = None
         environment.start.return_value = 0
         sessions = mock.Mock()
 
@@ -173,6 +164,48 @@ class GarSimulationLifecycleTest(unittest.TestCase):
         self.assertEqual(0, exit_code)
         sessions.configure_terminal.assert_not_called()
         sessions.start.assert_not_called()
+
+    def test_local_runtime_without_session_host_skips_ec2_session_management(self) -> None:
+        environment = mock.Mock(session_host=None)
+        environment.start.return_value = 0
+        sessions = mock.Mock()
+
+        with (
+            mock.patch(
+                "scripts.gar_lib.api.simulation_environment_for",
+                return_value=environment,
+            ),
+            mock.patch("scripts.gar_lib.api.load_hw_definition", return_value={}),
+            mock.patch(
+                "scripts.gar_lib.api.VsCodeSimulationSessionManager",
+                return_value=sessions,
+            ),
+        ):
+            exit_code = Gar(self.workspace).sim.runtime.start()
+
+        self.assertEqual(0, exit_code)
+        sessions.configure_terminal.assert_not_called()
+        sessions.start.assert_not_called()
+
+    def test_runtime_loads_hardware_from_the_resolved_workspace_directory(self) -> None:
+        workspace = replace(self.workspace, hardware_dir=Path("/product/hardware"))
+        environment = mock.Mock(session_host=None)
+        environment.start.return_value = 0
+
+        with (
+            mock.patch(
+                "scripts.gar_lib.api.simulation_environment_for",
+                return_value=environment,
+            ),
+            mock.patch(
+                "scripts.gar_lib.api.load_hw_definition",
+                return_value={},
+            ) as load_hardware,
+        ):
+            exit_code = Gar(workspace).sim.runtime.start()
+
+        self.assertEqual(0, exit_code)
+        load_hardware.assert_called_once_with(hw_dir="/product/hardware")
 
 
 if __name__ == "__main__":

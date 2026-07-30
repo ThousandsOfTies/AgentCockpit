@@ -34,9 +34,7 @@ def report_access_failure(
     adapter と個別 command runner の間に循環依存を作らない。
     """
 
-    action = plan_access_recovery(
-        error, workspace=workspace, retry_command=retry_command, purpose=purpose
-    )
+    action = plan_access_recovery(error, workspace=workspace, retry_command=retry_command, purpose=purpose)
     if action.terminal_command is not None and run_terminal is not None:
         run_terminal(
             command_parts=[],
@@ -60,7 +58,7 @@ def plan_access_recovery(
     """失敗した channel と理由から、復旧手順を組み立てる。"""
 
     if error.channel == "aws":
-        region = workspace.ec2.get("region")
+        region = workspace.ec2.region
         if not isinstance(region, str) or not region:
             region = error.endpoint
         return RecoveryAction(
@@ -100,7 +98,7 @@ def plan_access_recovery(
                     f"確認後に再実行: {retry_command}",
                 ),
             )
-        region = workspace.ec2.get("region")
+        region = workspace.ec2.region
         if not isinstance(region, str) or not region:
             return RecoveryAction(
                 title="GAR: simulation接続の復旧",

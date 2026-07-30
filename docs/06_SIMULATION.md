@@ -19,7 +19,7 @@ GAR において Bridge は、疑似操作パネル、AI agent、CI scenario が
 
 人間が標準 viewer や environment 独自 UI を使うことはできるが、それは観察・手動デバッグの補助である。AI / CI が再現可能に操作する入口の代わりにはならない。例えば MuJoCo では Bridge が Python SDK を呼び、MuJoCo viewer は Bridge と同じ物理状態を表示する。
 
-現時点で Wokwi scenario は Wokwi CLI 固有の形式を使用する移行中の例外である。これを一般原則と取り違えず、共通 JSON scenario から同じ操作を実行できるように揃える。
+Wokwi の共有 scenario はまだない。製品が Wokwi CLI 固有 scenario を追加する場合も、これを一般原則と取り違えず、長期的には共通 JSON scenario から同じ操作を実行できるように揃える。
 
 ## 全体構成
 
@@ -40,7 +40,7 @@ GAR において Bridge は、疑似操作パネル、AI agent、CI scenario が
         │  cuse_i2c: SSD1306 0x3C フレームバッファ受信、VL53L0X 0x29 距離値配信
         │  cuse_spi: MFRC-522 register 状態同期
         │
-        ├─ WebSocket  ws://0.0.0.0:8765  ──→ Virtual Hardware Panel (browser)
+        ├─ WebSocket  ws://0.0.0.0:8080/ws ─→ Virtual Hardware Panel (browser)
         └─ HTTP       http://0.0.0.0:8080 (panel HTML/CSS/JS 配信)
 
   [VSCode Simple Browser]
@@ -127,6 +127,19 @@ gar sim runtime log
 gar sim runtime stop
 ```
 
+product固有のmodel/runnerは`deploy.app.files`へ記載できます。`gar sim app deploy`は
+artifact内のfile/directoryを`.gar/mujoco/`配下の相対destinationへmaterializeし、
+path traversalを拒否してからmodelを検証します。`GAR_MUJOCO_MODEL`と
+`GAR_MUJOCO_RUNNER`はdeploy前にmaterialize先のabsolute pathへ設定します。
+
+```bash
+export GAR_MUJOCO_MODEL=/path/to/GaplessAgentRuntime/.gar/mujoco/models/biped.xml
+export GAR_MUJOCO_RUNNER=/path/to/GaplessAgentRuntime/.gar/mujoco/bin/run_mujoco.py
+gar sim app build
+gar sim app deploy
+gar sim runtime start --no-port-forward
+```
+
 実ロボットではプロダクト側の MJCF/URDF を指定する。
 
 ```bash
@@ -171,121 +184,100 @@ POST /api/command  {"action": "step", "params": {"count": 10}}
 ```
 
 ```bash
-python scripts/run_scenario.py scenario.json --base-url http://127.0.0.1:8081
+python scripts/run_scenario.py scenario.json --base-url http://127.0.0.1:8080
 ```
 
 ---
 
 ## Wokwi / M5StackC シミュレーション
 
-ESP32 / M5StackC 系ターゲットでは simulation backend に `wokwi` を選ぶと、`gar sim runtime start` が `gar-tools` のテンプレートとアプリリポジトリのソースを合成し、ローカルに Wokwi workspace を生成します。シミュレーション実行そのものは、ローカルの `wokwi-cli` または VS Code Wokwi 拡張から Wokwi CI のクラウドシミュレーションを呼び出します。
+ESP32 / M5StackC 系では、Wokwi のテンプレート、製品 firmware、実行用
+workspace を別の責務として扱います。
 
-テンプレートは `gar-tools` 側に置きます。
+| 所有者 | 内容 |
+|---|---|
+| `gar-tools` | 配線、PlatformIO/Wokwi template、M5Unified shim、workspace generator |
+| 製品 workspace | アプリソース、`product-sim-build.sh`、firmware build、SIM_APP artifact |
+| GaplessAgentRuntime | artifact capture/deploy、Wokwi CLI の start/stop/status/diag/log |
 
-```text
-../gar-tools/targets/esp32/wokwi/m5stackc/
-  diagram.json
-  wokwi.toml.template
-  platformio.ini.template
-  lib/M5Unified/src/M5Unified.h
-  scripts/env_flags.py
-  button.test.yaml
-```
+`gar setup` は backend の選択と依存ツールの準備だけを行います。workspace
+生成や firmware build は行いません。また Wokwi には独立した runtime
+artifact がないため、`gar sim runtime build/deploy` は意図的に何もしません。
 
-Vibe Remote のアプリソースは `gar-tools` には置きません。正本はアプリリポジトリ側です。
-
-```text
-../gar-vibe-ui/vibe-remote/m5stickc-client/src/main.cpp
-```
-
-既定の生成先は次の通りです。このディレクトリは正本ではなく、消しても再生成できる展開済み workspace です。
-
-```text
-.gar/wokwi/m5stackc/
-  diagram.json
-  wokwi.toml
-  platformio.ini
-  lib/M5Unified/src/M5Unified.h
-  scripts/env_flags.py
-  button.test.yaml
-  README.md
-```
-
-`platformio.ini.template` の `{app_src}` は GAR がアプリ固有のパスへ置換します。標準配置では、生成された `platformio.ini` の `src_dir` は `../../../../gar-vibe-ui/vibe-remote/m5stickc-client/src` になります。Wokwi workspace はアプリソースを持たず、ビルド時にリンクされる `M5Unified` 互換 shim だけを差し替えます。アプリの入口は `m5stickc-client/src/main.cpp` 側が持ち、Wokwi workspace はアプリソースを複製しません。
-
-この分離により、Wokwi の配線・shim・scenario は `gar-tools`、アプリ挙動はアプリリポジトリ、実行時の生成物とログは `.gar/wokwi/...` に閉じます。
-
-生成される `diagram.json` は ESP32 DevKit、SPI TFT、BtnA/BtnB、LED を持つ M5StackC 相当の構成です。`wokwi.toml` は PlatformIO の成果物 `.pio/build/m5stackc/firmware.bin` / `.pio/build/m5stackc/firmware.elf` を参照します。
+標準フローは次の通りです。
 
 ```bash
-gar setup                         # target で ESP32 / M5Stack 系、simulation で Wokwi を選ぶ
-cd ../gar-vibe-ui/vibe-remote/m5stickc-client
-make wokwi-workspace              # GAR の .gar/wokwi/m5stackc を生成 / 再展開
-cd ../../../GaplessAgentRuntime/.gar/wokwi/m5stackc
-pio run
+scripts/gar setup
+scripts/gar sim app build
+scripts/gar sim app deploy
 export WOKWI_CLI_TOKEN=...
-wokwi-cli .
+scripts/gar sim runtime start --no-port-forward
+scripts/gar sim runtime diag --json
 ```
 
-`make wokwi-workspace` は `m5stickc-client` 側の生成ルールです。内部では GAR の Wokwi environment を呼び、
-`gar-tools` の template とアプリ自身の `src/` から `GaplessAgentRuntime/.gar/wokwi/m5stackc` を再展開します。
-`gar sim runtime start --no-port-forward` も同じ workspace を準備しますが、CLI/token/firmware が揃っている場合は
-Wokwi CLI 起動まで進めます。workspace 生成だけを明示したい場合はアプリ側 Makefile target を使います。
+`gar sim app build` は製品 workspace の `scripts/product-sim-build.sh` を呼びます。
+GarVibeRemote の hook は `gar-tools` の template と製品の
+`m5stickc-client/src` から一時 build workspace を生成し、PlatformIO で
+firmware をビルドします。その後、次の実行用ファイルを `deploy.app`
+artifact に格納します。
 
-`wokwi-cli`、`WOKWI_CLI_TOKEN`、firmware が揃っている場合、`gar sim runtime start --no-port-forward` は Wokwi CLI をバックグラウンド起動し、Wokwi CI のクラウドシミュレーションへ送信します。PID とログは `.gar/wokwi/m5stackc/state.json` / `wokwi.log` に記録します。まだ CLI や firmware がない場合も、workspace 生成までは成功として扱い、次に必要な手順を表示します。
+```text
+diagram.json
+wokwi.toml
+.pio/build/m5stackc/firmware.bin
+.pio/build/m5stackc/firmware.elf
+```
 
-Wokwi CI はクラウド上で実行されるため、完全なローカル/オフライン実行ではありません。無料プランでも CI simulation の月間枠がありますが、長時間・商用・オフライン用途では有料プランの確認が必要です。
+`gar sim app deploy` はこの artifact を Wokwi project へ展開します。local
+workspace では `<product-workspace>/.gar/wokwi/m5stackc`、remote build では
+GAR 管理下の `.gar/wokwi/<workspace-id>` が既定です。実際の場所は
+`gar sim runtime diag --json` の `project_dir` で確認できます。
+`GAR_WOKWI_PROJECT_DIR` を設定した場合はその場所を使います。
 
-### Wokwi の手動確認と自動確認
+`gar sim runtime start` は、配置済みの `wokwi.toml` と firmware を検証して
+`wokwi-cli` をバックグラウンド起動するだけです。workspace の生成や
+firmware の再ビルドはしません。process identity とログは project 内の
+`state.json` / `wokwi.log` に記録します。state 更新は atomic write と file
+lock を使い、PID・argv・`/proc` start time が一致する process だけを停止します。
 
-Wokwi は「workspace 生成」「firmware build」「シミュレータ起動」を分けて扱います。
-VS Code 拡張で手動確認する場合、`gar sim runtime start` は毎回必要ではありません。
-一度 `.gar/wokwi/m5stackc/` が生成され、`firmware.bin` / `firmware.elf` が存在していれば、
-`diagram.json` を Wokwi Diagram Editor で開き、Editor ペイン左上の再生ボタンを押して確認します。
+### VS Code での手動確認
+
+build と deploy が完了していれば、Runtime 側で `pio run` をやり直す必要は
+ありません。診断結果の `project_dir` を VS Code で開き、`diagram.json` の
+再生ボタンから確認します。
 
 ```bash
-cd ~/Yurufuwa/GAR/GaplessAgentRuntime/.gar/wokwi/m5stackc
-pio run
-code .
+scripts/gar sim runtime diag --json
+code /path/from/project_dir
 ```
 
-VS Code で `diagram.json` を開き、左上の再生ボタンを押すと、Wokwi 拡張が
-`wokwi.toml` を読み、そこに書かれた `firmware.bin` / `firmware.elf` を
-Wokwi 側へ送信してシミュレーションを開始します。
+Wokwi 拡張は `wokwi.toml` が指す `firmware.bin` / `firmware.elf` を使います。
+CLI で起動する場合は前節の `gar sim runtime start` を使います。Wokwi CI は
+クラウド上で実行されるため、完全なローカル/オフライン実行ではありません。
 
-自動確認では、GAR 側で Wokwi workspace と firmware を用意してから、シナリオを実行します。
-現時点の Wokwi 向けシナリオは Wokwi CLI の `--scenario` を使います。
+### 自動シナリオ
+
+現在の共有 template は `button.test.yaml` などの Wokwi CLI scenario を提供して
+いません。製品固有の自動操作が必要な場合は、製品リポジトリが scenario を所有し、
+`product-sim-build.sh` で artifact に含めた上で `wokwi-cli --scenario` を使います。
+存在しない共有 scenario を標準手順から参照してはいけません。
+
+### template / generator の直接開発
+
+template や generator 自体を確認するときだけ、製品側の Make target を直接使います。
+生成先は template とアプリソースの外に置きます。
 
 ```bash
-cd ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client
-make wokwi-workspace                  # Wokwi workspace を準備。
-cd ~/Yurufuwa/GAR/GaplessAgentRuntime/.gar/wokwi/m5stackc
-pio run
-wokwi-cli --scenario button.test.yaml .
+cd /path/to/product-workspace/application/m5stickc-client
+make wokwi-build \
+  GAR_TOOLS_ROOT=/path/to/gar-tools \
+  WOKWI_WORKSPACE=/tmp/gar-wokwi-m5stackc
 ```
 
-長期的には Linux bridge と Wokwi の両方を GAR 共通 JSON シナリオから起動できる形に揃えます。
-
-必要に応じて次の環境変数で上書きできます。
-
-```bash
-GAR_WOKWI_PROJECT_DIR=/path/to/wokwi-project
-GAR_WOKWI_TEMPLATE_DIR=/path/to/gar-tools/targets/esp32/wokwi/m5stackc
-GAR_VIBE_REMOTE_M5_SRC_DIR=/path/to/gar-vibe-ui/vibe-remote/m5stickc-client/src
-GAR_WOKWI_FIRMWARE=.pio/build/custom/firmware.bin
-GAR_WOKWI_ELF=.pio/build/custom/firmware.elf
-GAR_WOKWI_TIMEOUT_MS=30000
-```
-
-アプリ側 Makefile target では同じ意味の値を次の変数で指定できます。
-
-```bash
-cd ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client
-make wokwi-workspace \
-  GAR_ROOT=../../../GaplessAgentRuntime \
-  GAR_TOOLS_ROOT=../../../gar-tools \
-  WOKWI_WORKSPACE=../../../GaplessAgentRuntime/.gar/wokwi/m5stackc
-```
+generator では `GAR_WOKWI_PROJECT_DIR`、`GAR_WOKWI_TEMPLATE_DIR`、
+`GAR_WOKWI_APP_SRC_DIR`、`GAR_WOKWI_APP_CONFIG` を指定できます。Runtime では
+`GAR_WOKWI_PROJECT_DIR`、`GAR_WOKWI_FIRMWARE`、`GAR_WOKWI_ELF`、
+`GAR_WOKWI_TIMEOUT_MS` を上書きできます。
 
 ---
 
@@ -298,7 +290,7 @@ Vibe Remote は、AI/MCP が送る `agentStatus` と小さな Decision UI を表
 現在の確認経路は MCP tool または protocol smoke test を使う。
 
 ```bash
-cd ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote
+cd ~/Yurufuwa/GarVibeRemote/sources/gar-vibe-ui/vibe-remote
 npm install
 VIBE_REMOTE_TOKEN=... npm run smoke:protocol
 ```
@@ -323,14 +315,14 @@ Renodeが育つまでのboot smoke test兼比較対象として残す。Renode�
 既定 artifact:
 
 ```bash
-~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min
+~/Yurufuwa/GarVibeRemote/sources/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min
 ```
 
 手動確認:
 
 ```bash
 ~/Yurufuwa/GAR/gar-tools/targets/esp32/qemu/bin/gar-esp32-flash-image \
-  --artifact ~/Yurufuwa/GAR/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min \
+  --artifact ~/Yurufuwa/GarVibeRemote/sources/gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/20260620-070805-m5stickc-plus2-vibe-min \
   --output /tmp/gar-m5stickc-flash.bin
 ~/Yurufuwa/GAR/gar-tools/targets/esp32/qemu/bin/gar-esp32-qemu-run \
   /tmp/gar-m5stickc-flash.bin
@@ -427,7 +419,7 @@ gar sim gpio stop
 ### アプリ起動（本番と同じ）
 
 ```bash
-ssh vibecode-graviton
+ssh my-sim-host
 ~/sensor_demo
 ```
 
@@ -482,7 +474,7 @@ Antigravity から EC2 に Remote SSH 接続している場合、ポートは自
 2. **PORTS タブ**で `8080` の行を右クリック → "Open in Simple Browser"
 3. HTML パネルが開き、各デバイスの状態がリアルタイム表示される
 
-> 自動検出されない場合は手動で `8080` と `8765` を Add Port してください。
+> 自動検出されない場合は手動で `8080` を Add Port してください。HTTP と WebSocket は同じportを使います。
 
 ---
 
@@ -557,6 +549,6 @@ endpoint 解決は `scripts/gar_lib/simulation/hardware/io_actions.py` を両者
 | `/dev/fuse: Permission denied` | sudo なしで CUSE 起動 | `sudo` で起動 |
 | sensor_demo が `/dev/gpiochip0: No such file` | simulation runtime 未起動 | `gar sim runtime start` 後に fake `/dev/gpiochip0` 起動状態を確認 |
 | `Tap Card しても OLED に UID 出ない` | cuse_spi / bridge / system_on のいずれかが未接続 | `gar sim runtime diag --json`、`gar sim runtime log`、`sensor_demo` ログを確認 |
-| パネルが Disconnected のまま | ポート 8765 未転送 | PORTS タブで 8765 を Add Port |
+| パネルが Disconnected のまま | ポート 8080 未転送 | PORTS タブで 8080 を Add Port |
 | OLED に表示が出ない | I2C アドレス 0x3C 未認識 | `i2cdetect -y 1` で 0x3C があるか確認 |
 | `Last UID` が更新されない | system_on が OFF | パネルの GPIO17 PUSH で ON に切替 |

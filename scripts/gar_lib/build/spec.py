@@ -31,13 +31,11 @@ def compiler_for_architecture(arch: str) -> str:
 def simulation_build_variables(workspace: Workspace) -> dict[str, str]:
     """artifactを動かすsimulation hostのアーキテクチャをbuild hookへ伝える。"""
 
-    simulator = workspace.selected_environments.get("simulator")
+    simulator = workspace.selected_environments.simulator
     if simulator == "local_docker":
-        configured = workspace.docker.get("arch")
-        arch = configured if isinstance(configured, str) and configured else platform.machine()
+        arch = workspace.docker.arch or platform.machine()
     elif simulator == "ssh_remote":
-        configured = workspace.ec2.get("arch")
-        arch = configured if isinstance(configured, str) and configured else DEFAULT_REMOTE_SIM_ARCH
+        arch = workspace.ec2.arch or DEFAULT_REMOTE_SIM_ARCH
     else:
         return {}
 

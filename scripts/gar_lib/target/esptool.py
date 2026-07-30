@@ -12,9 +12,7 @@ import sys
 import venv
 from pathlib import Path
 
-from scripts.gar_lib.core.config import load_config, saved_esp32_serial_port
 from scripts.gar_lib.target.esp32_firmware import (
-    DEFAULT_ESP32_ARTIFACT_ROOT,
     FLASH_LAYOUT,
     resolve_esp32_artifact_dir,
 )
@@ -25,7 +23,7 @@ ESPTOOL_VENV = Path.home() / ".local" / "share" / "gar" / "esptool-venv"
 def normalize_esp32_serial_port(port: str | None) -> str | None:
     """Map Windows COM names to WSL ttyS names when running from Linux."""
 
-    value = port or os.environ.get("GAR_ESP32_PORT") or saved_esp32_serial_port(load_config())
+    value = port or os.environ.get("GAR_ESP32_PORT")
     if not value:
         return None
     match = re.fullmatch(r"COM(\d+)", value, flags=re.IGNORECASE)
@@ -164,15 +162,14 @@ def run_esp32_flash_command(
     resolved_artifact_dir = resolve_esp32_artifact_dir(artifact_dir)
     if resolved_artifact_dir is None:
         print(
-            f"gar target deploy: no artifact found under {DEFAULT_ESP32_ARTIFACT_ROOT}",
+            "gar target deploy: artifact directory was not supplied by the product build pipeline",
             file=sys.stderr,
         )
         return 1
     resolved_port = normalize_esp32_serial_port(port)
     if not resolved_port:
         print(
-            "gar target deploy: ESP32 serial port is not configured.\n"
-            "Run: gar setup",
+            "gar target deploy: ESP32 serial port is not configured.\n" "Run: gar setup",
             file=sys.stderr,
         )
         return 1
@@ -188,8 +185,7 @@ def run_esp32_flash_command(
     esptool_python = ensure_esptool_python(install=install_esptool)
     if esptool_python is None:
         print(
-            "gar target deploy: esptool not found. "
-            "Re-run without --no-install-esptool or install esptool manually.",
+            "gar target deploy: esptool not found. " "Re-run without --no-install-esptool or install esptool manually.",
             file=sys.stderr,
         )
         return 1

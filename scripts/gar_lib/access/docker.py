@@ -28,9 +28,7 @@ CONTAINER_FAILURE_MARKERS = (
 def docker_executable() -> str:
     executable = shutil.which("docker")
     if executable is None:
-        raise GarDomainError(
-            "docker が見つかりません。Docker Engine または Docker Desktop を導入してください。"
-        )
+        raise GarDomainError("docker が見つかりません。Docker Engine または Docker Desktop を導入してください。")
     return executable
 
 

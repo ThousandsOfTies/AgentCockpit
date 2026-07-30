@@ -1,275 +1,132 @@
-# GaplessAgentRuntime 全体レビュー — 改善点の指摘
+# GaplessAgentRuntime 実装レビュー引き継ぎ
 
-> **対象**: `ThousandsOfTies/GaplessAgentRuntime` の全ソースコード・ドキュメント・テスト・CI
-> **時点**: 2026-07-30
-> **レビュー範囲**: `scripts/`配下Python 105ファイル・約10,800行 / テスト17ファイル・約5,000行 / Markdown 29ファイル / CI / MCP / VSCode拡張
+最終更新: 2026-07-31
 
----
+この文書は、全体レビュー後の実装状態と、今後判断が必要な項目を短く引き継ぐためのものです。
+操作手順は`docs/`、設計境界は`GAR_LIB_STRUCTURE.md`を正本とします。
 
-## 総評
+## 現在の結論
 
-プロジェクトの **設計思想は明確で一貫している**。「異種環境間の文脈の載せ替えコストをエージェントが吸収する」というコアバリューが、README・info/・AGENT.md まで貫かれている。CLI の構造（`gar setup` → `gar code/sim/target`）は make-target 的な抽象として筋が通っており、environment discovery パターンでの拡張性設計も適切。現在は215 testsとRuffがgreenで、CIはPython 3.11〜3.13で回っている。
+`cli.py`へ集中していたparser・dispatch・表示責務はcommand moduleへ移り、
+`api.py`、build、artifact、simulation、targetがprogrammaticなobject境界として機能する
+構成になりました。短さより処理順が読めることを優先し、動的method lookupやreflection、
+tuple indexによる状態表現を避けています。
 
-以下、**今の完成度を踏まえたうえで次のステップに進むための改善点**を、優先度順に整理する。
+品質確認の正本は`make check`です。テスト件数は追加で変わるため、文書へ固定値を書きません。
 
----
+## 今回整理した領域
 
-## 🔴 高優先（構造的負債・今のうちに直すと後で効く）
+### CLIとAPI
 
-### 1. `cli.py` の巨大 re-export（対応済み）
+- `cli.py`はcommand moduleが所有するparserを合成し、top-level adapterを選ぶ薄い入口。
+- `commands/sim.py`と`commands/target.py`は明示的な`match`でactionをdispatch。
+- `gar sim io`はaction別parserで必須引数を表現。
+- `api.py`はprintせず、artifact・diagnostic・host state・hardware control resultを返す。
+- CLIが人間向け表示とJSON表示を担当。
 
-`cli.py` の互換 re-exportを廃止し、CLI dispatchに必要なimportだけを残した。
-テストも各実装モジュールを直接importする。
+### Workspaceと設定
 
-### 2. `cli.py` のsim/target dispatch分離（対応済み）
+- `Workspace`は`WorkspaceConnection`、`SelectedEnvironments`、`Ec2Settings`、
+  `DockerSettings`、`TargetSettings`、`AdbSettings`、`Esp32Settings`を保持。
+- JSON mappingは`resolve_workspace()`の境界で具象設定objectへ変換。
+- `selected_target`と`hardware_dir`をWorkspaceへ含め、simulation/targetがglobal configを
+  読み直さない構成にした。
+- hardwareは明示path、product `hardware/`、product内gar-tools、共有gar-toolsの順に探索。
+- workspace選択は`load_config(workspace_selector=...)`の呼び出しcontextだけで有効。
+  setupの選択をmodule globalへ残して後続commandへ漏らさない。
 
-`sim`と`target`のparser定義・action検証・workspace解決・CLI recoveryは
-`commands/sim.py`と`commands/target.py`へ移動した。leaf parserは`GarCommand`を保持し、
-`SIM_ACTIONS` / `TARGET_ACTIONS`を単一の許可表として内部API methodを解決する。
-`cli.py`は426行まで縮小され、top-level plumbing commandのrunner選択に集中している。
+### Buildとartifact
 
-### 3. `config.py` のハードコードされたデフォルト値
+- BuildEnvironmentは`LocalBuildEnvironment`と`CodespacesBuildEnvironment`の2種類。
+- ESP32専用BuildEnvironmentは廃止し、local/Codespacesの共通実装を使う。
+- ESP32固有のPlatformIO処理もproduct workspaceの`product-target-build.sh`が担当。
+- typed artifact manifest parserが`files`形式とproduct `artifact`形式を検証。
+- artifactは`.gar/artifacts/<workspace-id>/<kind>/<build-id>/`へ不変snapshotとして保存。
+- `SIM_APP`、`SIM_RUNTIME`、`TARGET_APP`は別latest pointerを持つ。
 
-```python
-DEFAULT_EC2_HOST = "vibecode-graviton"  # SSH config alias only
-DEFAULT_EC2_INSTANCE_ID = None
-DEFAULT_EC2_REGION = None
+### Setupとenvironment
+
+- 単一fileだったsetup commandを`commands/setup/` packageへ分割。
+- workspace、target、environment選択を別moduleにし、`command.py`がphase順を示す。
+- setup状態はenum/dataclassで表し、object sentinelやtuple indexを使わない。
+- environmentはcategory別baseと明示的`ENVIRONMENT_OPTIONS` registryを使用。
+- `pkgutil`・reflection・class属性の後付け変更は行わない。
+- Renode/AWS SSM等の大きい導入処理は`environments/installers/`へ分離。
+- archive展開はpath traversalとlinkを拒否する共通処理を使う。
+- target manifestのpath/backend不整合はsetup時に表示する。
+
+### Simulation
+
+- `runtime_host`を`session_host`へ改名し、remote SSH runtimeだけがhostを返す。
+- local Docker/Wokwi/MuJoCoがEC2設定へfallbackしない。
+- systemd `RuntimeDirectory=gar`、lifecycle commandはfail-fast。
+- Wokwi/MuJoCo process stateは共通storeでatomic write/file lockし、PID、command、
+  `/proc` start timeで所有確認する。
+- repeated startはidempotentで、stale PIDから無関係processをkillしない。
+- MuJoCo app deployはmanifest記載のassetを`.gar/mujoco/`へ安全にmaterializeし、modelを検証する。
+- `HardwareControlResult`とdiagnostic modelをCLI側でrenderする。
+
+### ローカル補助ツール
+
+- terminal requestはtyped storeでatomic publishし、CLI/setup/MCPが共有。
+- MCP request IDはvalidationとpath containmentを行う。
+- MCPは`resources/list`、`prompts/list`、`ping`へ応答し、不正JSON-RPCでもprocessを継続する。
+- EC2 port forwardはPython実装がPID・host・ports・SSH commandを検証し、shellは薄い入口。
+- scenario runnerはload/validate/executeを分離し、不正入力でtracebackを出さない。
+- USB list失敗を空の成功結果として扱わない。
+- DSM generatorは`--check`とsyntax error検出に対応。
+- Makefile/CIの`make check`がRuff、unittest、DSM、shell構文、Node testをまとめて確認する。
+- VS Code extensionのrequest validation/shell quotingはNode標準testで確認する。
+- GitHub ActionsのPython matrixは3.11〜3.14。
+- 巨大だったCLI testはsetup/config、USB、terminal/HW、sim IO、sim infra、target、codeへ
+  分割し、共通fixture/assertionを`tests/support/gar_cli_test_support.py`へ置く。
+
+## 現在の主要経路
+
+```text
+gar command
+  → command-owned parser / CLI adapter
+  → resolve_workspace()
+  → Gar(workspace).sim / target
+  → build environment または composition
+  → artifact snapshot
+  → simulation runtime / physical target
 ```
 
-- **対応済み**: instance ID / region は `None` を既定とし、workspace の `.gar/config.json` に保存された値だけを使う。未設定時は `gar setup` を案内して停止する。
+ESP32もLinux targetも同じ経路です。target固有compile手順はproduct hook、GARのtarget層は
+artifact検証とdeploy/flashを担当します。
 
-### 4. テストファイルの巨大化
+## 関連workspace
 
-[test_gar_cli.py](tests/test_gar_cli.py) は **2,474行**あり、依然としてsetup・usb・hw・code等の広い範囲を含む。一方、access、build、simulation、target、MCPは専用テストへ分離され、テスト全体は17ファイルになった。
+| パス | 役割 |
+|---|---|
+| `/home/user/Yurufuwa/GAR/GaplessAgentRuntime` | GAR実装と文書の正本 |
+| `/home/user/Yurufuwa/GAR/gar-tools` | target manifest、hardware、runtime資産 |
+| `/home/user/Yurufuwa/GarAdhocApp` | Linux app product workspace |
+| `/home/user/Yurufuwa/GarAdhocApp/sources/gar-adhoc-app` | Linux app source submodule |
+| `/home/user/Yurufuwa/GarVibeRemote` | Vibe Remote product workspace |
+| `/home/user/Yurufuwa/GarVibeRemote/sources/gar-vibe-ui` | VS Code bridge / M5StickC source submodule |
 
-- **提案**: `tests/test_cli_setup.py`、`tests/test_cli_sim.py`、`tests/test_cli_target.py`、`tests/test_cli_code.py` 等にコマンドグループ単位で分割する。テストの発見性と並列実行が改善する。
+Vibe Remoteの旧sibling checkoutを新しい手順へ持ち込まず、`GarVibeRemote/sources/`を使ってください。
 
----
+## 残る制約
 
-## 🟡 中優先（品質・安全性・開発体験）
+- Renode、ESP32 QEMU、AWS SSM runtimeはerror-only実装で、setup/依存確認まで。
+- network workspaceを直接buildするBuildEnvironmentはない。
+- Wokwi固有scenarioは共通Bridge JSON contractへ統一途中。
+- `.gar/config.json`の保存表現は後方互換のmapping。runtimeへ渡すWorkspaceはtyped。
+- config全体のschema/version migrationと標準Python package化は、必要性を確認してから行う。
 
-### 5. エラーハンドリングの一貫性
+`ssh_remote`は`gar setup --ec2-host HOST`によるworkspace設定が必須で、個人環境名への
+fallbackはありません。port-forward Make targetも`EC2=HOST`を省略できません。
 
-多くのコマンドが成功時に `return 0`、失敗時に `return 1` を返すが、例外が起きた場合のハンドリングが場所によって異なる。
+## 次回の開始手順
 
-- `subprocess.run` の `check=False` は全体的に適切だが、**stdout/stderr の出し分けが不統一**。成功メッセージが stdout に出る箇所と stderr に出る箇所が混在。
-- domain上の利用者向け失敗は`GarDomainError`、接続失敗は`AccessConnectionError`へ整理され、sim/target CLIは`commands/recovery.py`で復旧案内を生成する。
-- stdout/stderrや一部具体environmentの直接`print()`はまだ統一されていない。表示結果型または共通rendererへ寄せる余地がある。
-
-### 6. setup候補とruntime environmentの分離（完了）
-
-旧`DevEnvironment`のruntime操作を削除し、`EnvironmentSetupOption`へ改名した。
-現在はsetup表示用メタデータ・依存確認・導入処理だけを持つ。build、simulation、target、
-accessの実行契約はそれぞれの専用層へ分離済み。
-
-### 7. `pyproject.toml` にプロジェクトメタデータがない
-
-現在の `pyproject.toml` は ruff 設定のみ。`[project]` セクション（name, version, description, dependencies, python-requires）が定義されていない。
-
-- **提案**: `[project]` セクションを追加し、`requirements-gar.txt` の内容を `dependencies` に移す。`pip install -e .` でインストール可能にすれば、`scripts/gar` の venv bootstrap ロジックを簡素化できる。`[project.scripts]` に `gar = "scripts.gar_lib.__main__:main"` を定義すれば、エントリポイントも標準化される。
-
-### 8. 型ヒントの強化
-
-関数シグネチャには型ヒントが付いているが、`config` を受け渡す場所では `dict` のままで、キーの存在保証がない。
-
-- **提案**: `config.py` に `TypedDict` または `dataclass` を導入して `GarConfig` を定義する。`load_config() -> GarConfig` にすれば、IDE の補完が効き、キーの typo によるバグを防げる。
-
-### 9. ログ／出力の構造化
-
-`--json` フラグは一部コマンドにあるが、人間向け出力が `print()` の直書き。
-
-- **提案**: `logging` モジュールを導入し、`--verbose` / `--quiet` フラグを `gar` グローバルオプションとして追加する。デバッグ時に `gar --verbose sim env start` で詳細が見えると問題切り分けが速くなる。
-
-### 10. MCP サーバーのプロトコル不完全性
-
-[server.py](tools/gar-mcp/server.py) は最小限のJSON-RPCを手書きしている。`initialize`、`tools/list`、`tools/call`、`notifications/initialized`には対応するが、`resources/list`や`prompts/list`は未対応。
-
-- **提案**: 未対応メソッドには空リスト（`{"resources": []}` 等）を返すか、MCP SDK（`mcp` パッケージ）を使って標準準拠にする。`notifications/cancelled` 等の通知も無視でよいが、明示的に `return None` するハンドラを足すと堅牢になる。
-
----
-
-## 🟢 低優先（磨き・将来への備え）
-
-### 11. CI の Python バージョンに 3.14 がない
-
-ローカル環境は Python 3.14 で動いている（`.venv/pyvenv.cfg` から推定）が、CI は 3.11〜3.13 のみ。`setup-python@v5` が 3.14 をサポートしたタイミングで追加すると安心。
-
-### 12. `.gitignore` の重複パターン
-
-`.gar/` がワイルドカードで無視され、その下の `mcp-config.json` と `terminal-requests/` が個別にも無視されている。ワイルドカードで包含されるため個別行は冗長。
-
-### 13. `Makefile` の役割縮小の明示
-
-`Makefile` は `make init` / `make start` がbootstrap入口で、日常操作は`gar` CLIに移行済み。`make sim-test` / `make sim-scenario`は`gar sim`とJSON scenario runnerを束ねる開発者向けショートカットとして残る。
-
-- **提案**: `Makefile` の冒頭に「このファイルは初期セットアップ（`make init`）と開発者用 venv 起動（`make start`）のためのもの。日常操作は `gar` コマンドを使ってください」と明記し、`sim-test` / `sim-scenario` は deprecated 表示にするか削除する。
-
-### 14. VSCode 拡張のテストがない
-
-[extension.js](tools/vscode-gar/extension.js) は156行で、ユニットテストがない。`processRequest`のロジック（JSON parse → terminal起動 → status書き込み → move）は十分テスト可能。
-
-- **提案**: `jest` または `vitest` で最小限のテストを追加する。少なくとも `shellQuote()` のエスケープテストと、`processRequest` の異常系（invalid JSON、空 command）テストがあるとよい。
-
-### 15. `codespaces/` 配下の `repos/` に実体が含まれている
-
-`find` の結果から `codespaces/repos/gar-vibe-ui/` 配下に大量のファイル（TypeScript ソース、package-lock.json 等）が存在する。`.gitignore` で `codespaces/` は無視されているが、**ディレクトリ構造としてはこのリポジトリに含まれている**。
-
-- **現状**: sshfs マウント先として使っているため実害はないが、新規クローン時に「この空ディレクトリは何？」となる可能性がある。
-- **提案**: `codespaces/README.md` に「このディレクトリは `gar code start` で Codespaces を sshfs マウントする先です。中身は git 追跡していません」と書いておく。
-
-### 16. `shim` コマンド（対応済み）
-
-runtime経路で使われない旧`gar shim`と実装を削除した。
-
-### 17. `AGENT.md` と `CLAUDE.md` の分離方針が外部に伝わりにくい
-
-`CLAUDE.md` は「AGENT.md を読め」としか言っていない。GitHub Copilot 用の `.github/copilot-instructions.md` も別にある。
-
-- **提案**: README に「AI エージェント向け指示は AGENT.md に集約しています。各エージェント固有の入口ファイル（CLAUDE.md、.github/copilot-instructions.md）は AGENT.md へのポインタです」と 1 行書く。
-
----
-
-## 📐 ドキュメント品質
-
-### 良い点
-
-- `docs/` と `info/` の分離（運用手順 vs 思想・ビジョン）は明快。
-- `info/00_ESSENCE.md` の「3 層は出発点であって天井ではない」は、プロジェクトの射程を正確に言語化している。
-- README の「読者別の入口」テーブルは親切。
-
-### 改善点
-
-- `docs/07_HANDOFF.md` が vibe-remote / Renode の作業メモになっており、**一般的な引き継ぎドキュメントとしての構造がない**。「現在のシステム状態」「既知の問題」「次にやるべきこと」のセクション分けが必要。
-- `docs/08_REPOSITORY_LAYOUT.md` は存在するが、内容を確認していない。ソースツリーが増えた場合の更新漏れに注意。
-- `TODO.md` の完了項目が大量に残っている。Archival section は別ファイル（`CHANGELOG.md` 等）に分離すると見通しが良くなる。
-
----
-
-## 🏗️ アーキテクチャの評価
-
-```
-cli.py（root parser / top-level runner選択）
-  ├─ commands/sim.py ─┐
-  └─ commands/target.py ─→ api.py（Gar(workspace).sim / target）
-                              ├─ build/environment.py
-                              ├─ simulation/composition.py
-                              └─ target/composition.py
-                                       ↓
-                         concrete environment / access channel
-
-environments/setup_option.py + registry/ + discovery.py
-  └─ gar setupの選択肢・依存確認専用（runtime操作は持たない）
+```bash
+git status --short
+git pull --ff-only
+make check
 ```
 
-**良い点**:
-- Environment discovery が `pkgutil.walk_packages` ＋ クラス検査で自動的に動く。新しい environment を追加するのにレジストリを手で更新する必要がない。
-- build / simulation / targetのobject生成が`environment.py`または`composition.py`へ集約され、CLIから具体backend判断が外れている。
-- simulationは`runtime/`、`host/`、`hardware/`、`diagnostics/`、`session/`へ役割別に整理されている。
-
-**改善すべき点**:
-- `target/manifest.py`（JSON manifest discovery）と`environments/discovery.py`（Python class discovery）は別方式で、TargetManifestと利用可能environmentの結合はsetup時の暗黙ルールに残る。
-
----
-
-## ✅ まとめ：優先度マトリクス
-
-| # | 項目 | 優先度 | 工数 | 効果 |
-|---|---|---|---|---|
-| 1 | cli.py re-export 整理 | ✅ 完了 | - | 保守コスト削減 |
-| 2 | sim/target dispatch のcommand module化 | ✅ 完了 | - | 新コマンド追加の安全性 |
-| 3 | config.py のハードコード除去 | 🟡 一部残存 | 小 | `DEFAULT_EC2_HOST`の汎用化 |
-| 4 | テストファイル分割 | 🟡 進行中 | 中 | `test_gar_cli.py`の縮小 |
-| 5 | エラー・表示責務の統一 | 🟡 中 | 中 | ユーザー体験・構造化出力 |
-| 6 | setup候補とruntime environmentの分離 | ✅ 完了 | - | 責務分離 |
-| 7 | pyproject.toml 整備 | 🟡 中 | 小 | 標準化 |
-| 8 | config の TypedDict 化 | 🟡 中 | 中 | 型安全性 |
-| 9 | logging 導入 | 🟡 中 | 中 | 診断性 |
-| 10 | MCP サーバーのプロトコル補完 | 🟡 中 | 小 | 互換性 |
-| 11 | CI に Python 3.14 追加 | 🟢 低 | 小 | 互換性 |
-| 12 | .gitignore 整理 | 🟢 低 | 小 | 清潔さ |
-| 13 | Makefile の役割明示 | 🟢 低 | 小 | 導入体験 |
-| 14 | VSCode 拡張テスト | 🟢 低 | 中 | 品質 |
-| 15 | codespaces/ の説明追加 | 🟢 低 | 小 | 導入体験 |
-| 16 | shim コマンドの削除 | ✅ 完了 | - | 表面積の縮小 |
-| 17 | AI 向けファイルの方針説明 | 🟢 低 | 小 | 導入体験 |
-
----
-
-> **現在の優先候補**: #3（`DEFAULT_EC2_HOST`の汎用化）→ #4（`test_gar_cli.py`分割）→ #5（結果表示の構造化）の順。sim/target dispatchとsetup/runtime分離は完了済み。
-
----
-
-## 📝 レビュー後の議論（2026-07-08）
-
-### 評価の修正：2 件目のターゲットは存在する
-
-初回レビューで「2 件目がない」と評価したが、**gar-vibe-remote（M5StickC Plus2）が 2 件目として既に存在**していた。コードベースに以下の証拠がある：
-
-- `target/esptool.py` — esptool によるflash実装
-- `environments/registry/target/esp32_esptool.py` — setup用の依存確認と導入
-- `environments/registry/simulator/wokwi.py`（115行）+ `simulation/runtime/wokwi.py` — Wokwi simulation
-- `scripts/gar_lib/target/esp32_firmware.py` — ESP32 ビルド・artifact 管理
-- `scripts/gar_lib/build/esp32.py` — `gar target build` に統合された ESP32 build environment
-- `docs/07_HANDOFF.md` の vibe-remote 作業記録
-
-**Linux SBC（RasPi5 + EC2 CUSE sim）** と **ESP32 MCU（M5StickC + Wokwi sim）** という、アーキテクチャが全く異なる 2 つのターゲットが、同じ `gar` CLI + environment 選択で通っている。これは environment 抽象が設計通りに機能している証拠であり、「たまたま 1 パターンに最適化しただけ」という反論が効かない。
-
-#### 修正後の成熟度評価
-
-```
-思想・ビジョン       ████████████████████  95%
-CLI 設計            ████████████████░░░░  80%
-汎用性の実証（2件）  ████████████████░░░░  80%  ← 20% → 80% に修正
-初見ユーザー体験     ██████░░░░░░░░░░░░░░  30%
-内部コード品質       ████████████░░░░░░░░  60%
-```
-
-商品としての残りの距離は、主に「初見ユーザーが自分で始められるか」の一点に絞られる。2 件目の実証がある以上、技術的な基盤は十分。
-
----
-
-### 3 件目のチャレンジ：カメラ TX/RX（2 台マイコン協調）
-
-次のターゲットとして、**2 台のマイコンを使ったカメラの TX と RX** が計画されている。
-
-#### 1 件目・2 件目との質的な違い
-
-| | 1件目（RasPi5） | 2件目（M5StickC） | 3件目（カメラ TX/RX） |
-|---|---|---|---|
-| デバイス数 | 1 | 1 | **2** |
-| ビルド成果物 | 1 バイナリ | 1 firmware | **2 firmware** |
-| deploy | 1 ターゲット | 1 ターゲット | **2 ターゲット** |
-| sim | 単体で完結 | 単体で完結 | **2 台の通信を模擬** |
-
-現在の `gar` は **1 target = 1 deploy = 1 sim** のモデル。3 件目で「2 台を同時に扱う」マルチターゲット協調が初めて試される。
-
-#### GAR アーキテクチャへの影響
-
-- **ビルド**: `artifact.json` に `deploy.tx` / `deploy.rx` のようなセクションが生えるか、target.json を 2 つ定義するか
-- **deploy**: `gar target deploy` が 2 つのポートに別々の firmware を流す必要
-- **sim**: TX が送ったデータを RX が受け取る通信路をどう再現するか（Wokwi なら `diagram.json` に 2 チップ + 配線）
-
-#### これが通ると証明されること
-
-> **「GAR は単体デバイスだけでなく、複数デバイスの協調動作まで 1 セッションで回せる」**
-
-`info/00_ESSENCE.md` の「N 個の異種環境を 1 セッションで横断」がデバイス間協調にまで拡張されたことになる。
-
-#### 推奨する開発アプローチ
-
-別々に開発し、段階的に統合する：
-
-```
-Phase 1:  TX 単体で動かす（カメラ → 送信バッファまで）
-Phase 2:  RX 単体で動かす（受信 → 表示/保存まで）
-Phase 3:  繋ぐ（← ここで初めて 2 台協調の問題が出る）
-```
-
-Phase 1・2 は今の GAR がそのまま使える（`gar target build` → `gar target deploy` の 1 対 1 モデル）。GAR の拡張が要るのは Phase 3。そのときに初めて「TX を焼いて、RX も焼いて、通信を確認する」という 1 セッション内マルチターゲットの需要が実際の痛みとして出る。その痛みを感じてから抽象を引き直すのが YAGNI の正しい使い方。
-
-setup候補とruntime environmentの分離は完了済み。Phase 3でマルチターゲットの需要が
-具体化した場合は、現在の`TargetEnvironment`を土台にセッション単位の構成を検討する。
-
-Phase 1・2 の間にやっておくと Phase 3 で楽になるもの：
-- **#3** config.py のハードコード除去
-- **#7** pyproject.toml 整備
+作業中差分がある場合はpullより先に内容と所有者を確認します。生成文書は
+`tools/gen_gar_lib_dsm.py`で更新し、`--check`で同期を確認します。

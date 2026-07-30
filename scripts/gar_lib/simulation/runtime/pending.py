@@ -12,7 +12,7 @@ from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnosticRep
 class PendingSimulationEnvironment:
     """Keep a configured environment in the object graph without pretending it works."""
 
-    runtime_host: str | None = None
+    session_host: str | None = None
 
     def __init__(
         self,
@@ -50,6 +50,4 @@ class PendingSimulationEnvironment:
         self._unsupported("log")
 
     def _unsupported(self, operation: str) -> NoReturn:
-        raise GarDomainError(
-            f"{self.environment_id} SimulationEnvironmentの{operation}はまだ実装されていません。"
-        )
+        raise GarDomainError(f"{self.environment_id} SimulationEnvironmentの{operation}はまだ実装されていません。")

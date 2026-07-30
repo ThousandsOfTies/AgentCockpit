@@ -9,7 +9,10 @@ from scripts.gar_lib.access.aws import AwsCliChannel
 from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.simulation.composition import simulation_host_for
+from scripts.gar_lib.simulation.composition import (
+    simulation_environment_for,
+    simulation_host_for,
+)
 from scripts.gar_lib.simulation.host.aws_ec2 import AwsEc2SimulationHostController
 from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
 
@@ -95,12 +98,38 @@ class GarSimulationHostTest(unittest.TestCase):
         with self.assertRaises(GarDomainError):
             controller.stop()
 
+    def test_ec2_start_does_not_require_public_ip_when_ssh_update_is_disabled(self) -> None:
+        aws = mock.Mock()
+        aws.run.side_effect = [
+            AccessResult(("aws",), 0),
+            AccessResult(("aws",), 0),
+            AccessResult(("aws",), 0, "running\n"),
+            AccessResult(("aws",), 0, "None\n"),
+        ]
+        address_updater = mock.Mock()
+        controller = AwsEc2SimulationHostController(
+            host="sim-host",
+            instance_id="i-private",
+            region="ap-northeast-1",
+            aws=aws,
+            address_updater=address_updater,
+            repository_channel=mock.Mock(),
+        )
+
+        result = controller.start(update_address=False)
+
+        self.assertTrue(result.state.running)
+        self.assertIsNone(result.state.address)
+        self.assertFalse(result.address_updated)
+        address_updater.update.assert_not_called()
+
     def test_resolver_builds_controller_from_workspace_ec2_settings(self) -> None:
         workspace = Workspace(
             id="ws",
             name="Local/Product",
             branch="Product",
             connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={"simulator": "ssh_remote"},
             ec2={
                 "host": "sim-host",
                 "instance_id": "i-test",
@@ -113,14 +142,45 @@ class GarSimulationHostTest(unittest.TestCase):
         self.assertIsInstance(controller, AwsEc2SimulationHostController)
         self.assertEqual("i-test", controller.instance_id)
 
+    def test_ssh_runtime_exposes_an_explicit_session_host(self) -> None:
+        workspace = Workspace(
+            id="ws",
+            name="Local/Product",
+            branch="Product",
+            connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={"simulator": "ssh_remote"},
+            ec2={"host": "sim-host"},
+        )
+
+        environment = simulation_environment_for(workspace)
+
+        self.assertEqual("sim-host", environment.session_host)
+
     def test_resolver_rejects_incomplete_host_configuration(self) -> None:
         workspace = Workspace(
             id="ws",
             name="Local/Product",
             branch="Product",
             connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={"simulator": "ssh_remote"},
             ec2={"host": "sim-host"},
         )
 
         with self.assertRaisesRegex(GarDomainError, "instance_id, region"):
+            simulation_host_for(workspace)
+
+    def test_resolver_does_not_guess_ec2_when_simulator_is_unselected(self) -> None:
+        workspace = Workspace(
+            id="ws",
+            name="Local/Product",
+            branch="Product",
+            connection={"type": "local", "path": "/tmp/product"},
+            ec2={
+                "host": "sim-host",
+                "instance_id": "i-test",
+                "region": "ap-northeast-1",
+            },
+        )
+
+        with self.assertRaisesRegex(GarDomainError, "未設定"):
             simulation_host_for(workspace)

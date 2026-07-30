@@ -48,17 +48,17 @@ class AwsEc2SimulationHostController:
         state = self.status()
         if not state.running:
             raise GarDomainError(f"EC2 instanceがrunningではありません: {state.state}")
-        if state.address is None:
-            raise GarDomainError("EC2 instanceのpublic IPを取得できませんでした。")
+        if update_address and state.address is None:
+            raise GarDomainError("SSH configを更新するためのEC2 public IPを取得できませんでした。")
 
-        address_updated = update_address and self.address_updater.update(self.host, state.address)
+        address_updated = False
+        if update_address and state.address is not None:
+            address_updated = self.address_updater.update(self.host, state.address)
         repository_updated = False
         repository_update_skipped = False
         if update_repository:
             if self.repository_path:
-                result = self.repository_channel.run(
-                    f"cd {shlex.quote(self.repository_path)} && git pull --ff-only"
-                )
+                result = self.repository_channel.run(f"cd {shlex.quote(self.repository_path)} && git pull --ff-only")
                 self._require_success(result, "simulation host上のgit pullに失敗しました")
                 repository_updated = True
             else:

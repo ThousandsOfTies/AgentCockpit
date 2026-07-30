@@ -7,9 +7,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from scripts.gar_lib.access.aws import AwsCliChannel
 from scripts.gar_lib.access.docker import (
@@ -22,6 +20,7 @@ from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.tools_repository import gar_tools_root
 from scripts.gar_lib.core.workspace import Workspace
+from scripts.gar_lib.core.workspace_settings import DockerSettings
 from scripts.gar_lib.simulation.hardware.control import (
     LinuxBridgeHardwareControl,
     SimulationHardwareControl,
@@ -45,13 +44,15 @@ from scripts.gar_lib.simulation.runtime.mujoco import MujocoSimulationEnvironmen
 from scripts.gar_lib.simulation.runtime.process import LocalProcessChannel
 from scripts.gar_lib.simulation.runtime.renode import RenodeSimulationEnvironment
 from scripts.gar_lib.simulation.runtime.wokwi import WokwiSimulationEnvironment
-from scripts.gar_lib.target.manifest import active_target_manifest
+from scripts.gar_lib.target.manifest import discover_target_manifests, target_by_id
 
 LOCAL_DOCKER = "local_docker"
+EC2_HOST_SIMULATORS = ("ssh_remote", "aws_ssm")
+HOSTLESS_SIMULATORS = ("wokwi", "mujoco", "renode_mcu", "esp32_qemu_firmware")
 
 
 def selected_simulator(workspace: Workspace) -> str | None:
-    return workspace.selected_environments.get("simulator")
+    return workspace.selected_environments.simulator
 
 
 def simulation_environment_for(workspace: Workspace) -> SimulationEnvironment:
@@ -65,7 +66,6 @@ def simulation_environment_for(workspace: Workspace) -> SimulationEnvironment:
             command_channel=DockerCommandChannel(container),
             file_channel=DockerFileChannel(container),
             command_builder=LinuxSystemdCommandBuilder(),
-            runtime_host=container,
         )
 
     if backend == "ssh_remote":
@@ -74,7 +74,7 @@ def simulation_environment_for(workspace: Workspace) -> SimulationEnvironment:
             command_channel=SshCommandChannel(host),
             file_channel=ScpFileChannel(host),
             command_builder=LinuxSystemdCommandBuilder(),
-            runtime_host=host,
+            session_host=host,
         )
 
     if backend == "wokwi":
@@ -99,32 +99,37 @@ def simulation_environment_for(workspace: Workspace) -> SimulationEnvironment:
 def simulation_host_for(workspace: Workspace) -> SimulationHostController:
     """simulation を載せる host（container / EC2）を操作するオブジェクトを作る。"""
 
-    if selected_simulator(workspace) == LOCAL_DOCKER:
+    backend = selected_simulator(workspace)
+
+    if backend == LOCAL_DOCKER:
         settings = workspace.docker
         container = _container_name(workspace)
-        repository_path = settings.get("repo_dir")
+        repository_path = settings.repo_dir
         return DockerSimulationHostController(
             container=container,
-            spec=docker_spec_for(settings),
+            spec=docker_spec_for(settings, target_id=workspace.selected_target),
             docker=DockerCliChannel(),
             repository_channel=DockerCommandChannel(container),
-            repository_path=repository_path if isinstance(repository_path, str) else None,
+            repository_path=repository_path,
         )
 
-    instance_id = workspace.ec2.get("instance_id")
-    region = workspace.ec2.get("region")
-    host = workspace.ec2.get("host")
+    if backend in HOSTLESS_SIMULATORS:
+        raise GarDomainError(f"{backend} simulation environmentには操作対象のsimulation hostがありません")
+    if backend not in EC2_HOST_SIMULATORS:
+        raise GarDomainError(f"simulation hostはこのsimulation environmentに未対応です: " f"{backend or '(未設定)'}")
+
+    instance_id = workspace.ec2.instance_id
+    region = workspace.ec2.region
+    host = workspace.ec2.host
     missing = [
         name
         for name, value in (("host", host), ("instance_id", instance_id), ("region", region))
         if not isinstance(value, str) or not value
     ]
     if missing:
-        raise GarDomainError(
-            f"simulation host設定が不足しています ({', '.join(missing)}): {workspace.name}"
-        )
+        raise GarDomainError(f"simulation host設定が不足しています ({', '.join(missing)}): {workspace.name}")
 
-    repository_path = workspace.ec2.get("repo_dir")
+    repository_path = workspace.ec2.repo_dir
     return AwsEc2SimulationHostController(
         host=host,
         instance_id=instance_id,
@@ -132,7 +137,7 @@ def simulation_host_for(workspace: Workspace) -> SimulationHostController:
         aws=AwsCliChannel(region),
         address_updater=SshConfigHostAddressUpdater(),
         repository_channel=SshCommandChannel(host),
-        repository_path=repository_path if isinstance(repository_path, str) else None,
+        repository_path=repository_path,
     )
 
 
@@ -160,26 +165,27 @@ def hardware_control_for(workspace: Workspace) -> SimulationHardwareControl:
     if backend == "mujoco":
         return MujocoBridgeHardwareControl()
 
-    raise GarDomainError(
-        f"hardware controlはこのsimulation environmentに未対応です: {backend or '(未設定)'}"
-    )
+    raise GarDomainError(f"hardware controlはこのsimulation environmentに未対応です: {backend or '(未設定)'}")
 
 
-def docker_spec_for(settings: Mapping[str, Any]) -> DockerHostSpec:
+def docker_spec_for(
+    settings: DockerSettings,
+    *,
+    target_id: str | None,
+) -> DockerHostSpec:
     """container の形は target 定義が決め、workspace 設定は上書きだけを担当する。"""
 
-    manifest = active_target_manifest()
+    manifest = target_by_id(discover_target_manifests(), target_id)
     spec = (
         docker_host_spec(manifest.simulation_settings(BACKEND_ID), root=gar_tools_root())
         if manifest is not None
         else None
     )
 
-    image = settings.get("image")
-    port = settings.get("bridge_port")
-    override_port = isinstance(port, int) and not isinstance(port, bool)
+    image = settings.image
+    published_port = settings.bridge_port
     if spec is None:
-        if not isinstance(image, str) or not image:
+        if not image:
             raise GarDomainError(
                 "simulation container の image を決められません。"
                 "gar setup で target を選ぶか、workspace の docker.image を設定してください"
@@ -187,38 +193,38 @@ def docker_spec_for(settings: Mapping[str, Any]) -> DockerHostSpec:
         spec = DockerHostSpec(image=image)
 
     return DockerHostSpec(
-        image=image if isinstance(image, str) and image else spec.image,
+        image=image or spec.image,
         run_options=spec.run_options,
         init_command=spec.init_command,
-        bridge_port=port if override_port else spec.bridge_port,
+        published_bridge_port=(published_port if published_port is not None else spec.published_bridge_port),
+        container_bridge_port=spec.container_bridge_port,
+        published_host=spec.published_host,
         build_context=spec.build_context,
+        build_context_fingerprint=spec.build_context_fingerprint,
     )
 
 
 def _container_name(workspace: Workspace) -> str:
-    container = workspace.docker.get("container")
-    return container if isinstance(container, str) and container else DEFAULT_CONTAINER
+    return workspace.docker.container or DEFAULT_CONTAINER
 
 
 def _ec2_host(workspace: Workspace) -> str:
-    host = workspace.ec2.get("host")
-    if not isinstance(host, str) or not host:
+    host = workspace.ec2.host
+    if not host:
         raise GarDomainError(f"simulation hostが未設定です: {workspace.name}")
     return host
 
 
 def _ssm_settings(workspace: Workspace) -> tuple[str, str]:
-    instance_id = workspace.ec2.get("instance_id")
-    region = workspace.ec2.get("region")
+    instance_id = workspace.ec2.instance_id
+    region = workspace.ec2.region
     missing = [
         name
         for name, value in (("instance_id", instance_id), ("region", region))
         if not isinstance(value, str) or not value
     ]
     if missing:
-        raise GarDomainError(
-            f"AWS SSM設定が不足しています ({', '.join(missing)}): {workspace.name}"
-        )
+        raise GarDomainError(f"AWS SSM設定が不足しています ({', '.join(missing)}): {workspace.name}")
     return instance_id, region
 
 

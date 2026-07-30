@@ -21,14 +21,25 @@ jobs:
         run: pip install ruff==0.6.9
 
       - name: Run ruff
-        run: ruff check scripts tests
+        run: |
+          ruff check scripts tests tools/*.py tools/gar-mcp/server.py
+          ruff format --check scripts tests tools/*.py tools/gar-mcp/server.py
+
+      - name: Check generated architecture documents
+        run: python tools/gen_gar_lib_dsm.py --check
+
+      - name: Check shell and VS Code extension syntax
+        run: |
+          bash -n tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
+          node --check tools/vscode-gar/extension.js
+          node --test tools/vscode-gar/*.test.js
 
   unittest:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 

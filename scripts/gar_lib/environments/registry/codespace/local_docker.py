@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from scripts.gar_lib.environments.docker_install import docker_install_hint, install_docker
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import DevelopmentEnvironmentSetupOption
 
 
-class LocalDockerEnvironment(EnvironmentSetupOption):
+class LocalDockerDevelopmentSetup(DevelopmentEnvironmentSetupOption):
     environment_id = "local"
     display_name = "Local Docker"
     description = "このマシン上のローカル Docker/devcontainer 環境を使います"
@@ -23,3 +23,7 @@ class LocalDockerEnvironment(EnvironmentSetupOption):
             print(cls.install_hint(missing))
             return 1
         return install_docker(cls.run_install_command, purpose="Local Docker")
+
+
+# Import compatibility for integrations that used the old ambiguous name.
+LocalDockerEnvironment = LocalDockerDevelopmentSetup

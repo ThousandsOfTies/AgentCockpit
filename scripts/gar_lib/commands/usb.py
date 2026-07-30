@@ -12,11 +12,13 @@ WSL2 に attach する。busid は自動検出し、一度確定したものは 
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import shutil
 import subprocess
 import sys
+from argparse import Namespace
 from dataclasses import dataclass
 
 from scripts.gar_lib.core.config import (
@@ -30,6 +32,60 @@ from scripts.gar_lib.core.config import (
 ANDROID_HINTS = ("adb", "android")
 # 既知ベンダの USB VID（先頭 4 桁）。Google / よくある Android ベンダ。
 ANDROID_VIDS = ("18d1",)
+
+
+def add_usb_parser(
+    subparsers: argparse._SubParsersAction,
+) -> dict[str, argparse.ArgumentParser]:
+    """Register ``gar usb`` and return the parser used for group help."""
+
+    parser = subparsers.add_parser(
+        "usb",
+        help="USB-C 実機を usbipd-win 経由で WSL2 に attach します",
+    )
+    commands = parser.add_subparsers(dest="usb_command", metavar="command")
+    for command_name in ("attach", "detach", "status", "list", "bind"):
+        command_parser = commands.add_parser(command_name, help=f"USB: {command_name}")
+        if command_name != "list":
+            command_parser.add_argument(
+                "--busid",
+                default=None,
+                help="usbipd の busid。省略時は保存済み busid → Android 自動検出",
+            )
+            command_parser.add_argument(
+                "--match",
+                default=None,
+                help="USB device description / VID:PID / BUSID の部分一致で対象を選びます（例: CH9102）",
+            )
+        if command_name in ("status", "list"):
+            command_parser.add_argument(
+                "--json",
+                dest="json_output",
+                action="store_true",
+                help="結果を機械可読な JSON で出力します（AI / CI 向け）",
+            )
+        if command_name in ("attach", "bind"):
+            command_parser.add_argument(
+                "--no-remember",
+                action="store_true",
+                help="対象 busid を .gar/config.json に記憶しません",
+            )
+    return {"usb": parser}
+
+
+def run_usb_cli(args: Namespace, *, help_parser: argparse.ArgumentParser) -> int:
+    """Translate parsed USB arguments into :func:`run_usb_command`."""
+
+    if args.usb_command is None:
+        help_parser.print_help()
+        return 1
+    return run_usb_command(
+        args.usb_command,
+        busid=getattr(args, "busid", None),
+        match=getattr(args, "match", None),
+        remember=not getattr(args, "no_remember", False),
+        json_output=getattr(args, "json_output", False),
+    )
 
 
 @dataclass(frozen=True)
@@ -57,6 +113,14 @@ class UsbDevice:
             return True
         vid = self.vid_pid.split(":", 1)[0].lower()
         return vid in ANDROID_VIDS
+
+
+class UsbipdCommandError(RuntimeError):
+    """``usbipd list`` failed before GAR could inspect any devices."""
+
+    def __init__(self, returncode: int, message: str) -> None:
+        super().__init__(message)
+        self.returncode = returncode or 1
 
 
 def _usbipd_executable() -> str | None:
@@ -187,9 +251,7 @@ def parse_usbipd_list(output: str) -> list[UsbDevice]:
     in_connected = False
     # BUSID  VID:PID  DEVICE...  STATE  という列。BUSID は数字-数字 で始まる。
     row_pattern = re.compile(
-        r"^(?P<busid>\d+-\d+)\s+"
-        r"(?P<vidpid>[0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+"
-        r"(?P<rest>.+?)\s*$"
+        r"^(?P<busid>\d+-\d+)\s+" r"(?P<vidpid>[0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+" r"(?P<rest>.+?)\s*$"
     )
     known_states = ("not shared", "shared (forced)", "shared", "attached")
 
@@ -235,8 +297,8 @@ def parse_usbipd_list(output: str) -> list[UsbDevice]:
 def list_usb_devices() -> list[UsbDevice]:
     result = _run_usbipd(["list"])
     if result.returncode != 0:
-        print(result.stderr.strip() or result.stdout.strip(), file=sys.stderr)
-        return []
+        message = result.stderr.strip() or result.stdout.strip() or "usbipd list failed"
+        raise UsbipdCommandError(result.returncode, message)
     return parse_usbipd_list(result.stdout)
 
 
@@ -261,6 +323,22 @@ def run_usb_command(
     except FileNotFoundError:
         print("gar usb: usbipd.exe の実行に失敗しました。", file=sys.stderr)
         return 1
+    except UsbipdCommandError as exc:
+        if json_output:
+            print(
+                json.dumps(
+                    {
+                        "command": f"usb {command}",
+                        "ok": False,
+                        "error": str(exc),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(f"gar usb: {exc}", file=sys.stderr)
+        return exc.returncode
 
     if command == "list":
         if json_output:

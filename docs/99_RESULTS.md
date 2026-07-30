@@ -44,7 +44,7 @@ OLED にリアルタイムで状態が描画され、`Tap Card` ボタン押下�
 
 ## 実装したコンポーネント
 
-### アプリケーション (`gar-adhoc-app/app/`)
+### アプリケーション (`GarAdhocApp/sources/gar-adhoc-app/app/`)
 - `sensor_demo.c` — 統合デモアプリ（GPIO + I2C + SPI）
 - `ssd1306.c/h` — SSD1306 OLED I2C ドライバ（標準 Linux i2c-dev）
 - `mfrc522.c/h` — MFRC-522 RFID SPI ドライバ（標準 Linux spidev）
@@ -70,30 +70,26 @@ OLED にリアルタイムで状態が描画され、`Tap Card` ボタン押下�
 ## アーキテクチャ全体像
 
 ```
-[Windows + Antigravity]
+[VS Code + WSL2: GAR control plane]
     │
-    ├─ gh codespace ssh ──→ [Codespaces x86_64]
-    │                         ARM ビルド
-    │                         (aarch64-linux-gnu-gcc)
-    │                              │
-    │                              ├─ scp ──→ [EC2 arm64 Graviton]
-    │                              │            sensor_demo (シミュレーション)
-    │                              │            └ /dev/i2c-1 = CUSE (cuse_i2c)
-    │                              │            └ /dev/spidev0.0 = CUSE (cuse_spi)
-    │                              │            └ /dev/gpiochip0 = gpio-sim
-    │                              │            └ bridge.py (port 8080/8765)
-    │                              │
-    │                              └─ gh codespace cp → Windows → adb push
-    │                                                            ↓
-    │                                          [Raspberry Pi 5 arm64 実機]
-    │                                            sensor_demo (実機接続)
-    │                                            └ /dev/i2c-1 = 実 I2C
-    │                                            └ /dev/spidev0.0 = 実 SPI
-    │                                            └ /dev/gpiochip0 = 実 GPIO
-    │
-    └─ Remote SSH → [EC2 / RasPi5] → PORTS タブ → Simple Browser
-                                       └ Virtual Hardware Panel
-                                         (OLED canvas / LED / button / RFID)
+    ├─ LocalBuildEnvironment ───────────────┐
+    │                                       │
+    └─ gh codespace ssh                     │
+         ↓                                  │
+       [Codespaces x86_64]                  │
+         product hook / ARM cross-build     │
+         ↓                                  │
+       CodespacesBuildEnvironment ──────────┤
+                                            ↓
+       [.gar/artifacts/<workspace>/<kind>/<build-id>]
+                   │
+                   ├─ SSH/scp → [EC2 arm64 Graviton]
+                   │              sensor_demo + CUSE/gpio-sim + bridge
+                   │
+                   └─ ADB/SSH → [Raspberry Pi 5 arm64]
+                                sensor_demo + real I2C/SPI/GPIO
+
+VS Code terminal profile / port forward → Virtual Hardware Panel
 ```
 
 ---

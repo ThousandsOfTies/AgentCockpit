@@ -12,12 +12,16 @@
 |---|---|
 | `make init` | `.venv` 作成・`gar` symlink・VSCode extension install |
 | `make start` | venv + bash completion を有効化したサブシェルを開く |
-| `gar setup` | target 選択・gar-tools 確認/取得・依存 target graph と接続設定の保存・依存コマンド確認・既定 host 保存。local product workspace は複数登録でき、対話画面で追加/削除します |
+| `make check` | Ruff、unittest、DSM同期、shell構文、VS Code拡張のNode testをまとめて確認 |
+| `gar setup` | target選択・gar-tools確認/取得・workspace/environment/接続設定・依存確認。`ssh_remote`ではruntime host入力必須。local product workspaceは複数登録可能 |
 | `gar setup --no-install` | 不足依存をインストールせず、導入案内を表示 |
-| `gar setup --ec2-host HOST` | simulation runtime用SSH host aliasを保存 |
+| `gar setup --ec2-host HOST` | simulation runtime用SSH host aliasを保存。`ssh_remote`選択時は設定必須 |
 | `gar setup --esp32-port PORT` | ESP32 esptool用serial portを保存 |
-| `gar hw init` | `gar-tools` の target テンプレートから `hardware/` に CSV を生成 |
-| `gar hw init --dir DIR [--force]` | 出力先を変更し、必要なら既存CSVを上書き |
+| `gar hw init` | 選択中targetの`hardware/`から現在directoryの`hardware/`にCSVを生成（target未選択時は`linux-device`） |
+| `gar hw init --target TARGET --dir DIR [--force]` | target templateと出力先を明示し、必要なら既存CSVを上書き |
+| `make port-forward EC2=HOST` | 明示したEC2 SSH hostへのHardware Panel port forwardを開始 |
+| `make port-forward-stop EC2=HOST` | 明示したEC2 SSH hostのport forwardを停止 |
+| `make port-forward-status EC2=HOST` | 明示したEC2 SSH hostのport forward状態を確認 |
 
 ### Workspace ごとの設定
 
@@ -42,8 +46,8 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
       },
       "selected_target": "linux-device",
       "ec2": {
-        "host": "vibecode-graviton",
-        "identity_file": "~/.ssh/vibecode-graviton.pem"
+        "host": "my-sim-host",
+        "identity_file": "~/.ssh/my-sim-host.pem"
       }
     }
   ]
@@ -60,28 +64,40 @@ workspace の `docker` はその上書きだけを担当し、すべて省略可
       "docker": {
         "container": "gar-sim",
         "image": "gar-linux-device:latest",
-        "bridge_port": 8080
+        "bridge_port": 18080
       }
 ```
 
-target 側の宣言は次の形です。`buildContext` があれば、image がないときに
-`gar sim host start` が `docker build` まで行います。
+target 側の宣言は次の形です。`buildContext` があれば、container を新規作成する
+前に `gar sim host start` が `docker build` を実行します。変更がなければ Docker
+の build cache が使われます。
 
 ```json
   "simulation": {
     "docker": {
       "image": "gar-linux-device:latest",
       "buildContext": "targets/linux-device",
-      "bridgePort": 8080,
+      "publishedBridgePort": 8080,
+      "containerBridgePort": 8080,
+      "publishedHost": "127.0.0.1",
       "init": ["/sbin/init"],
       "privileged": true,
       "hostCgroups": true,
+      "environment": ["GAR_BRIDGE_HOST=0.0.0.0"],
       "tmpfs": ["/run", "/run/lock"],
       "mounts": ["/sys/kernel/config:/sys/kernel/config"],
       "devices": ["/dev/fuse", "/dev/cuse"]
     }
   }
 ```
+
+`publishedBridgePort`はhost側、`containerBridgePort`はcontainer内でbridgeがlistenする
+portです。workspaceの`docker.bridge_port`はhost側だけを上書きします。既存の
+`bridgePort`は両方へ同じ値を設定する互換形式として読み込まれます。
+`publishedHost`はDockerがhost側で公開するIPアドレスで、既定値は`127.0.0.1`です。
+bridge自体は通常loopbackだけでlistenし、Docker targetだけが`environment`で
+`GAR_BRIDGE_HOST=0.0.0.0`を明示します。`GAR_BRIDGE_PORT`は
+`containerBridgePort`から自動設定されるため、target定義への重複記載は不要です。
 
 container は host kernel を共有するため、GPIO(`gpio-sim`) には Linux 5.17 以降の
 host kernel が必要です。`gar sim gpio check --json` で確認できます。
@@ -105,6 +121,8 @@ workspace directory 名を使います。setup の修正画面で変更できま
 `local`、`codespaces`、`network` のいずれかです。複数 workspace がある場合、product
 workspace 内で `gar` を実行するとその path の設定が選ばれます。GAR root から Wokwi build を実行する場合は、
 `gar sim app build --workspace NAME` を指定してください。登録が1件だけなら指定は不要です。
+workspace選択は各commandの呼び出しcontextで解決され、setupで選んだworkspaceを
+process内のglobal状態として後続commandへ持ち越しません。
 
 `gar setup` の workspace 追加では接続種別を選びます。Codespaces は Codespace 名と
 その中の path、network は IP address または SSH host と remote path を入力します。
@@ -116,13 +134,14 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 
 | コマンド | 内容 |
 |---|---|
-| `gar code boot` | Codespace VM を起動し、必要なら接続準備を行う |
-| `gar code start` | Codespace を sshfs マウント・terminal profile を追加 |
-| `gar code stop` | マウント解除・profile 削除 |
-| `gar code shutdown` | Codespace VM を停止 |
-| `gar code status` | Codespace VM / 接続状態を確認 |
+| `gar code boot [--workspace NAME]` | workspaceのdevelopment environmentがCodespacesならVMを起動。localなら状態を案内 |
+| `gar code start [--workspace NAME]` | workspace設定からCodespaceとremote pathを解決し、sshfsマウント・terminal profileを追加 |
+| `gar code stop [--workspace NAME]` | 保存済み接続状態を使ってマウント解除・profile削除 |
+| `gar code shutdown [--workspace NAME]` | workspaceに対応するCodespace VMを停止 |
+| `gar code status [--workspace NAME]` | Codespace VM / 接続状態を確認 |
 
-各commandは`--target NAME`（互換alias: `--codespace NAME`）でdevelopment targetを指定できます。
+各commandは`--workspace NAME`でproduct workspaceを選びます。Codespaces環境では
+`--target NAME`（互換alias: `--codespace NAME`）で接続先を一時上書きできます。
 `start`は`--remote-path`、`--mount-dir`、`--settings`、`--profile-name`、`--no-mount`、
 `stop`は同種のlocal接続設定と`--shutdown`に対応します。
 
@@ -202,7 +221,7 @@ gar sim host stop
 |---|---|
 | `gar sim host start [--pull] [--no-update-ssh]` | シミュレーションホストを起動し、SSH接続設定を更新（`--pull` はworkspaceの `ec2.repo_dir` / `docker.repo_dir` で `git pull`） |
 | `gar sim host stop` | シミュレーションホストを停止（インスタンスは削除されず、課金が抑えられます） |
-| `gar sim host status [--json]` | ホストの現在の実行状態を表示 |
+| `gar sim host status [--json]` | ホストの実状態を表示。Dockerではinspectしたimage/portと現在specの一致も報告 |
 | `gar sim host <start/stop/status> --workspace NAME` | 指定workspaceのsimulator選択に応じ、DockerまたはEC2 host設定を使う |
 
 #### 仮想デバイス環境管理 (`gar sim runtime`)
@@ -240,7 +259,7 @@ gar sim host stop
 | `gar sim app build --workspace NAME` | `gar setup` 一覧の workspace名でビルド対象を指定 |
 | `gar sim app clean [--workspace NAME]` | 選択した product workspace の simulation build artifact を削除 |
 | `gar sim app deploy` | 最新のアプリケーション成果物をシミュレーションホストの実行可能パスへ反映 |
-| `gar sim app deploy --workspace NAME` | 指定 workspace の `deploy.app` artifact bundle を反映 |
+| `gar sim app deploy --workspace NAME` | 指定workspaceの`deploy.app` artifact bundleを反映。MuJoCoは`.gar/mujoco/`へ安全にmaterialize |
 
 #### インフラ管理 (`gar sim infra`)
 | コマンド | 内容 |
@@ -257,7 +276,7 @@ gar sim host stop
 
 | コマンド | 内容 |
 |---|---|
-| `gar target build [--workspace NAME]` | workspaceのbuild environmentで実機用artifactを最新化。target定義から解決するため、Linux系は `scripts/product-target-build.sh`、ESP32/M5Stack（`esp32_esptool`）は PlatformIO ビルド＋artifact取得を自動で切り替える |
+| `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。PlatformIO等のtarget固有処理はproduct hookが担当 |
 | `gar target deploy [--workspace NAME]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置 |
 
 低レベルコマンド:

@@ -1,4 +1,5 @@
 """`gar sim` output parsing."""
+
 from __future__ import annotations
 
 import json
@@ -57,6 +58,7 @@ def parse_sim_diag(raw: str) -> dict:
     ok = bool(processes) and api is not None
     return {"processes": processes, "devices": devices, "api": api, "ok": ok}
 
+
 def parse_gpio_runtime_status(raw: str) -> dict:
     section = None
     sections: dict[str, list[str]] = {
@@ -105,6 +107,7 @@ def parse_gpio_runtime_status(raw: str) -> dict:
         "ok": ok,
     }
 
+
 def parse_gpio_sim_check(raw: str) -> dict:
     """Parse the marker-delimited gpio-sim capability probe output."""
     section = None
@@ -135,8 +138,7 @@ def parse_gpio_sim_check(raw: str) -> dict:
     modinfo = modinfo_lines[1:] if modinfo_lines else []
     config_lines = [line.strip() for line in sections["config"] if line.strip()]
     config_mentions_gpio_sim = any(
-        "GPIO_SIM" in line.upper() and "(NOT FOUND)" not in line.upper()
-        for line in config_lines
+        "GPIO_SIM" in line.upper() and "(NOT FOUND)" not in line.upper() for line in config_lines
     )
     configfs_available = any(line.strip() == "1" for line in sections["configfs"])
     gpiochips = [line.strip() for line in sections["dev"] if line.strip()]

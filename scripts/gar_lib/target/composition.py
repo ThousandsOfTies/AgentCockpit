@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from scripts.gar_lib.access.adb import AdbFileChannel, AdbShellChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
@@ -20,9 +18,9 @@ from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
 def target_environment_for(workspace: Workspace) -> TargetEnvironment:
     """実機へ成果物を配置するオブジェクトを作る。"""
 
-    backend = workspace.selected_environments.get("target")
-    serial = _string(workspace.target, "serial")
-    base_destination = _string(workspace.target, "dest") or "/home/user"
+    backend = workspace.selected_environments.target
+    serial = workspace.target.serial
+    base_destination = workspace.target.dest or "/home/user"
 
     if backend == "adb_usb":
         return FileTransferTargetEnvironment(
@@ -32,7 +30,7 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
         )
 
     if backend == "adb_win":
-        executable = _string(workspace.adb, "exe_path") or shutil.which("adb.exe")
+        executable = workspace.adb.exe_path or shutil.which("adb.exe")
         if executable is None:
             raise GarDomainError("adb.exeが見つかりません。gar setupで実機環境を設定してください。")
         return FileTransferTargetEnvironment(
@@ -42,13 +40,11 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
         )
 
     if backend == "ssh_scp":
-        host = _string(workspace.target, "host")
+        host = workspace.target.host
         if host is None and workspace.connection_type == "network":
-            host = _string(workspace.connection, "host")
+            host = workspace.connection.host
         if host is None:
-            raise GarDomainError(
-                f"実機のSSH hostが未設定です: {workspace.name}。gar setupで設定してください。"
-            )
+            raise GarDomainError(f"実機のSSH hostが未設定です: {workspace.name}。gar setupで設定してください。")
         return FileTransferTargetEnvironment(
             SshCommandChannel(host),
             ScpFileChannel(host),
@@ -56,19 +52,12 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
         )
 
     if backend == "esp32_esptool":
-        port = _string(workspace.target, "port") or _string(workspace.esp32, "port")
+        port = workspace.target.port or workspace.esp32.port
         if port is None:
-            raise GarDomainError(
-                f"ESP32 serial portが未設定です: {workspace.name}。gar setupで設定してください。"
-            )
+            raise GarDomainError(f"ESP32 serial portが未設定です: {workspace.name}。gar setupで設定してください。")
         return Esp32TargetEnvironment(port)
 
     raise GarDomainError(f"target environmentはまだ未対応です: {backend or '(未設定)'}")
-
-
-def _string(mapping: Mapping[str, Any], key: str) -> str | None:
-    value = mapping.get(key)
-    return value if isinstance(value, str) and value else None
 
 
 def _windows_path(path: Path) -> str:

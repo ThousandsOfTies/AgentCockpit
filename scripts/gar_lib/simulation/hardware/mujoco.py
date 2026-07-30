@@ -16,9 +16,7 @@ class MujocoBridgeHardwareControl:
     """Translate common control-plane operations to the MuJoCo JSON bridge."""
 
     def __init__(self, bridge_url: str | None = None):
-        self.bridge_url = (
-            bridge_url or os.environ.get("GAR_MUJOCO_BRIDGE_URL", DEFAULT_BRIDGE_URL)
-        ).rstrip("/")
+        self.bridge_url = (bridge_url or os.environ.get("GAR_MUJOCO_BRIDGE_URL", DEFAULT_BRIDGE_URL)).rstrip("/")
 
     def gpio(
         self,

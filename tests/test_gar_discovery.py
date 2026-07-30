@@ -32,6 +32,7 @@ from scripts.gar_lib.environments.registry.target.esp32_esptool import (
 )
 from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 from scripts.gar_lib.simulation.runtime.mujoco import MujocoSimulationEnvironment
+from scripts.gar_lib.simulation.runtime.process import ManagedProcess
 
 
 class GarDiscoveryTest(unittest.TestCase):
@@ -50,15 +51,12 @@ class GarDiscoveryTest(unittest.TestCase):
         self.assertIn("adb_usb", environment_ids)
         self.assertIn("ssh_scp", environment_ids)
         self.assertIn("esp32_esptool", environment_ids)
-        self.assertTrue(
-            all(issubclass(environment, EnvironmentSetupOption) for environment in environments)
-        )
+        self.assertTrue(all(issubclass(environment, EnvironmentSetupOption) for environment in environments))
 
     def test_discovers_environment_categories_from_directories(self) -> None:
         environments = discover_environments()
         categories_by_environment = {
-            environment.environment_id: environment.category_id
-            for environment in environments
+            environment.environment_id: environment.category_id for environment in environments
         }
 
         self.assertEqual(
@@ -83,9 +81,7 @@ class GarDiscoveryTest(unittest.TestCase):
     def test_local_development_environment_is_default_before_github_codespaces(self) -> None:
         environments = discover_environments()
         codespace_environment_ids = [
-            environment.environment_id
-            for environment in environments
-            if environment.category_id == "codespace"
+            environment.environment_id for environment in environments if environment.category_id == "codespace"
         ]
 
         self.assertLess(
@@ -125,13 +121,19 @@ class GarDiscoveryTest(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 channel = channel_type.return_value
-                channel.start.return_value = mock.Mock(pid=12345)
-                channel.is_running.return_value = True
+                channel.start.return_value = ManagedProcess(
+                    12345,
+                    ("python", "bridge.py"),
+                    9876,
+                )
+                channel.owns.return_value = True
                 environment = MujocoSimulationEnvironment()
+                self.assertEqual(0, environment.start({}))
                 self.assertEqual(0, environment.start({}))
                 self.assertEqual(0, environment.status({}))
 
             self.assertEqual(12345, json.loads((workspace / "state.json").read_text(encoding="utf-8"))["pid"])
+            channel.start.assert_called_once()
             self.assertTrue(any(part.endswith("examples/mujoco/bridge.py") for part in channel.start.call_args.args[0]))
 
     def test_wokwi_installer_runs_official_install_script(self) -> None:
@@ -217,9 +219,9 @@ class GarDiscoveryTest(unittest.TestCase):
             target.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
             launcher = root / "renode"
 
-            from scripts.gar_lib.environments.registry.simulator import renode_mcu
+            from scripts.gar_lib.environments.installers import renode
 
-            renode_mcu._write_launcher(
+            renode._write_launcher(
                 launcher,
                 target,
                 set_globalization_invariant=True,
@@ -449,9 +451,7 @@ class GarDiscoveryTest(unittest.TestCase):
             ),
         ):
             with contextlib.redirect_stdout(io.StringIO()):
-                result = GitHubCodespacesEnvironment.install_dependencies(
-                    ["gh", "sshfs"]
-                )
+                result = GitHubCodespacesEnvironment.install_dependencies(["gh", "sshfs"])
 
         self.assertEqual(0, result)
         self.assertEqual(
@@ -471,19 +471,19 @@ class GarDiscoveryTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "scripts.gar_lib.environments.registry.simulator.aws_ssm.platform.system",
+                "scripts.gar_lib.environments.installers.aws_ssm.platform.system",
                 return_value="Linux",
             ),
             mock.patch(
-                "scripts.gar_lib.environments.registry.simulator.aws_ssm.platform.machine",
+                "scripts.gar_lib.environments.installers.aws_ssm.platform.machine",
                 return_value="x86_64",
             ),
             mock.patch(
-                "scripts.gar_lib.environments.registry.simulator.aws_ssm.shutil.which",
+                "scripts.gar_lib.environments.installers.aws_ssm.shutil.which",
                 return_value="/usr/bin/tool",
             ),
             mock.patch(
-                "scripts.gar_lib.environments.registry.simulator.aws_ssm.sudo_block_reason",
+                "scripts.gar_lib.environments.installers.aws_ssm.sudo_block_reason",
                 return_value=None,
             ),
             mock.patch.object(
@@ -493,9 +493,7 @@ class GarDiscoveryTest(unittest.TestCase):
             ),
         ):
             with contextlib.redirect_stdout(io.StringIO()):
-                result = AwsSsmEnvironment.install_dependencies(
-                    ["aws", "session-manager-plugin"]
-                )
+                result = AwsSsmEnvironment.install_dependencies(["aws", "session-manager-plugin"])
 
         self.assertEqual(0, result)
         self.assertIn(
@@ -509,11 +507,7 @@ class GarDiscoveryTest(unittest.TestCase):
         )
         self.assertIn(["unzip", "-q", mock.ANY, "-d", mock.ANY], commands)
         self.assertTrue(
-            any(
-                command[0] == "sudo"
-                and Path(command[-1]).as_posix().endswith("/aws/install")
-                for command in commands
-            )
+            any(command[0] == "sudo" and Path(command[-1]).as_posix().endswith("/aws/install") for command in commands)
         )
         self.assertIn(
             [

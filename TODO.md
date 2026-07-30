@@ -3,7 +3,7 @@
 毎日の「今日なにやろうかな」用のメモ。気軽に書き換えてOK。
 詳細な設計は [docs/](docs/) 各ファイルに、ここは「次の一手」を思い出すための入口。
 
-最終更新: 2026-07-30
+最終更新: 2026-07-31
 
 ---
 
@@ -42,7 +42,7 @@
 ## ✅ 最近やったこと（Done）
 
 - [x] **SIM machine 構築を Terraform でレシピ化し `gar sim infra` に接続** — `infra/terraform/main.tf`（EC2/SG/volume/key）と `user_data.sh`（linux-modules-extra / gpiod / strace）を作成。`gar sim infra setup/apply/destroy` が Terraform を実行し、`setup` は現在値と作成計画を表示、`apply` 後は `instance_id` / `public_ip` を `.gar/config.json` と SSH config へ反映 — 2026-06-09 / 2026-07-03 更新
-- [x] **既存テストのほころびを解消** — `python -m unittest discover -s tests -v` で 215 tests OK、GitHub Actions の `Tests` も green。古い target deploy 系 3 件失敗メモは解消済み — 2026-07-30更新
+- [x] **既存テストのほころびを解消** — `make check`でRuff、全unittest、DSM同期、shell構文、VS Code拡張Node testをまとめて検証。テスト件数は追加で変わるため固定値を正本にしない — 2026-07-31更新
 - [x] **rtk（トークン削減）の導入済み確認** — Codex/AGENT 指示で `rtk` を使う運用になっており、未完了バックログから除外。使い方は AGENT.md「オプション: rtk」セクションを参照 — 2026-07-03
 - [x] **USB-C の auto-attach はon-demand attachで代替** — Windowsタスクスケジューラ常駐は不要と判断。接続失敗時にGARが`gar usb attach`を案内し、利用者またはagentが明示実行する運用へ集約 — 2026-07-30更新
 - [x] **ADB接続失敗時のUSB復旧案内を`gar target deploy`へ統合** — 接続失敗を分類し、`gar usb list` / `gar usb attach`と再実行コマンドをTerminal Bridgeへ案内する。attach自体は明示操作 — 2026-07-30更新
@@ -76,7 +76,7 @@
 
 ## 🔌 Renode / MCU 拡張（着手済み・ランタイム統合は今後）
 
-- [x] **`gar setup` に Renode(MCU/ベアメタル) simulation選択肢を追加** — `scripts/gar_lib/environments/registry/simulator/renode_mcu.py`。自動発見され、`simulation/composition.py`からerror-only runtimeへ接続済み。`.resc`生成・実行は未実装 — 2026-07-30更新
+- [x] **`gar setup` に Renode(MCU/ベアメタル) simulation選択肢を追加** — `scripts/gar_lib/environments/registry/simulator/renode_mcu.py`。categoryの`ENVIRONMENT_OPTIONS`へ明示登録され、`simulation/composition.py`からerror-only runtimeへ接続済み。`.resc`生成・実行は未実装 — 2026-07-31更新
 - [ ] **Renode ランタイム統合（本配線）** — `.resc` 生成・ペリフェラルモデル起動で `gar sim runtime` を Renode 上で回す。最小実験として Pico の `.elf` を Renode と実機で同一バイナリ実行（sim↔実機パリティのデモ）＝製品が必要とする「2 件目の汎用性実証」
 - [ ] **ターゲット抽象の引き直し（本配線と同時に）** — 現状の simulation/device 抽象（`run_remote`/`push_file`/`start_port_forward`）は「SSH/adb で Linux に繋ぐ」前提に最適化されており、Renode（ローカルプロセス＋ファームロード）や専用 SoC 評価ボード（JTAG/SWD 書き込み・電源/リセット・シリアル/RTT）で破綻する。What（検証対象）と How（接続方法）を分離し、操作を能力（lifecycle / provision / execute / observe）で捉え直す。「SSH」は execute の一実装に格下げ。これは「同一バイナリが sim と実機で動く（バイナリ透過性）」を Linux SBC 以外へ持ち越せるかの試金石。YAGNI に従い、実例 2 つを手にする本配線時に痛みとともに引き直す
 - [x] ドキュメント整理（README + `docs/` + `info/`、WSL 中心方針へ）

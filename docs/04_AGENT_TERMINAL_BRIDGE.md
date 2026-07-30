@@ -30,8 +30,9 @@ AI / Codex
 - 設定済みカテゴリは選択済み environment だけを表示する。
 - 選択状態は `.gar/config.json` に保存する。
 - `.gar/` は git 管理しない。
-- `gar terminal run` は `.gar/terminal-requests/*.json` を作る。
-- environment が sudo/auth handoff を必要とした場合は、visible terminal request も作る。
+- `gar terminal run`、setup installer、MCPは共通の`TerminalRequestStore`を使い、
+  `.gar/terminal-requests/*.json`をatomic publishする。
+- environment が sudo/auth handoff を必要とした場合も同じrequest storeを使う。
 - `gar setup` は VSCode Terminal Bridge の導入状況を表示する。
 - `tools/vscode-gar/` に最小 VSCode extension プロトタイプがある。
   - `.gar/terminal-requests/*.json` を監視する。
@@ -39,6 +40,7 @@ AI / Codex
   - コマンドは `sendText()` で terminal に送る。
   - terminal 出力の捕捉や追加入力送信は行わない。AI は裏で状態確認して復帰する。
   - `Gapless Agent Runtime: Run gar setup` コマンドも提供する。
+  - request validationとshell quotingはNode標準testで回帰確認する。
 
 ## 使い方
 
@@ -77,18 +79,17 @@ MCP を使わず CLI から同じ request を作る場合:
 gar terminal run --title "Gapless Agent Runtime" --command ".venv/bin/gar setup"
 ```
 
-## 残りの作業
+## Request / status lifecycle
 
-### 1. request/status の整理
-
-現状は extension が `started` / `invalid` status を書き、request を `processed/` に移動する。
+extensionはrequestを検証し、terminalへ`sendText()`できた後だけ`processed/`へ移動する。
+不正requestは`invalid` statusとして記録する。
 
 - `.gar/terminal-requests/*.json`: 未処理要求
 - `.gar/terminal-status/*.json`: started / invalid など
 
 実行結果は terminal から読まず、AI が裏で状態確認コマンドを実行して判断する。
 
-### 2. gar setup への統合を育てる
+## gar setupとの統合
 
 `gar setup` は VSCode Terminal Bridge の有無を確認する。
 
@@ -109,7 +110,7 @@ MCP 設定は `make init` が `.gar/mcp-config.json` に生成する。
 
 > Terminal Bridge の振る舞いルール（いつ裏で実行し、いつ handoff するか）は `AGENT.md` の「Terminal 操作の原則」を参照。
 
-1. まず `python3 -m unittest discover -s tests` を通す。
+1. まず `make check` を通す。
 2. `make init` を実行し、VSCode window を reload する。
 3. MCP 設定に `.gar/mcp-config.json` の内容を登録する。
 4. `run_in_visible_terminal` で visible terminal にコマンドが流れるところを確認する。

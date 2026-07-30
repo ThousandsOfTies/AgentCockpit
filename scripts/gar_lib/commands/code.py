@@ -2,27 +2,156 @@
 
 from __future__ import annotations
 
+import argparse
 import os
-import shlex
 import shutil
 import subprocess
 import sys
+from argparse import Namespace
+from dataclasses import dataclass
 from pathlib import Path
 
 from scripts.gar_lib.access.codespaces import codespace_list_rows, select_codespace_from_list
-from scripts.gar_lib.core.config import load_config
+from scripts.gar_lib.commands.code_connection import (
+    detect_codespace_workspace,
+    gh_timeout_seconds,
+    install_codespace_ssh_config,
+    mount_codespace_code,
+    print_completed_stderr,
+    remote_path_exists,
+    run_gh_captured,
+    unmount_codespace_code,
+)
+from scripts.gar_lib.commands.code_state import (
+    CodespaceConnectionState,
+    codespace_state_path,
+    codespace_terminal_script,
+    load_connection_state,
+    load_legacy_codespace_state,
+)
+from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
+from scripts.gar_lib.core.errors import GarDomainError
+from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.vscode.profile_manage import (
     remove_vscode_terminal_profile,
     write_vscode_terminal_profile,
 )
 
-DEFAULT_GH_TIMEOUT_SECONDS = 60
 DEFAULT_CODESPACE_REMOTE_PATH = "/workspaces/gar-build-env"
+
+
+@dataclass(frozen=True)
+class CodeStartOptions:
+    """Inputs resolved before ``gar code start`` performs any external work."""
+
+    home: Path
+    codespace_name: str | None
+    remote_path: str
+    mount_dir: Path
+    settings_path: Path
+    profile_name: str
+    state_path: Path
+    terminal_path: Path
+    no_mount: bool
+    gh_timeout: int | None
+
+
+def _add_workspace_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--workspace",
+        default=None,
+        metavar="NAME",
+        help="gar setup で登録した product workspace 名",
+    )
+
+
+def _add_codespace_argument(parser: argparse.ArgumentParser, *, purpose: str) -> None:
+    parser.add_argument(
+        "--target",
+        "--codespace",
+        dest="codespace",
+        default=None,
+        metavar="TARGET",
+        help=f"{purpose} development target 名",
+    )
+
+
+def add_code_parser(
+    subparsers: argparse._SubParsersAction,
+) -> dict[str, argparse.ArgumentParser]:
+    parser = subparsers.add_parser(
+        "code",
+        help="Build Artifacts workspace との接続を管理します",
+    )
+    commands = parser.add_subparsers(dest="code_command", metavar="command")
+
+    boot_parser = commands.add_parser("boot", help="development target を起動します")
+    _add_workspace_argument(boot_parser)
+    _add_codespace_argument(boot_parser, purpose="起動する")
+
+    start_parser = commands.add_parser(
+        "start",
+        help="Codespace build workspace を WSL hub から見えるようにします",
+    )
+    _add_workspace_argument(start_parser)
+    _add_codespace_argument(start_parser, purpose="接続する")
+    start_parser.add_argument("--remote-path", default=None, help="Codespace 側 workspace path")
+    start_parser.add_argument("--mount-dir", default=None, help="WSL 側 sshfs mount path")
+    start_parser.add_argument("--settings", default=None, help="VS Code settings.json path")
+    start_parser.add_argument("--profile-name", default=None, help="VS Code terminal profile 名")
+    start_parser.add_argument(
+        "--no-mount",
+        action="store_true",
+        help="sshfs mount を更新せず、SSH 設定と terminal profile だけ更新します",
+    )
+
+    stop_parser = commands.add_parser(
+        "stop",
+        help="Codespace build workspace の WSL hub 側接続を停止します",
+    )
+    _add_workspace_argument(stop_parser)
+    _add_codespace_argument(stop_parser, purpose="停止する")
+    stop_parser.add_argument("--mount-dir", default=None, help="WSL 側 sshfs mount path")
+    stop_parser.add_argument("--settings", default=None, help="VS Code settings.json path")
+    stop_parser.add_argument("--profile-name", default=None, help="VS Code terminal profile 名")
+    stop_parser.add_argument(
+        "--shutdown",
+        action="store_true",
+        help="WSL 側接続の後片付け後に GitHub Codespace VM も停止します",
+    )
+
+    shutdown_parser = commands.add_parser("shutdown", help="development target を停止します")
+    _add_workspace_argument(shutdown_parser)
+    _add_codespace_argument(shutdown_parser, purpose="停止する")
+
+    status_parser = commands.add_parser("status", help="Codespace VM / 接続状態を確認します")
+    _add_workspace_argument(status_parser)
+    _add_codespace_argument(status_parser, purpose="確認する")
+    status_parser.add_argument("--mount-dir", default=None, help="WSL 側 sshfs mount path")
+    return {"code": parser}
+
+
+def run_code_cli(args: Namespace, *, help_parser: argparse.ArgumentParser) -> int:
+    if args.code_command is None:
+        help_parser.print_help()
+        return 1
+    return run_code_command(
+        args.code_command,
+        workspace_selector=getattr(args, "workspace", None),
+        codespace=getattr(args, "codespace", None),
+        remote_path=getattr(args, "remote_path", None),
+        mount_dir=getattr(args, "mount_dir", None),
+        settings=getattr(args, "settings", None),
+        profile_name=getattr(args, "profile_name", None),
+        no_mount=getattr(args, "no_mount", False),
+        shutdown=getattr(args, "shutdown", False),
+    )
 
 
 def run_code_command(
     command: str,
     *,
+    workspace_selector: str | None = None,
     codespace: str | None = None,
     remote_path: str | None = None,
     mount_dir: str | None = None,
@@ -32,24 +161,26 @@ def run_code_command(
     shutdown: bool = False,
     gh_timeout: int | None = None,
 ) -> int:
-    # ``gar code`` は build hub（エディタ / ビルド環境）への接続 plumbing であり、
-    # product の build/deploy artifact graph は扱わない「メタ系」command。したがって
-    # workspace を解決せず、グローバルの ``selected_environments.codespace`` を直接読む。
-    #
-    # TODO(code-workspace): codespace 名 / remote_path は workspace.connection
-    # （codespace_name / remote_root）と情報が重複している。単一 source of truth に
-    # するなら、--workspace を受けて workspace.connection から既定値を解決する薄い層を
-    # 足す。
-    environment_id = load_config().get("selected_environments", {}).get("codespace", "local")
+    try:
+        workspace = resolve_workspace(workspace_selector)
+    except GarDomainError as error:
+        print(f"gar code {command}: {error}", file=sys.stderr)
+        return 1
+
+    environment_id = workspace.selected_environments.codespace or "local"
     if environment_id == "local":
         return run_local_code_command(command)
     if environment_id == "github_codespaces":
+        connection_codespace = _workspace_codespace_name(workspace)
+        connection_remote_path = _workspace_remote_path(workspace)
+        selected_codespace = codespace or connection_codespace
+        selected_remote_path = remote_path or connection_remote_path
         if command == "boot":
-            return boot_code_codespace(codespace=codespace, gh_timeout=gh_timeout)
+            return boot_code_codespace(codespace=selected_codespace, gh_timeout=gh_timeout)
         if command == "start":
             return start_code_codespace(
-                codespace=codespace,
-                remote_path=remote_path,
+                codespace=selected_codespace,
+                remote_path=selected_remote_path,
                 mount_dir=mount_dir,
                 settings=settings,
                 profile_name=profile_name,
@@ -58,7 +189,7 @@ def run_code_command(
             )
         if command == "stop":
             return stop_code_codespace(
-                codespace=codespace,
+                codespace=selected_codespace,
                 mount_dir=mount_dir,
                 settings=settings,
                 profile_name=profile_name,
@@ -66,10 +197,10 @@ def run_code_command(
                 gh_timeout=gh_timeout,
             )
         if command == "shutdown":
-            return shutdown_code_codespace(codespace=codespace, gh_timeout=gh_timeout)
+            return shutdown_code_codespace(codespace=selected_codespace, gh_timeout=gh_timeout)
         if command == "status":
             return status_code_codespace(
-                codespace=codespace,
+                codespace=selected_codespace,
                 mount_dir=mount_dir,
                 gh_timeout=gh_timeout,
             )
@@ -81,6 +212,18 @@ def run_code_command(
         file=sys.stderr,
     )
     return 1
+
+
+def _workspace_codespace_name(workspace: Workspace) -> str | None:
+    if workspace.connection_type != "codespaces":
+        return None
+    return workspace.connection.codespace
+
+
+def _workspace_remote_path(workspace: Workspace) -> str | None:
+    if workspace.connection_type != "codespaces":
+        return None
+    return workspace.connection.path.rstrip("/") or None
 
 
 def run_local_code_command(command: str) -> int:
@@ -99,6 +242,7 @@ def run_local_code_command(command: str) -> int:
     )
     return 1
 
+
 def boot_code_codespace(
     *,
     codespace: str | None = None,
@@ -111,7 +255,7 @@ def boot_code_codespace(
         print("gar code boot: missing required command: ssh", file=sys.stderr)
         return 1
 
-    selected_gh_timeout = gh_timeout_seconds(gh_timeout)
+    selected_gh_timeout = gh_timeout_seconds(gh_timeout, command_name="gar code boot")
     selected_codespace = select_code_codespace(
         codespace,
         command_name="gar code boot",
@@ -147,142 +291,244 @@ def start_code_codespace(
     no_mount: bool = False,
     gh_timeout: int | None = None,
 ) -> int:
+    options = resolve_code_start_options(
+        codespace=codespace,
+        remote_path=remote_path,
+        mount_dir=mount_dir,
+        settings=settings,
+        profile_name=profile_name,
+        no_mount=no_mount,
+        gh_timeout=gh_timeout,
+    )
+    if not validate_code_start_options(options):
+        return 1
+
+    selected_codespace = select_code_codespace(
+        options.codespace_name,
+        command_name="gar code start",
+        gh_timeout=options.gh_timeout,
+        home=options.home,
+    )
+    if selected_codespace is None:
+        return 1
+    if not _is_safe_command_value(selected_codespace) or selected_codespace.startswith("-"):
+        print(f"gar code start: invalid Codespace name: {selected_codespace!r}", file=sys.stderr)
+        return 1
+
+    ssh_host = configure_codespace_ssh(
+        home=options.home,
+        codespace=selected_codespace,
+        gh_timeout=options.gh_timeout,
+    )
+    if ssh_host is None:
+        return 1
+
+    try:
+        selected_remote_path = resolve_codespace_remote_path(
+            selected_codespace,
+            options.remote_path,
+            gh_timeout=options.gh_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        timeout_text = "without a timeout" if options.gh_timeout is None else f"after {options.gh_timeout}s"
+        print(
+            f"gar code start: timed out {timeout_text} while checking the remote workspace",
+            file=sys.stderr,
+        )
+        return 1
+    if not _is_safe_command_value(selected_remote_path):
+        print(f"gar code start: invalid remote path: {selected_remote_path!r}", file=sys.stderr)
+        return 1
+    state = CodespaceConnectionState(
+        codespace_name=selected_codespace,
+        ssh_host=ssh_host,
+        remote_path=selected_remote_path,
+        mount_dir=options.mount_dir,
+    )
+
+    if not options.no_mount:
+        mount_result = mount_codespace_code(
+            host=state.ssh_host,
+            remote_path=state.remote_path,
+            mount_dir=state.mount_dir,
+        )
+        if mount_result != 0:
+            return mount_result
+
+    try:
+        state.write(options.state_path)
+    except (OSError, ValueError) as error:
+        if not options.no_mount:
+            expected_source = f"{state.ssh_host}:{state.remote_path}"
+            unmount_codespace_code(
+                mount_dir=state.mount_dir,
+                expected_source=expected_source,
+            )
+        print(f"gar code start: could not update local configuration: {error}", file=sys.stderr)
+        return 1
+
+    try:
+        configure_vscode_codespace(options)
+    except (OSError, ValueError) as error:
+        print(f"gar code start: could not update VS Code configuration: {error}", file=sys.stderr)
+        return 1
+
+    report_codespace_start(options, state)
+    return 0
+
+
+def resolve_code_start_options(
+    *,
+    codespace: str | None,
+    remote_path: str | None,
+    mount_dir: str | None,
+    settings: str | None,
+    profile_name: str | None,
+    no_mount: bool,
+    gh_timeout: int | None,
+) -> CodeStartOptions:
+    """Resolve CLI and environment values without performing external work."""
+
     home = Path.home()
-    selected_codespace = codespace or os.environ.get("CODESPACE_NAME")
     selected_remote_path = remote_path or os.environ.get(
         "CODESPACE_REMOTE_PATH",
         DEFAULT_CODESPACE_REMOTE_PATH,
     )
-    selected_mount_dir = Path(
-        mount_dir if mount_dir is not None else default_codespaces_mount_dir()
-    ).expanduser()
-    settings_path = Path(
-        settings
-        or os.environ.get(
-            "CODESPACE_SETTINGS",
-            str(home / ".vscode-server" / "data" / "Machine" / "settings.json"),
-        )
-    ).expanduser()
-    selected_profile_name = profile_name or os.environ.get(
-        "CODESPACE_PROFILE_NAME",
-        "Codespaces",
+    selected_mount_dir = (
+        Path(mount_dir if mount_dir is not None else default_codespaces_mount_dir()).expanduser().resolve()
     )
-    selected_gh_timeout = gh_timeout_seconds(gh_timeout)
-    state_dir = home / ".config" / "codespace-dev"
-    state_file = state_dir / "env"
-    terminal_bin = home / ".local" / "bin" / "codespace-terminal"
+    settings_path = (
+        Path(
+            settings
+            or os.environ.get(
+                "CODESPACE_SETTINGS",
+                str(home / ".vscode-server" / "data" / "Machine" / "settings.json"),
+            )
+        )
+        .expanduser()
+        .resolve()
+    )
 
-    required = ["gh", "ssh"]
-    if not no_mount:
-        required.extend(["sshfs", "findmnt", "mountpoint"])
+    return CodeStartOptions(
+        home=home,
+        codespace_name=codespace or os.environ.get("CODESPACE_NAME"),
+        remote_path=selected_remote_path,
+        mount_dir=selected_mount_dir,
+        settings_path=settings_path,
+        profile_name=profile_name or os.environ.get("CODESPACE_PROFILE_NAME", "Codespaces"),
+        state_path=codespace_state_path(home),
+        terminal_path=home / ".local" / "bin" / "codespace-terminal",
+        no_mount=no_mount,
+        gh_timeout=gh_timeout_seconds(gh_timeout),
+    )
+
+
+def validate_code_start_options(options: CodeStartOptions) -> bool:
+    """Validate input values and commands before writing local configuration."""
+
+    named_values = {
+        "Codespace name": options.codespace_name,
+        "remote path": options.remote_path,
+        "mount path": str(options.mount_dir),
+        "settings path": str(options.settings_path),
+        "profile name": options.profile_name,
+    }
+    for label, value in named_values.items():
+        if value is not None and not _is_safe_command_value(value):
+            print(f"gar code start: invalid {label}: {value!r}", file=sys.stderr)
+            return False
+
+    required_commands = ["gh", "ssh"]
+    if not options.no_mount:
+        required_commands.extend(["sshfs", "findmnt", "mountpoint"])
         if shutil.which("fusermount3") is None and shutil.which("fusermount") is None:
             print(
                 "gar code start: missing required command: fusermount3 or fusermount",
                 file=sys.stderr,
             )
-            return 1
+            return False
 
-    for command_name in required:
+    for command_name in required_commands:
         if shutil.which(command_name) is None:
             print(f"gar code start: missing required command: {command_name}", file=sys.stderr)
-            return 1
+            return False
+    return True
 
-    if not selected_codespace:
-        list_result = run_gh_captured(
-            ["gh", "codespace", "list"],
-            timeout=selected_gh_timeout,
-            label="list Codespaces",
-        )
-        if list_result is None:
-            return 1
-        if list_result.returncode != 0:
-            print_completed_stderr(list_result)
-            return list_result.returncode
-        selected_codespace = select_codespace_from_list(list_result.stdout)
 
-    if not selected_codespace:
-        print("gar code start: no available Codespace found", file=sys.stderr)
-        print("Pass one explicitly: gar code start --codespace NAME", file=sys.stderr)
-        return 1
+def configure_codespace_ssh(
+    *,
+    home: Path,
+    codespace: str,
+    gh_timeout: int | None,
+) -> str | None:
+    """Fetch and install SSH configuration for one Codespace."""
 
-    ssh_dir = home / ".ssh"
-    ssh_dir.mkdir(parents=True, exist_ok=True)
-    state_dir.mkdir(parents=True, exist_ok=True)
-    terminal_bin.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    ssh_dir.chmod(0o700)
-
-    print(f"Fetching SSH config for Codespace: {selected_codespace}")
+    print(f"Fetching SSH config for Codespace: {codespace}")
     config_result = run_gh_captured(
-        ["gh", "codespace", "ssh", "-c", selected_codespace, "--config"],
-        timeout=selected_gh_timeout,
-        label=f"generate SSH config for Codespace {selected_codespace}",
+        ["gh", "codespace", "ssh", "-c", codespace, "--config"],
+        timeout=gh_timeout,
+        label=f"generate SSH config for Codespace {codespace}",
     )
     if config_result is None:
-        return 1
+        return None
     if config_result.returncode != 0:
         print_completed_stderr(config_result)
-        return config_result.returncode
+        return None
 
-    codespaces_config = ssh_dir / "codespaces"
-    codespaces_config.write_text(config_result.stdout, encoding="utf-8")
-    codespaces_config.chmod(0o600)
+    try:
+        host = install_codespace_ssh_config(home, config_result.stdout)
+    except OSError as error:
+        print(f"gar code start: could not write SSH config: {error}", file=sys.stderr)
+        return None
+    if host is None:
+        print("gar code start: could not find a concrete Host in SSH config", file=sys.stderr)
+    return host
 
-    ssh_config = ssh_dir / "config"
-    current_ssh_config = ssh_config.read_text(encoding="utf-8") if ssh_config.exists() else ""
-    if "Include ~/.ssh/codespaces" not in current_ssh_config:
-        with ssh_config.open("a", encoding="utf-8") as f:
-            f.write("\nMatch all\nInclude ~/.ssh/codespaces\n")
-        ssh_config.chmod(0o600)
 
-    host = first_ssh_host(config_result.stdout)
-    if not host:
-        print("gar code start: could not find Host in ~/.ssh/codespaces", file=sys.stderr)
-        return 1
+def resolve_codespace_remote_path(
+    codespace: str,
+    requested_path: str,
+    *,
+    gh_timeout: int | None,
+) -> str:
+    """Use the requested directory when present, otherwise try workspace discovery."""
 
-    if not remote_path_exists(selected_codespace, selected_remote_path):
-        detected_path = detect_codespace_workspace(selected_codespace)
-        if detected_path:
-            print(f"Remote path not found: {selected_remote_path}")
-            print(f"Using detected Codespace workspace: {detected_path}")
-            selected_remote_path = detected_path
+    if remote_path_exists(codespace, requested_path, timeout=gh_timeout):
+        return requested_path
 
-    state_file.write_text(
-        "\n".join(
-            [
-                f"CODESPACE_NAME='{selected_codespace}'",
-                f"CODESPACE_SSH_HOST='{host}'",
-                f"CODESPACE_REMOTE_PATH='{selected_remote_path}'",
-                f"CODESPACE_MOUNT_DIR='{selected_mount_dir}'",
-                "",
-            ]
-        ),
-        encoding="utf-8",
+    detected_path = detect_codespace_workspace(codespace, timeout=gh_timeout)
+    if detected_path is None:
+        return requested_path
+
+    print(f"Remote path not found: {requested_path}")
+    print(f"Using detected Codespace workspace: {detected_path}")
+    return detected_path
+
+
+def configure_vscode_codespace(options: CodeStartOptions) -> None:
+    """Install the terminal launcher and its VS Code profile."""
+
+    options.terminal_path.parent.mkdir(parents=True, exist_ok=True)
+    options.terminal_path.write_text(codespace_terminal_script(), encoding="utf-8")
+    options.terminal_path.chmod(0o755)
+    write_vscode_terminal_profile(
+        options.settings_path,
+        options.profile_name,
+        options.terminal_path,
     )
-    state_file.chmod(0o600)
 
-    terminal_bin.write_text(codespace_terminal_script(), encoding="utf-8")
-    terminal_bin.chmod(0o755)
 
-    if not no_mount:
-        result = mount_codespace_code(
-            host=host,
-            remote_path=selected_remote_path,
-            mount_dir=selected_mount_dir,
-        )
-        if result != 0:
-            return result
-
-    write_vscode_terminal_profile(settings_path, selected_profile_name, terminal_bin)
-
-    print(f"Codespace: {selected_codespace}")
-    print(f"SSH host:  {host}")
-    print(f"Remote:    {selected_remote_path}")
-    print(f"Mount:     {selected_mount_dir}")
-    print(f"State:     {state_file}")
-    print(f"Terminal:  {terminal_bin}")
-    print(f"Profile:   {selected_profile_name}")
-    return 0
+def report_codespace_start(
+    options: CodeStartOptions,
+    state: CodespaceConnectionState,
+) -> None:
+    print(f"Codespace: {state.codespace_name}")
+    print(f"SSH host:  {state.ssh_host}")
+    print(f"Remote:    {state.remote_path}")
+    print(f"Mount:     {state.mount_dir}")
+    print(f"State:     {options.state_path}")
+    print(f"Terminal:  {options.terminal_path}")
+    print(f"Profile:   {options.profile_name}")
 
 
 def stop_code_codespace(
@@ -295,13 +541,13 @@ def stop_code_codespace(
     gh_timeout: int | None = None,
 ) -> int:
     home = Path.home()
-    state_file = home / ".config" / "codespace-dev" / "env"
-    state = load_codespace_state(state_file)
+    state_file = codespace_state_path(home)
+    state = load_connection_state(home)
 
     selected_mount_dir = Path(
         mount_dir
         or os.environ.get("CODESPACE_MOUNT_DIR")
-        or state.get("CODESPACE_MOUNT_DIR")
+        or (str(state.mount_dir) if state else None)
         or str(default_codespaces_mount_dir())
     ).expanduser()
     settings_path = Path(
@@ -316,9 +562,7 @@ def stop_code_codespace(
         "Codespaces",
     )
 
-    expected_source = None
-    if state.get("CODESPACE_SSH_HOST") and state.get("CODESPACE_REMOTE_PATH"):
-        expected_source = f"{state['CODESPACE_SSH_HOST']}:{state['CODESPACE_REMOTE_PATH']}"
+    expected_source = f"{state.ssh_host}:{state.remote_path}" if state else None
 
     unmount_result = unmount_codespace_code(
         mount_dir=selected_mount_dir,
@@ -344,16 +588,17 @@ def stop_code_codespace(
 def shutdown_code_codespace(
     *,
     codespace: str | None = None,
-    state: dict[str, str] | None = None,
+    state: CodespaceConnectionState | None = None,
     gh_timeout: int | None = None,
 ) -> int:
+    saved_state = state or load_connection_state(Path.home())
     selected_codespace = (
         codespace
         or os.environ.get("GAR_CODESPACE_NAME")
         or os.environ.get("CODESPACE_NAME")
-        or (state or load_codespace_state(Path.home() / ".config" / "codespace-dev" / "env")).get("CODESPACE_NAME")
+        or (saved_state.codespace_name if saved_state else None)
     )
-    selected_gh_timeout = gh_timeout_seconds(gh_timeout)
+    selected_gh_timeout = gh_timeout_seconds(gh_timeout, command_name="gar code shutdown")
 
     if not selected_codespace:
         list_result = run_gh_captured(
@@ -399,7 +644,7 @@ def status_code_codespace(
         print("gar code status: missing required command: gh", file=sys.stderr)
         return 1
 
-    selected_gh_timeout = gh_timeout_seconds(gh_timeout)
+    selected_gh_timeout = gh_timeout_seconds(gh_timeout, command_name="gar code status")
     result = run_gh_captured(
         ["gh", "codespace", "list"],
         timeout=selected_gh_timeout,
@@ -412,11 +657,12 @@ def status_code_codespace(
         print_completed_stderr(result)
         return result.returncode
 
+    saved_state = load_connection_state(Path.home())
     selected_codespace = (
         codespace
         or os.environ.get("GAR_CODESPACE_NAME")
         or os.environ.get("CODESPACE_NAME")
-        or load_codespace_state(Path.home() / ".config" / "codespace-dev" / "env").get("CODESPACE_NAME")
+        or (saved_state.codespace_name if saved_state else None)
     )
     rows = codespace_list_rows(result.stdout)
     if selected_codespace:
@@ -430,9 +676,7 @@ def status_code_codespace(
         return 1
 
     selected_mount_dir = Path(
-        mount_dir
-        or load_codespace_state(Path.home() / ".config" / "codespace-dev" / "env").get("CODESPACE_MOUNT_DIR", "")
-        or str(default_codespaces_mount_dir())
+        mount_dir or (str(saved_state.mount_dir) if saved_state else None) or str(default_codespaces_mount_dir())
     ).expanduser()
     if shutil.which("mountpoint") is not None:
         mounted = subprocess.run(["mountpoint", "-q", str(selected_mount_dir)], check=False).returncode == 0
@@ -448,15 +692,15 @@ def select_code_codespace(
     *,
     command_name: str,
     gh_timeout: int | None,
+    home: Path | None = None,
 ) -> str | None:
-    selected_codespace = (
-        codespace
-        or os.environ.get("GAR_CODESPACE_NAME")
-        or os.environ.get("CODESPACE_NAME")
-        or load_codespace_state(Path.home() / ".config" / "codespace-dev" / "env").get("CODESPACE_NAME")
-    )
+    selected_codespace = codespace or os.environ.get("GAR_CODESPACE_NAME") or os.environ.get("CODESPACE_NAME")
     if selected_codespace:
         return selected_codespace
+
+    saved_state = load_connection_state(home or Path.home())
+    if saved_state is not None and saved_state.codespace_name:
+        return saved_state.codespace_name
 
     list_result = run_gh_captured(
         ["gh", "codespace", "list"],
@@ -479,242 +723,14 @@ def select_code_codespace(
 
 
 def load_codespace_state(state_file: Path) -> dict[str, str]:
-    if not state_file.exists():
-        return {}
+    """Compatibility name for readers of the former shell-style state file."""
 
-    state: dict[str, str] = {}
-    for raw_line in state_file.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        try:
-            parsed = shlex.split(value, comments=False, posix=True)
-        except ValueError:
-            continue
-        if key and parsed:
-            state[key] = parsed[0]
-    return state
+    return load_legacy_codespace_state(state_file)
 
 
 def default_codespaces_mount_dir() -> Path:
     return Path.cwd() / "codespaces"
 
 
-def gh_timeout_seconds(value: int | None) -> int | None:
-    raw_value = str(value) if value is not None else os.environ.get("CODESPACE_GH_TIMEOUT", "")
-    if not raw_value:
-        return DEFAULT_GH_TIMEOUT_SECONDS
-    try:
-        timeout = int(raw_value)
-    except ValueError:
-        print(
-            f"gar code start: invalid CODESPACE_GH_TIMEOUT={raw_value!r}; "
-            f"using {DEFAULT_GH_TIMEOUT_SECONDS}s",
-            file=sys.stderr,
-        )
-        return DEFAULT_GH_TIMEOUT_SECONDS
-    return timeout if timeout > 0 else None
-
-
-def run_gh_captured(
-    argv: list[str],
-    *,
-    timeout: int | None,
-    label: str,
-    command_name: str = "gar code start",
-) -> subprocess.CompletedProcess[str] | None:
-    env = os.environ.copy()
-    env.setdefault("GH_PROMPT_DISABLED", "1")
-    try:
-        return subprocess.run(
-            argv,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        timeout_text = "without a timeout" if timeout is None else f"after {timeout}s"
-        print(
-            f"{command_name}: timed out {timeout_text} while trying to {label}",
-            file=sys.stderr,
-        )
-        print("Check `gh auth status` and try `gh codespace list` directly.", file=sys.stderr)
-        return None
-
-
-def print_completed_stderr(result: subprocess.CompletedProcess[str]) -> None:
-    message = (result.stderr or "").strip()
-    if message:
-        print(message, file=sys.stderr)
-
-
-def first_ssh_host(config_text: str) -> str | None:
-    for line in config_text.splitlines():
-        parts = line.strip().split()
-        if len(parts) >= 2 and parts[0] == "Host":
-            return parts[1]
-    return None
-
-
-def remote_path_exists(host: str, remote_path: str) -> bool:
-    result = run_codespace_remote(
-        host,
-        f"test -d {shlex.quote(remote_path)}",
-        capture_output=True,
-    )
-    return result.returncode == 0
-
-
-def detect_codespace_workspace(host: str) -> str | None:
-    result = run_codespace_remote(
-        host,
-        'find /workspaces -mindepth 1 -maxdepth 1 -type d ! -name ".*" 2>/dev/null | sort | head -n 1',
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    detected = result.stdout.strip()
-    return detected or None
-
-
-def run_codespace_remote(
-    codespace: str,
-    command: str,
-    *,
-    capture_output: bool = False,
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["gh", "codespace", "ssh", "-c", codespace, "--", command],
-        check=False,
-        capture_output=capture_output,
-        text=True,
-    )
-
-
-def mount_codespace_code(*, host: str, remote_path: str, mount_dir: Path) -> int:
-    mount_dir.mkdir(parents=True, exist_ok=True)
-    expected_source = f"{host}:{remote_path}"
-    mountpoint_result = subprocess.run(["mountpoint", "-q", str(mount_dir)], check=False)
-
-    if mountpoint_result.returncode == 0:
-        source_result = subprocess.run(
-            ["findmnt", "-n", "-o", "SOURCE", "--target", str(mount_dir)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        current_source = source_result.stdout.strip() if source_result.returncode == 0 else ""
-        if current_source == expected_source:
-            print(f"sshfs: already mounted at {mount_dir}")
-            return 0
-
-        print(f"sshfs: replacing stale mount {current_source} at {mount_dir}")
-        fusermount = shutil.which("fusermount3") or shutil.which("fusermount")
-        if fusermount is None:
-            print(
-                "gar code start: missing required command: fusermount3 or fusermount",
-                file=sys.stderr,
-            )
-            return 1
-        unmount_result = subprocess.run([fusermount, "-u", str(mount_dir)], check=False)
-        if unmount_result.returncode != 0:
-            return unmount_result.returncode
-
-    result = subprocess.run(
-        [
-            "sshfs",
-            expected_source,
-            str(mount_dir),
-            "-o",
-            "reconnect",
-            "-o",
-            "ServerAliveInterval=15",
-            "-o",
-            "ServerAliveCountMax=3",
-        ],
-        check=False,
-    )
-    if result.returncode == 0:
-        print(f"sshfs: mounted {expected_source} -> {mount_dir}")
-    return result.returncode
-
-
-def unmount_codespace_code(*, mount_dir: Path, expected_source: str | None) -> int:
-    if not mount_dir.exists():
-        print(f"sshfs: not mounted at {mount_dir}")
-        return 0
-
-    if shutil.which("mountpoint") is None:
-        print("gar code stop: missing required command: mountpoint", file=sys.stderr)
-        return 1
-
-    mountpoint_result = subprocess.run(["mountpoint", "-q", str(mount_dir)], check=False)
-    if mountpoint_result.returncode != 0:
-        print(f"sshfs: not mounted at {mount_dir}")
-        return 0
-
-    if shutil.which("findmnt") is None:
-        print("gar code stop: missing required command: findmnt", file=sys.stderr)
-        return 1
-
-    source_result = subprocess.run(
-        ["findmnt", "-n", "-o", "SOURCE", "--target", str(mount_dir)],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    current_source = source_result.stdout.strip() if source_result.returncode == 0 else ""
-    if expected_source is None:
-        print(
-            f"gar code stop: missing Codespace state; leaving mount untouched: {mount_dir}",
-            file=sys.stderr,
-        )
-        return 1
-    if current_source != expected_source:
-        print(
-            f"gar code stop: leaving non-matching mount untouched: {current_source} at {mount_dir}",
-            file=sys.stderr,
-        )
-        return 1
-
-    fusermount = shutil.which("fusermount3") or shutil.which("fusermount")
-    if fusermount is None:
-        print("gar code stop: missing required command: fusermount3 or fusermount", file=sys.stderr)
-        return 1
-
-    result = subprocess.run([fusermount, "-u", str(mount_dir)], check=False)
-    if result.returncode == 0:
-        print(f"sshfs: unmounted {mount_dir}")
-    return result.returncode
-
-
-def codespace_terminal_script() -> str:
-    return """#!/usr/bin/env bash
-set -euo pipefail
-
-state_file="${CODESPACE_DEV_ENV:-$HOME/.config/codespace-dev/env}"
-
-if [[ ! -f "$state_file" ]]; then
-  echo "codespace-terminal: missing $state_file" >&2
-  echo "Run: gar code start" >&2
-  exit 1
-fi
-
-# shellcheck disable=SC1090
-source "$state_file"
-
-if [[ -z "${CODESPACE_SSH_HOST:-}" ]]; then
-  echo "codespace-terminal: CODESPACE_SSH_HOST is not set in $state_file" >&2
-  exit 1
-fi
-
-if [[ -n "${CODESPACE_REMOTE_PATH:-}" ]]; then
-  exec ssh -t "$CODESPACE_SSH_HOST" "cd '$CODESPACE_REMOTE_PATH' && exec bash -l"
-fi
-
-exec ssh -t "$CODESPACE_SSH_HOST"
-"""
+def _is_safe_command_value(value: str) -> bool:
+    return bool(value) and "\0" not in value and "\n" not in value and "\r" not in value

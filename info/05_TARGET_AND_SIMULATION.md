@@ -59,7 +59,7 @@ GAR の役割は「ターゲットの capability を見て、この 3 つの最�
 - **Renode 本体に ESP32(Xtensa) は事実上無し**（XTENSA は `xtensa-sample-controller` のみ）。
 - **Renode 本体に RP2040 / RP2350 の repl は無い**（直接 404 で確認）。RP2040 はコミュニティ製 `matgla/Renode_RP2040` で可、ただし "Frozen"。
 - **Renode 本体に STM32 は手厚い**（`stm32f103.repl` ほか多数同梱）→ 追加実装ゼロで即動く。
-- ローカル `gar-adhoc-app/mcu-renode/sim/pico_blink.resc` は `@platforms/cpus/rp2040.repl`（本体同梱）を前提にしており、**stock Renode では動かない**。
+- product workspaceの`GarAdhocApp/sources/gar-adhoc-app/mcu-renode/sim/pico_blink.resc`は`@platforms/cpus/rp2040.repl`（本体同梱）を前提にしており、**stock Renode では動かない**。
 
 ---
 

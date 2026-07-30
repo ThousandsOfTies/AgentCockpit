@@ -75,7 +75,7 @@ make init
 make start
 ```
 
-## 2. target / environment / 既定 host を設定する
+## 2. target / environment / runtime host を設定する
 
 まず `gar setup` を実行します。
 
@@ -100,10 +100,11 @@ ESP32 / M5Stack を扱う場合は Target で `ESP32 / M5Stack` を選びます�
 
 ここでの `SSH Remote` は「シミュレータ種別」ではなく、EC2 simulation runtime host へ `ssh` / `scp` で入るための接続 environment です。`AWS SSM` は現状の runtime 操作では非推奨な environment です。
 
-EC2 の既定 host を明示する場合:
+`SSH Remote`を選んだ場合はEC2のSSH host aliasを必ず設定します。個人環境名への
+fallbackはありません。
 
 ```bash
-gar setup --ec2-host vibecode-graviton
+gar setup --ec2-host my-sim-host
 ```
 
 チェック:
@@ -134,7 +135,7 @@ gar code start --codespace <codespace-name>
 チェック:
 
 ```bash
-cat ~/.config/codespace-dev/env
+cat ~/.config/codespace-dev/state.json
 ls ~/codespace-dev 2>/dev/null || true
 ```
 
@@ -153,8 +154,10 @@ gar target build        # 実機用application / firmware
 ```
 
 内部ではproduct workspaceの`product-sim-build.sh`、`product-sim-env-build.sh`、
-`product-target-build.sh`をartifact種別に応じて呼び分けます。ESP32は
-`Esp32BuildEnvironment`がPlatformIO buildとartifact materializeを担当します。
+`product-target-build.sh`をartifact種別に応じて呼び分けます。ESP32も例外ではなく、
+product workspace側の`product-target-build.sh`がPlatformIO buildとartifact stagingを
+担当します。GARのBuildEnvironmentは、実行場所に応じて
+`LocalBuildEnvironment`または`CodespacesBuildEnvironment`を選びます。
 
 Codespaces側の既存bundleだけを再取得する場合は`gar target fetch`を使います。
 `deploy`はbuild/fetchを暗黙実行しないため、先にartifactを用意してください。
@@ -166,7 +169,10 @@ ls -la /workspaces/gar-build-env/artifacts/from-codespace
 cat /workspaces/gar-build-env/artifacts/from-codespace/artifact.json
 ```
 
-`artifact.json` には少なくとも `deploy.app.files` が必要です（VM 専用インフラがある場合は `deploy.sim_env.files` も）。
+`artifact.json` には用途に応じて `deploy.app` / `deploy.sim_env` が必要です。
+各sectionは`files`の一覧、またはproduct hookが生成した`artifact`を持てます。
+取得後は`.gar/artifacts/<workspace-id>/<artifact-kind>/<build-id>/`へ種別ごとの
+不変snapshotとして保存され、`latest.json`が最新buildを指します。
 
 ## 5. 先に simulation で予行する
 
@@ -195,14 +201,15 @@ gar sim runtime log
 EC2 にログインしてアプリを起動します。
 
 ```bash
-ssh vibecode-graviton
+ssh my-sim-host
 ~/sensor_demo
 ```
 
 仮想 H/W は backend の UI から操作します。
 Linux / RasPi-compatible simulation では Web UI / Virtual Hardware Panel、
 Wokwi simulation では VS Code Wokwi Simulator / Diagram UI を使います。
-Wokwi の手動確認では `.gar/wokwi/m5stackc/diagram.json` を開き、
+Wokwi の手動確認では `gar sim runtime diag --json` に表示される `project_dir` の
+`diagram.json` を開き、
 Editor ペイン左上の再生ボタンを押します。このとき `wokwi.toml` が参照する
 `firmware.bin` / `firmware.elf` が Wokwi 側へ送信されます。
 
@@ -398,7 +405,7 @@ gar code start --codespace <codespace-name>
 gar sim runtime diag --json
 gar sim gpio status --json
 gar sim runtime log
-ssh vibecode-graviton 'systemctl --no-pager --full status gar-sim.target gar-bridge.service gar-gpio-sim.service'
+ssh my-sim-host 'systemctl --no-pager --full status gar-sim.target gar-bridge.service gar-gpio-sim.service'
 ```
 
 出力を貼って「どこが悪い？」と聞けばよいです。
@@ -474,7 +481,7 @@ gar sim host start
 gar sim runtime deploy
 gar sim runtime start
 gar sim runtime diag --json
-ssh vibecode-graviton '~/sensor_demo'
+ssh my-sim-host '~/sensor_demo'
 
 gar target deploy
 adb shell

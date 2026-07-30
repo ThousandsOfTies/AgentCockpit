@@ -45,18 +45,14 @@ class FileTransferTargetEnvironment(TargetEnvironment):
             if parent:
                 prepared = self.command_channel.run(f"mkdir -p {shlex.quote(parent)}")
                 if prepared.returncode != 0:
-                    raise GarDomainError(
-                        f"target artifact配置先を作成できません (exit {prepared.returncode})"
-                    )
+                    raise GarDomainError(f"target artifact配置先を作成できません (exit {prepared.returncode})")
             transferred = self.file_channel.push(source, destination)
             if transferred.returncode != 0:
                 raise GarDomainError(f"target artifact転送に失敗しました (exit {transferred.returncode})")
 
             mode = entry.get("mode")
             if isinstance(mode, str):
-                result = self.command_channel.run(
-                    f"chmod {shlex.quote(mode)} {shlex.quote(destination)}"
-                )
+                result = self.command_channel.run(f"chmod {shlex.quote(mode)} {shlex.quote(destination)}")
                 if result.returncode != 0:
                     raise GarDomainError(f"target artifactのmode設定に失敗しました (exit {result.returncode})")
 

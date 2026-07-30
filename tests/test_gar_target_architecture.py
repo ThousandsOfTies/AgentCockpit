@@ -11,7 +11,7 @@ from unittest import mock
 
 from scripts.gar_lib.api import Gar
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
-from scripts.gar_lib.build.local import LocalBuildEnvironment
+from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.cli import main
 from scripts.gar_lib.commands.setup import configure_target_connection
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
@@ -36,9 +36,15 @@ class GarTargetArchitectureTest(unittest.TestCase):
     def test_setup_saves_ssh_target_host_per_workspace(self) -> None:
         config = {"selected_environments": {"target": "ssh_scp"}}
         with (
-            mock.patch("scripts.gar_lib.commands.setup.sys.stdin.isatty", return_value=True),
-            mock.patch("scripts.gar_lib.commands.setup.safe_input", return_value="raspi-target"),
-            mock.patch("scripts.gar_lib.commands.setup.save_config") as save,
+            mock.patch(
+                "scripts.gar_lib.commands.setup.target_setup.sys.stdin.isatty",
+                return_value=True,
+            ),
+            mock.patch(
+                "scripts.gar_lib.commands.setup.target_setup.safe_input",
+                return_value="raspi-target",
+            ),
+            mock.patch("scripts.gar_lib.commands.setup.target_setup.save_config") as save,
         ):
             configure_target_connection(config)
 
@@ -56,16 +62,18 @@ class GarTargetArchitectureTest(unittest.TestCase):
             artifact_file.parent.mkdir(parents=True)
             artifact_file.write_text("app", encoding="utf-8")
             (artifact_root / "artifact.json").write_text(
-                json.dumps(
-                    {"deploy": {"app": {"files": [{"src": "files/app", "dest": "~/app"}]}}}
-                ),
+                json.dumps({"deploy": {"app": {"files": [{"src": "files/app", "dest": "~/app"}]}}}),
                 encoding="utf-8",
             )
             completed = mock.Mock(returncode=0)
             with mock.patch("scripts.gar_lib.build.local.subprocess.run", return_value=completed) as run:
-                artifact = LocalBuildEnvironment(LocalArtifactStore()).build(
+                selected_workspace = workspace(root, target="esp32_esptool")
+                artifact = build_environment_for(
+                    selected_workspace,
+                    LocalArtifactStore(),
+                ).build(
                     ArtifactKind.TARGET_APP,
-                    workspace(root),
+                    selected_workspace,
                 )
 
         self.assertEqual(ArtifactKind.TARGET_APP, artifact.kind)
@@ -74,7 +82,8 @@ class GarTargetArchitectureTest(unittest.TestCase):
     def test_target_build_uses_the_workspace_build_environment(self) -> None:
         selected_workspace = workspace(Path("/tmp/product"))
         build_environment = mock.Mock()
-        build_environment.build.return_value = mock.Mock(bundle_path="/tmp/bundle")
+        artifact = mock.Mock(bundle_path="/tmp/bundle")
+        build_environment.build.return_value = artifact
 
         with (
             mock.patch(
@@ -83,9 +92,9 @@ class GarTargetArchitectureTest(unittest.TestCase):
             ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = Gar(selected_workspace).target.build()
+            result = Gar(selected_workspace).target.build()
 
-        self.assertEqual(0, exit_code)
+        self.assertIs(artifact, result)
         build_environment.build.assert_called_once_with(ArtifactKind.TARGET_APP, selected_workspace)
 
     def test_target_deploy_uses_latest_artifact_and_environment(self) -> None:
@@ -102,9 +111,9 @@ class GarTargetArchitectureTest(unittest.TestCase):
             ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = Gar(selected_workspace, artifacts).target.deploy()
+            result = Gar(selected_workspace, artifacts).target.deploy()
 
-        self.assertEqual(0, exit_code)
+        self.assertIs(artifact, result)
         artifacts.latest.assert_called_once_with(ArtifactKind.TARGET_APP, selected_workspace)
         environment.deploy.assert_called_once_with(artifact)
 
@@ -127,9 +136,7 @@ class GarTargetArchitectureTest(unittest.TestCase):
                 "scripts.gar_lib.api.target_environment_for",
                 return_value=environment,
             ),
-            mock.patch(
-                "scripts.gar_lib.commands.target.run_terminal_run_command"
-            ) as terminal_request,
+            mock.patch("scripts.gar_lib.commands.target.run_terminal_run_command") as terminal_request,
             contextlib.redirect_stdout(io.StringIO()),
             contextlib.redirect_stderr(stderr),
         ):
@@ -146,17 +153,7 @@ class GarTargetArchitectureTest(unittest.TestCase):
             source.parent.mkdir()
             source.write_text("app", encoding="utf-8")
             (root / "artifact.json").write_text(
-                json.dumps(
-                    {
-                        "deploy": {
-                            "app": {
-                                "files": [
-                                    {"src": "files/app", "dest": "bin/app", "mode": "0755"}
-                                ]
-                            }
-                        }
-                    }
-                ),
+                json.dumps({"deploy": {"app": {"files": [{"src": "files/app", "dest": "bin/app", "mode": "0755"}]}}}),
                 encoding="utf-8",
             )
             selected_workspace = workspace(root)
@@ -193,12 +190,15 @@ class GarTargetArchitectureTest(unittest.TestCase):
         completed = subprocess.CompletedProcess([], 0, "", "")
         with mock.patch("scripts.gar_lib.access.adb.subprocess.run", return_value=completed) as run:
             artifact = mock.Mock(kind=ArtifactKind.TARGET_APP)
-            with mock.patch(
-                "scripts.gar_lib.target.file_transfer.load_deploy_files",
-                return_value=(Path("/tmp"), [{"src": "app", "dest": "app"}]),
-            ), mock.patch(
-                "scripts.gar_lib.target.file_transfer.resolve_artifact_src",
-                return_value=Path("/tmp/app"),
+            with (
+                mock.patch(
+                    "scripts.gar_lib.target.file_transfer.load_deploy_files",
+                    return_value=(Path("/tmp"), [{"src": "app", "dest": "app"}]),
+                ),
+                mock.patch(
+                    "scripts.gar_lib.target.file_transfer.resolve_artifact_src",
+                    return_value=Path("/tmp/app"),
+                ),
             ):
                 environment.deploy(artifact)
 
@@ -245,15 +245,7 @@ class GarTargetArchitectureTest(unittest.TestCase):
             for name in ("bootloader.bin", "partitions.bin", "boot_app0.bin", "firmware.bin"):
                 (firmware / name).write_bytes(b"firmware")
             (root / "artifact.json").write_text(
-                json.dumps(
-                    {
-                        "deploy": {
-                            "app": {
-                                "files": [{"src": "files/firmware", "dest": "firmware"}]
-                            }
-                        }
-                    }
-                ),
+                json.dumps({"deploy": {"app": {"files": [{"src": "files/firmware", "dest": "firmware"}]}}}),
                 encoding="utf-8",
             )
             selected_workspace = workspace(root, target="esp32_esptool")

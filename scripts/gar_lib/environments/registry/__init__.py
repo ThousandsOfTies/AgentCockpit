@@ -1,6 +1,18 @@
-"""Drop-in environment definitions for gar setup.
+"""Environment setup choices, registered explicitly by category."""
 
-Each Python module in this package may define one EnvironmentSetupOption subclass.
-gar setup discovers these modules directly, so there is no separate environment
-list to maintain.
-"""
+from scripts.gar_lib.environments.registry.codespace import (
+    ENVIRONMENT_OPTIONS as DEVELOPMENT_ENVIRONMENTS,
+)
+from scripts.gar_lib.environments.registry.simulator import (
+    ENVIRONMENT_OPTIONS as SIMULATION_ENVIRONMENTS,
+)
+from scripts.gar_lib.environments.registry.target import (
+    ENVIRONMENT_OPTIONS as TARGET_ENVIRONMENTS,
+)
+from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+
+ENVIRONMENT_OPTIONS: tuple[type[EnvironmentSetupOption], ...] = (
+    *DEVELOPMENT_ENVIRONMENTS,
+    *SIMULATION_ENVIRONMENTS,
+    *TARGET_ENVIRONMENTS,
+)

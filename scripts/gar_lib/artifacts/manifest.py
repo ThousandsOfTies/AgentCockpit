@@ -17,12 +17,135 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from scripts.gar_lib.access.codespaces import select_codespace_from_list
 from scripts.gar_lib.core.config import PROJECT_ROOT
 
 DEFAULT_CODESPACE_ARTIFACT_ROOT = "/workspaces/gar-build-env/artifacts/from-codespace"
+
+
+class ArtifactManifestError(ValueError):
+    """An artifact manifest is structurally invalid."""
+
+
+@dataclass(frozen=True)
+class DeployFile:
+    """One file copied from an artifact bundle to a deployment destination."""
+
+    src: str
+    dest: str
+    mode: str | None = None
+
+    def as_dict(self) -> dict[str, str]:
+        payload = {"src": self.src, "dest": self.dest}
+        if self.mode is not None:
+            payload["mode"] = self.mode
+        return payload
+
+
+@dataclass(frozen=True)
+class DeploySection:
+    """One named consumer of an artifact bundle.
+
+    ``files`` is GAR's deploy contract. ``artifact`` is also accepted because
+    product manifests use it to point at a bundle consumed by another tool.
+    Both forms contribute sources when a bundle is fetched from Codespaces.
+    """
+
+    name: str
+    files: tuple[DeployFile, ...] = ()
+    artifact: str | None = None
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        file_sources = tuple(file.src for file in self.files)
+        return (*file_sources, *((self.artifact,) if self.artifact else ()))
+
+
+@dataclass(frozen=True)
+class ArtifactManifest:
+    """Validated representation of ``artifact.json``."""
+
+    name: str | None
+    deploy: Mapping[str, DeploySection]
+
+    def section(self, name: str) -> DeploySection:
+        try:
+            return self.deploy[name]
+        except KeyError as exc:
+            raise ArtifactManifestError(f"artifact manifest has no deploy.{name} section") from exc
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for section in self.deploy.values():
+            for source in section.sources:
+                if source not in seen:
+                    seen.add(source)
+                    ordered.append(source)
+        return tuple(ordered)
+
+
+def parse_artifact_manifest(payload: object) -> ArtifactManifest:
+    """Validate untrusted JSON and return the typed artifact model."""
+
+    if not isinstance(payload, dict):
+        raise ArtifactManifestError("invalid artifact manifest: root must be an object")
+
+    raw_name = payload.get("name")
+    if raw_name is not None and not isinstance(raw_name, str):
+        raise ArtifactManifestError("invalid artifact manifest: name must be a string")
+
+    raw_deploy = payload.get("deploy")
+    if not isinstance(raw_deploy, dict):
+        raise ArtifactManifestError("invalid artifact manifest: deploy must be an object")
+
+    deploy: dict[str, DeploySection] = {}
+    for section_name, raw_section in raw_deploy.items():
+        if not isinstance(section_name, str) or not section_name:
+            raise ArtifactManifestError("invalid artifact manifest: deploy section names must be non-empty strings")
+        if not isinstance(raw_section, dict):
+            raise ArtifactManifestError(f"invalid artifact manifest: deploy.{section_name} must be an object")
+
+        has_files = "files" in raw_section
+        has_artifact = "artifact" in raw_section
+        if not has_files and not has_artifact:
+            raise ArtifactManifestError(f"invalid artifact manifest: deploy.{section_name} requires files or artifact")
+
+        files: list[DeployFile] = []
+        if has_files:
+            raw_files = raw_section["files"]
+            if not isinstance(raw_files, list) or not raw_files:
+                raise ArtifactManifestError(f"artifact manifest deploy.{section_name}.files must be a non-empty list")
+            for index, raw_file in enumerate(raw_files):
+                location = f"deploy.{section_name}.files[{index}]"
+                if not isinstance(raw_file, dict):
+                    raise ArtifactManifestError(f"artifact manifest {location} must be an object")
+                src = raw_file.get("src")
+                dest = raw_file.get("dest")
+                if not isinstance(src, str) or not src or not isinstance(dest, str) or not dest:
+                    raise ArtifactManifestError(f"artifact manifest {location} requires non-empty string src and dest")
+                mode = raw_file.get("mode")
+                if mode is not None and not (isinstance(mode, str) and re.fullmatch(r"[0-7]{3,4}", mode)):
+                    raise ArtifactManifestError(f"artifact manifest {location}.mode must match [0-7]{{3,4}}")
+                files.append(DeployFile(src=src, dest=dest, mode=mode))
+
+        raw_artifact = raw_section.get("artifact")
+        if raw_artifact is not None and not (isinstance(raw_artifact, str) and raw_artifact):
+            raise ArtifactManifestError(
+                f"artifact manifest deploy.{section_name}.artifact must be a non-empty string or null"
+            )
+        deploy[section_name] = DeploySection(
+            name=section_name,
+            files=tuple(files),
+            artifact=raw_artifact,
+        )
+
+    return ArtifactManifest(name=raw_name, deploy=deploy)
 
 
 def default_artifacts_dir() -> Path:
@@ -61,27 +184,18 @@ def gh_env() -> dict[str, str]:
     return env
 
 
-def artifact_manifest_deploy_sources(manifest: dict) -> list[str] | None:
-    deploy = manifest.get("deploy")
-    if not isinstance(deploy, dict):
-        print("invalid artifact manifest: deploy must be an object", file=sys.stderr)
-        return None
+def artifact_manifest_deploy_sources(manifest: object) -> list[str] | None:
+    """Return every source that must be copied with the manifest.
 
-    sources: list[str] = []
-    seen: set[str] = set()
-    for target, target_config in deploy.items():
-        if not isinstance(target, str) or not isinstance(target_config, dict):
-            print("invalid artifact manifest: deploy targets must be objects", file=sys.stderr)
-            return None
-        files = artifact_deploy_files(manifest, target)
-        if files is None:
-            return None
-        for entry in files:
-            src = entry["src"]
-            if src not in seen:
-                seen.add(src)
-                sources.append(src)
-    return sources
+    This compatibility wrapper keeps the command-oriented ``None`` result,
+    while all structural validation lives in ``parse_artifact_manifest``.
+    """
+
+    try:
+        return list(parse_artifact_manifest(manifest).sources)
+    except ArtifactManifestError as error:
+        print(error, file=sys.stderr)
+        return None
 
 
 def fetch_codespace_artifacts(
@@ -117,15 +231,13 @@ def fetch_codespace_artifacts(
         except json.JSONDecodeError as exc:
             print(f"invalid artifact manifest JSON from Codespace: {exc}", file=sys.stderr)
             return 1
-        if not isinstance(manifest, dict):
-            print("invalid artifact manifest from Codespace: root must be an object", file=sys.stderr)
+        try:
+            parsed_manifest = parse_artifact_manifest(manifest)
+        except ArtifactManifestError as error:
+            print(error, file=sys.stderr)
             return 1
 
-        sources = artifact_manifest_deploy_sources(manifest)
-        if sources is None:
-            return 1
-
-        for src in sources:
+        for src in parsed_manifest.sources:
             if src.startswith("/") or ".." in Path(src).parts:
                 print(f"artifact src escapes bundle root: {src}", file=sys.stderr)
                 return 1
@@ -180,7 +292,7 @@ def find_artifact_manifest(root: Path) -> Path | None:
     return None
 
 
-def load_artifact_manifest(root: Path) -> tuple[Path, dict] | None:
+def load_artifact_manifest(root: Path) -> tuple[Path, ArtifactManifest] | None:
     manifest_path = find_artifact_manifest(root)
     if manifest_path is None:
         print(f"missing artifact manifest: {root / 'artifact.json'}", file=sys.stderr)
@@ -192,55 +304,51 @@ def load_artifact_manifest(root: Path) -> tuple[Path, dict] | None:
         print(f"invalid artifact manifest JSON: {manifest_path}: {exc}", file=sys.stderr)
         return None
 
-    if not isinstance(data, dict):
-        print(f"invalid artifact manifest: root must be an object: {manifest_path}", file=sys.stderr)
+    try:
+        manifest = parse_artifact_manifest(data)
+    except ArtifactManifestError as error:
+        print(f"{error}: {manifest_path}", file=sys.stderr)
         return None
 
-    return manifest_path.parent, data
+    return manifest_path.parent, manifest
 
 
-def artifact_deploy_files(manifest: dict, target: str) -> list[dict] | None:
+def artifact_deploy_files(
+    manifest: ArtifactManifest | object,
+    target: str,
+) -> list[dict[str, str]] | None:
     """Return deploy files for *target* section."""
-    deploy = manifest.get("deploy")
-    if not isinstance(deploy, dict):
-        print("invalid artifact manifest: deploy must be an object", file=sys.stderr)
+    try:
+        parsed = manifest if isinstance(manifest, ArtifactManifest) else parse_artifact_manifest(manifest)
+        section = parsed.section(target)
+        if not section.files:
+            raise ArtifactManifestError(f"artifact manifest deploy.{target}.files must be a non-empty list")
+        return [entry.as_dict() for entry in section.files]
+    except ArtifactManifestError as error:
+        print(error, file=sys.stderr)
         return None
-
-    target_config = deploy.get(target)
-    if not isinstance(target_config, dict):
-        print(f"artifact manifest has no deploy.{target} section", file=sys.stderr)
-        return None
-
-    files = target_config.get("files")
-    if not isinstance(files, list) or not files:
-        print(f"artifact manifest deploy.{target}.files must be a non-empty list", file=sys.stderr)
-        return None
-
-    for index, entry in enumerate(files):
-        if not isinstance(entry, dict):
-            print(f"artifact manifest deploy.{target}.files[{index}] must be an object", file=sys.stderr)
-            return None
-        if not isinstance(entry.get("src"), str) or not isinstance(entry.get("dest"), str):
-            print(
-                f"artifact manifest deploy.{target}.files[{index}] requires string src and dest",
-                file=sys.stderr,
-            )
-            return None
-        mode = entry.get("mode")
-        if mode is not None and not (isinstance(mode, str) and re.fullmatch(r"[0-7]{3,4}", mode)):
-            print(
-                f"artifact manifest deploy.{target}.files[{index}].mode must match [0-7]{{3,4}}",
-                file=sys.stderr,
-            )
-            return None
-
-    return files
 
 
 def resolve_artifact_src(bundle_root: Path, src: str) -> Path | None:
-    source = (bundle_root / src).resolve()
+    source_path = Path(src)
+    if source_path.is_absolute() or ".." in source_path.parts:
+        print(f"artifact src escapes bundle root: {src}", file=sys.stderr)
+        return None
+
+    current = bundle_root
+    if current.is_symlink():
+        print(f"artifact src uses symlink: {current}", file=sys.stderr)
+        return None
+    for part in source_path.parts:
+        current /= part
+        if current.is_symlink():
+            print(f"artifact src uses symlink: {current}", file=sys.stderr)
+            return None
+
+    resolved_root = bundle_root.resolve()
+    source = (resolved_root / source_path).resolve()
     try:
-        source.relative_to(bundle_root)
+        source.relative_to(resolved_root)
     except ValueError:
         print(f"artifact src escapes bundle root: {src}", file=sys.stderr)
         return None
@@ -248,6 +356,15 @@ def resolve_artifact_src(bundle_root: Path, src: str) -> Path | None:
     if not source.exists():
         print(f"missing artifact: {source}", file=sys.stderr)
         return None
+
+    if source.is_dir():
+        nested_symlink = next(
+            (path for path in sorted(source.rglob("*")) if path.is_symlink()),
+            None,
+        )
+        if nested_symlink is not None:
+            print(f"artifact src uses symlink: {nested_symlink}", file=sys.stderr)
+            return None
 
     return source
 

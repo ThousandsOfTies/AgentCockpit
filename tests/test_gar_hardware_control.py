@@ -37,14 +37,14 @@ class GarHardwareControlTest(unittest.TestCase):
         channel = mock.Mock()
         channel.run.return_value = AccessResult(("ssh",), 0, "active\n", "")
         builder = mock.Mock()
-        builder.build_gpio_systemd_install.return_value = "install gpio service"
+        builder.build_gpio_systemd_start.return_value = "install gpio service\nsystemctl restart gar-gpio-sim.service"
         hardware = {"gpio": []}
         control = LinuxBridgeHardwareControl(channel, builder)
 
         result = control.gpio("start", hardware)
 
         self.assertEqual(0, result.exit_code)
-        builder.build_gpio_systemd_install.assert_called_once_with(hardware)
+        builder.build_gpio_systemd_start.assert_called_once_with(hardware)
         command = channel.run.call_args.args[0]
         self.assertIn("install gpio service", command)
         self.assertIn("systemctl restart gar-gpio-sim.service", command)
@@ -83,3 +83,15 @@ class GarHardwareControlTest(unittest.TestCase):
         self.assertEqual({"led18": 1}, result.payload)
         builder.build_io.assert_called_once_with("state", {})
         channel.run.assert_called_once_with("curl state")
+
+    def test_io_state_reports_invalid_json_as_a_failure(self) -> None:
+        channel = mock.Mock()
+        channel.run.return_value = AccessResult(("ssh",), 0, "not-json", "")
+        builder = mock.Mock()
+        builder.build_io.return_value = "curl state"
+        control = LinuxBridgeHardwareControl(channel, builder)
+
+        result = control.io("state", {})
+
+        self.assertEqual(1, result.exit_code)
+        self.assertEqual({"ok": False, "raw": "not-json"}, result.payload)

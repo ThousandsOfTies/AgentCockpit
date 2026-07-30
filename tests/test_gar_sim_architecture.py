@@ -12,6 +12,7 @@ from unittest import mock
 from scripts.gar_lib.api import Gar
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
+from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.build.local import LocalBuildEnvironment
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.artifact import ArtifactKind
@@ -41,6 +42,7 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             "branch": "Product",
             "connection": {"type": "local", "path": "/tmp/product"},
             "selected_environments": {"codespace": "local"},
+            "selected_target": "linux-device",
             "target": {"host": "raspi", "dest": "/opt/product"},
         }
         with (
@@ -51,7 +53,88 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         self.assertEqual("ws_test", workspace.id)
         self.assertEqual("local", workspace.selected_environments["codespace"])
+        self.assertEqual("linux-device", workspace.selected_target)
         self.assertEqual("raspi", workspace.target["host"])
+
+    def test_workspace_lookup_prefers_product_hardware_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            product_root = Path(tmp) / "product"
+            product_hardware = product_root / "hardware"
+            product_hardware.mkdir(parents=True)
+            bundled_hardware = product_root / "sources" / "gar-tools" / "targets" / "linux-device" / "hardware"
+            bundled_hardware.mkdir(parents=True)
+            entry = {
+                "id": "ws_test",
+                "name": "Local/Product",
+                "branch": "Product",
+                "connection": {"type": "local", "path": str(product_root)},
+                "selected_target": "linux-device",
+            }
+            with (
+                mock.patch(
+                    "scripts.gar_lib.commands.workspace_resolver.load_config",
+                    return_value={"workspaces": [entry]},
+                ),
+                mock.patch(
+                    "scripts.gar_lib.commands.workspace_resolver.saved_workspaces",
+                    return_value=[entry],
+                ),
+            ):
+                workspace = resolve_workspace(None)
+
+        self.assertEqual(product_hardware, workspace.hardware_dir)
+
+    def test_workspace_lookup_supports_product_embedded_gar_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            product_root = Path(tmp) / "GarVibeRemote"
+            bundled_hardware = product_root / "sources" / "gar-tools" / "targets" / "linux-device" / "hardware"
+            bundled_hardware.mkdir(parents=True)
+            entry = {
+                "id": "ws_vibe_remote",
+                "name": "Local/GarVibeRemote",
+                "branch": "GarVibeRemote",
+                "connection": {"type": "local", "path": str(product_root)},
+                "selected_target": "linux-device",
+            }
+            with (
+                mock.patch(
+                    "scripts.gar_lib.commands.workspace_resolver.load_config",
+                    return_value={"workspaces": [entry]},
+                ),
+                mock.patch(
+                    "scripts.gar_lib.commands.workspace_resolver.saved_workspaces",
+                    return_value=[entry],
+                ),
+            ):
+                workspace = resolve_workspace(None)
+
+        self.assertEqual(bundled_hardware, workspace.hardware_dir)
+
+    def test_workspace_lookup_honours_explicit_hardware_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            product_root = Path(tmp) / "product"
+            explicit_hardware = product_root / "config" / "hardware"
+            entry = {
+                "id": "ws_test",
+                "name": "Local/Product",
+                "branch": "Product",
+                "connection": {"type": "local", "path": str(product_root)},
+                "selected_target": "linux-device",
+                "hardware": {"path": "config/hardware"},
+            }
+            with (
+                mock.patch(
+                    "scripts.gar_lib.commands.workspace_resolver.load_config",
+                    return_value={"workspaces": [entry]},
+                ),
+                mock.patch(
+                    "scripts.gar_lib.commands.workspace_resolver.saved_workspaces",
+                    return_value=[entry],
+                ),
+            ):
+                workspace = resolve_workspace(None)
+
+        self.assertEqual(explicit_hardware, workspace.hardware_dir)
 
     def test_workspace_lookup_requires_selector_for_multiple_entries(self) -> None:
         entries = [
@@ -100,6 +183,46 @@ class GarSimulationArchitectureTest(unittest.TestCase):
         self.assertEqual(ArtifactKind.SIM_APP, artifact.kind)
         run.assert_called_once_with([str(hook)], cwd=root, check=False, env=mock.ANY)
 
+    def test_esp32_target_does_not_replace_local_product_build_environment(self) -> None:
+        workspace = Workspace(
+            id="ws_esp32",
+            name="Local/ESP32Product",
+            branch="ESP32Product",
+            connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={
+                "codespace": "local",
+                "simulator": "wokwi",
+                "target": "esp32_esptool",
+            },
+            selected_target="esp32",
+        )
+
+        environment = build_environment_for(workspace, LocalArtifactStore())
+
+        self.assertIsInstance(environment, LocalBuildEnvironment)
+
+    def test_esp32_target_does_not_replace_codespaces_product_build_environment(self) -> None:
+        workspace = Workspace(
+            id="ws_esp32",
+            name="Codespaces/ESP32Product",
+            branch="ESP32Product",
+            connection={
+                "type": "codespaces",
+                "path": "/workspaces/product",
+                "codespace": "product-space",
+            },
+            selected_environments={
+                "codespace": "github_codespaces",
+                "simulator": "wokwi",
+                "target": "esp32_esptool",
+            },
+            selected_target="esp32",
+        )
+
+        environment = build_environment_for(workspace, LocalArtifactStore())
+
+        self.assertIsInstance(environment, CodespacesBuildEnvironment)
+
     def test_sim_app_build_uses_the_workspace_build_environment(self) -> None:
         workspace = local_workspace(Path("/tmp/product"))
         artifact = mock.Mock(bundle_path="/tmp/bundle")
@@ -113,9 +236,9 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             ) as build_for,
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = Gar(workspace).sim.app.build()
+            result = Gar(workspace).sim.app.build()
 
-        self.assertEqual(0, exit_code)
+        self.assertIs(artifact, result)
         build_for.assert_called_once_with(workspace, mock.ANY)
         build_environment.build.assert_called_once_with(ArtifactKind.SIM_APP, workspace)
 
@@ -130,9 +253,9 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = Gar(workspace).sim.app.clean()
+            result = Gar(workspace).sim.app.clean()
 
-        self.assertEqual(0, exit_code)
+        self.assertIsNone(result)
         build_environment.clean.assert_called_once_with(ArtifactKind.SIM_APP, workspace)
 
     def test_codespaces_build_runs_hook_and_materializes_artifact(self) -> None:
@@ -149,7 +272,7 @@ class GarSimulationArchitectureTest(unittest.TestCase):
         )
         artifact = mock.Mock()
         artifacts = mock.Mock(spec=LocalArtifactStore)
-        artifacts.latest.return_value = artifact
+        artifacts.sync_from_codespaces.return_value = artifact
         completed = mock.Mock(returncode=0)
 
         with mock.patch("scripts.gar_lib.build.codespaces.subprocess.run", return_value=completed) as run:
@@ -168,8 +291,8 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             ],
             check=False,
         )
-        artifacts.sync_from_codespaces.assert_called_once_with(workspace)
-        artifacts.latest.assert_called_once_with(ArtifactKind.SIM_APP, workspace)
+        artifacts.sync_from_codespaces.assert_called_once_with(ArtifactKind.SIM_APP, workspace)
+        artifacts.latest.assert_not_called()
 
     def test_wokwi_runtime_build_does_not_invoke_a_product_runtime_hook(self) -> None:
         workspace = local_workspace(Path("/tmp/product"))
@@ -182,9 +305,9 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             mock.patch("scripts.gar_lib.api.build_environment_for") as build_for,
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = Gar(workspace).sim.runtime.build()
+            result = Gar(workspace).sim.runtime.build()
 
-        self.assertEqual(0, exit_code)
+        self.assertIsNone(result)
         build_for.assert_not_called()
 
     def test_wokwi_runtime_deploy_does_not_require_an_artifact(self) -> None:
@@ -199,8 +322,8 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            exit_code = Gar(workspace, artifacts).sim.runtime.deploy()
+            result = Gar(workspace, artifacts).sim.runtime.deploy()
 
-        self.assertEqual(0, exit_code)
+        self.assertIsNone(result)
         artifacts.latest.assert_not_called()
         environment.deploy.assert_not_called()

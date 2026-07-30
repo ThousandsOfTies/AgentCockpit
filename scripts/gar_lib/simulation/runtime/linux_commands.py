@@ -1,10 +1,12 @@
 """Linux/systemd simulation command construction and GPIO planning."""
+
 from __future__ import annotations
 
 import csv
 import io
 import shlex
 import textwrap
+from collections.abc import Sequence
 from urllib.parse import urlencode
 
 from scripts.gar_lib.simulation.hardware import io_actions
@@ -24,21 +26,23 @@ GAR_GPIO_SIM_STOP = f"{GAR_SBIN_DIR}/gar-gpio-sim-stop"
 GAR_CUSE_I2C = f"{GAR_SBIN_DIR}/cuse_i2c"
 GAR_CUSE_SPI = f"{GAR_SBIN_DIR}/cuse_spi"
 PANEL_BASE_URL = "http://127.0.0.1:8080"
+CURL_OPTIONS = "--silent --show-error --fail --connect-timeout 2 --max-time 5"
+SIM_RUNTIME_PROCESS_PATTERN = "[b]ridge.py|[c]use_i2c|[c]use_spi"
 
 SIM_GPIO_SIM_CHECK_COMMAND = (
     'echo "@@KERNEL@@"; '
     "uname -r; "
     'echo "@@MODINFO@@"; '
-    'if modinfo gpio-sim >/tmp/gar-gpio-sim.modinfo 2>/tmp/gar-gpio-sim.modinfo.err; then '
+    "if modinfo gpio-sim >/tmp/gar-gpio-sim.modinfo 2>/tmp/gar-gpio-sim.modinfo.err; then "
     'echo "1"; '
-    'for f in filename name description depends; do '
+    "for f in filename name description depends; do "
     'v=$(modinfo -F "$f" gpio-sim 2>/dev/null || true); '
     'echo "$f: $v"; '
     "done; "
-    "else echo \"0\"; cat /tmp/gar-gpio-sim.modinfo.err; fi; "
+    'else echo "0"; cat /tmp/gar-gpio-sim.modinfo.err; fi; '
     'echo "@@CONFIG@@"; '
-    'if zcat /proc/config.gz 2>/dev/null | grep -i GPIO_SIM; then true; '
-    'elif grep -i GPIO_SIM /boot/config-$(uname -r) 2>/dev/null; then true; '
+    "if zcat /proc/config.gz 2>/dev/null | grep -i GPIO_SIM; then true; "
+    "elif grep -i GPIO_SIM /boot/config-$(uname -r) 2>/dev/null; then true; "
     'else echo "CONFIG_GPIO_SIM=(not found)"; fi; '
     'echo "@@CONFIGFS@@"; '
     'if [ -d /sys/kernel/config ]; then echo "1"; else echo "0"; fi; '
@@ -46,13 +50,22 @@ SIM_GPIO_SIM_CHECK_COMMAND = (
     "ls -1 /dev/gpiochip* 2>/dev/null || true"
 )
 
+
 # Helpers
+def _fail_fast_script(steps: Sequence[str]) -> str:
+    """Render named lifecycle steps as one shell script that stops at first failure."""
+
+    return "set -eu\n" + "\n".join(steps)
+
+
 def _csv_rows_for(kind: str, hw_definition: dict[str, list[dict[str, str]]]) -> list[dict[str, str]]:
     rows = hw_definition.get(kind, [])
     return rows if isinstance(rows, list) else []
 
+
 def _devname(dev: str) -> str:
     return dev.removeprefix("/dev/")
+
 
 def _unique_nonempty(values: list[str]) -> list[str]:
     seen = set()
@@ -64,6 +77,7 @@ def _unique_nonempty(values: list[str]) -> list[str]:
         result.append(value)
     return result
 
+
 def _gpio_label(row: dict[str, str], line: int) -> str:
     role = row.get("role", "").strip().lower()
     if role == "button":
@@ -73,6 +87,7 @@ def _gpio_label(row: dict[str, str], line: int) -> str:
     else:
         prefix = (role or row.get("name", "GPIO")).upper()
     return "".join(c if c.isalnum() else "_" for c in f"{prefix}_GPIO{line}")
+
 
 def _gpio_rows(hw_definition: dict[str, list[dict[str, str]]]) -> list[dict[str, str]]:
     rows = []
@@ -84,6 +99,7 @@ def _gpio_rows(hw_definition: dict[str, list[dict[str, str]]]) -> list[dict[str,
         rows.append(row)
     return rows
 
+
 def _gpiochip_path(hw_definition: dict[str, list[dict[str, str]]]) -> str:
     for row in _gpio_rows(hw_definition):
         chip = row.get("chip", "").strip()
@@ -91,20 +107,73 @@ def _gpiochip_path(hw_definition: dict[str, list[dict[str, str]]]) -> str:
             return chip
     return "/dev/gpiochip0"
 
+
 def _i2c_devs(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
-    return _unique_nonempty([row.get("dev", "").strip() for row in _csv_rows_for("i2c", hw_definition)])
+    return _unique_nonempty(
+        [row.get("dev", "").strip() for row in _csv_rows_for("i2c", hw_definition) if row.get("sim", "").strip()]
+    )
+
 
 def _spi_devs(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
-    return _unique_nonempty([row.get("dev", "").strip() for row in _csv_rows_for("spi", hw_definition)])
+    return _unique_nonempty(
+        [row.get("dev", "").strip() for row in _csv_rows_for("spi", hw_definition) if row.get("sim", "").strip()]
+    )
+
 
 def _diag_devices(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
     return _unique_nonempty([*_i2c_devs(hw_definition), _gpiochip_path(hw_definition), *_spi_devs(hw_definition)])
 
+
 def _i2c_services(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
-    return [f"gar-cuse-i2c@{_devname(dev)}.service" for dev in (_i2c_devs(hw_definition) or ["/dev/i2c-1"])]
+    return [
+        f"gar-cuse-i2c@{_devname(dev)}.service"
+        for dev in _simulated_devs_or_legacy_default(
+            hw_definition,
+            _i2c_devs(hw_definition),
+            "/dev/i2c-1",
+        )
+    ]
+
 
 def _spi_services(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
-    return [f"gar-cuse-spi@{_devname(dev)}.service" for dev in (_spi_devs(hw_definition) or ["/dev/spidev0.0"])]
+    return [
+        f"gar-cuse-spi@{_devname(dev)}.service"
+        for dev in _simulated_devs_or_legacy_default(
+            hw_definition,
+            _spi_devs(hw_definition),
+            "/dev/spidev0.0",
+        )
+    ]
+
+
+def _simulated_devs_or_legacy_default(
+    hw_definition: dict[str, list[dict[str, str]]],
+    devices: list[str],
+    default: str,
+) -> list[str]:
+    """Keep the old defaults only when no hardware rows exist at all."""
+
+    if devices:
+        return devices
+    if any(_csv_rows_for(kind, hw_definition) for kind in ("gpio", "i2c", "spi")):
+        return []
+    return [default]
+
+
+def _spi_service_options(hw_definition: dict[str, list[dict[str, str]]]) -> str:
+    """Return options required by the selected SPI simulator implementation."""
+
+    simulated_drivers = {row.get("sim", "").strip().lower() for row in _csv_rows_for("spi", hw_definition)}
+    if "ili9341" not in simulated_drivers:
+        return ""
+
+    for row in _gpio_rows(hw_definition):
+        name = row.get("name", "").strip().lower()
+        role = row.get("role", "").strip().lower()
+        if name in {"lcd_dc", "display_dc"} or (role == "display_ctrl" and name.endswith("_dc")):
+            return f" --dc-line={int(row['line'])}"
+    return ""
+
 
 def _runtime_services(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
     return [
@@ -114,17 +183,24 @@ def _runtime_services(hw_definition: dict[str, list[dict[str, str]]]) -> list[st
         *_spi_services(hw_definition),
     ]
 
-def _sudo_write_file_command(path: str, content: str, *, mode: str | None = None, expand_remote_home: bool = False) -> str:
+
+def _sudo_write_file_command(
+    path: str, content: str, *, mode: str | None = None, expand_remote_home: bool = False
+) -> str:
     command = f"printf %s {shlex.quote(content)}"
     if expand_remote_home:
         command += ' | sed "s#__GAR_HOME__#$HOME#g"'
     command += f" | sudo tee {shlex.quote(path)} >/dev/null"
     if mode:
-        command += f"; sudo chmod {shlex.quote(mode)} {shlex.quote(path)}"
+        command += f"\nsudo chmod {shlex.quote(mode)} {shlex.quote(path)}"
     return command
 
+
 def _hardware_csv_install_commands(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
-    commands = [f"sudo mkdir -p {shlex.quote(GAR_HARDWARE_DIR)}"]
+    commands = [
+        f"sudo mkdir -p {shlex.quote(GAR_HARDWARE_DIR)}",
+        f"sudo rm -f {shlex.quote(GAR_HARDWARE_DIR)}/*.csv",
+    ]
     for name, rows in hw_definition.items():
         if not isinstance(rows, list) or not rows:
             continue
@@ -138,6 +214,7 @@ def _hardware_csv_install_commands(hw_definition: dict[str, list[dict[str, str]]
         commands.append(_sudo_write_file_command(f"{GAR_HARDWARE_DIR}/{name}.csv", content, mode="0644"))
     return commands
 
+
 def gpio_sim_plan(hw_definition: dict[str, list[dict[str, str]]]) -> dict[str, object]:
     hw = hw_definition
     rows = _gpio_rows(hw)
@@ -145,13 +222,15 @@ def gpio_sim_plan(hw_definition: dict[str, list[dict[str, str]]]) -> dict[str, o
     lines = []
     for row in rows:
         line = int(row["line"])
-        lines.append({
-            "line": line,
-            "label": _gpio_label(row, line),
-            "direction": row.get("direction", ""),
-            "role": row.get("role", ""),
-            "sim_control": row.get("sim_control", ""),
-        })
+        lines.append(
+            {
+                "line": line,
+                "label": _gpio_label(row, line),
+                "direction": row.get("direction", ""),
+                "role": row.get("role", ""),
+                "sim_control": row.get("sim_control", ""),
+            }
+        )
     return {
         "driver": "gpio-sim",
         "chip": "gar",
@@ -180,7 +259,7 @@ class LinuxSystemdCommandBuilder:
             [Service]
             Type=oneshot
             RemainAfterExit=yes
-            RuntimeDirectory=Gapless Agent Runtime
+            RuntimeDirectory=gar
             Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
             Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
             Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
@@ -199,23 +278,36 @@ class LinuxSystemdCommandBuilder:
             _sudo_write_file_command("/etc/systemd/system/gar-gpio-sim.service", gpio_unit),
             "sudo systemctl daemon-reload",
         ]
-        return "; ".join(commands)
+        return _fail_fast_script(commands)
+
+    def build_gpio_systemd_start(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
+        install_service = self.build_gpio_systemd_install(hw_definition)
+        restart_service = "sudo systemctl restart gar-gpio-sim.service"
+        verify_service = "sudo systemctl --no-pager --full status gar-gpio-sim.service"
+        return _fail_fast_script(
+            (
+                install_service,
+                restart_service,
+                verify_service,
+            )
+        )
 
     def build_sim_diag_json(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
         hw = hw_definition
         devices = _diag_devices(hw) or list(SIM_DIAG_DEVICES)
         return (
             'echo "@@PROC@@"; '
-            'pgrep -af "bridge.py|cuse_i2c|cuse_spi" || true; '
+            f'pgrep -af "{SIM_RUNTIME_PROCESS_PATTERN}" || true; '
             'echo "@@DEV@@"; '
             "for d in " + " ".join(shlex.quote(dev) for dev in devices) + "; do "
             'if [ -e "$d" ]; then echo "$d 1"; else echo "$d 0"; fi; done; '
             'echo "@@API@@"; '
-            "curl -s http://127.0.0.1:8080/api/state || true"
+            f"curl {CURL_OPTIONS} http://127.0.0.1:8080/api/state || true"
         )
 
     def build_gpio_sim_setup(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
         from pathlib import Path
+
         hw = hw_definition
         rows = _gpio_rows(hw)
         gpiochip_path = _gpiochip_path(hw)
@@ -331,6 +423,7 @@ class LinuxSystemdCommandBuilder:
     def build_systemd_install(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
         hw = hw_definition
         services = _runtime_services(hw)
+        spi_service_options = _spi_service_options(hw)
 
         bridge_start_script = textwrap.dedent(
             f"""
@@ -348,12 +441,14 @@ class LinuxSystemdCommandBuilder:
               "/home/user/venv/bin/python3" \\
               "/usr/bin/python3"
             do
-              if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              if [ -n "$candidate" ] && [ -x "$candidate" ] && \
+                 "$candidate" -c 'import aiohttp' >/dev/null 2>&1; then
                 exec "$candidate" "{GAR_BRIDGE_DIR}/bridge.py"
               fi
             done
 
-            echo "gar-bridge-start: no usable python3 found" >&2
+            echo "gar-bridge-start: no python3 with aiohttp found" >&2
+            echo "install python3-aiohttp or deploy {GAR_LIB_DIR}/venv" >&2
             exit 1
             """
         ).lstrip()
@@ -366,10 +461,11 @@ class LinuxSystemdCommandBuilder:
 
             [Service]
             Type=simple
-            RuntimeDirectory=Gapless Agent Runtime
+            RuntimeDirectory=gar
             Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
             Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
             Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
+            PassEnvironment=GAR_BRIDGE_HOST GAR_BRIDGE_PORT GAR_BRIDGE_ALLOWED_HOSTS
             ExecStart={GAR_BRIDGE_START}
             Restart=on-failure
             RestartSec=1
@@ -387,7 +483,7 @@ class LinuxSystemdCommandBuilder:
 
             [Service]
             Type=simple
-            RuntimeDirectory=Gapless Agent Runtime
+            RuntimeDirectory=gar
             Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
             Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
             Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
@@ -409,11 +505,11 @@ class LinuxSystemdCommandBuilder:
 
             [Service]
             Type=simple
-            RuntimeDirectory=Gapless Agent Runtime
+            RuntimeDirectory=gar
             Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
             Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
             Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
-            ExecStart={GAR_CUSE_SPI} -f --devname=%i
+            ExecStart={GAR_CUSE_SPI} -f --devname=%i{spi_service_options}
             ExecStartPost=/bin/sh -c 'for n in $(seq 1 30); do [ -e /dev/%i ] && chmod 666 /dev/%i && exit 0; sleep 0.1; done; exit 0'
             Restart=on-failure
             RestartSec=1
@@ -437,8 +533,12 @@ class LinuxSystemdCommandBuilder:
         commands = [
             f"sudo mkdir -p {shlex.quote(GAR_ETC_DIR)} {shlex.quote(GAR_LIB_DIR)} {shlex.quote(GAR_SBIN_DIR)}",
             *_hardware_csv_install_commands(hw),
-            _sudo_write_file_command(GAR_GPIO_SIM_START, "#!/bin/sh\n" + self.build_gpio_sim_setup(hw) + "\n", mode="0755"),
-            _sudo_write_file_command(GAR_GPIO_SIM_STOP, "#!/bin/sh\n" + self.build_gpio_sim_teardown(hw) + "\n", mode="0755"),
+            _sudo_write_file_command(
+                GAR_GPIO_SIM_START, "#!/bin/sh\n" + self.build_gpio_sim_setup(hw) + "\n", mode="0755"
+            ),
+            _sudo_write_file_command(
+                GAR_GPIO_SIM_STOP, "#!/bin/sh\n" + self.build_gpio_sim_teardown(hw) + "\n", mode="0755"
+            ),
             _sudo_write_file_command(GAR_BRIDGE_START, bridge_start_script, mode="0755"),
             _sudo_write_file_command(
                 "/etc/systemd/system/gar-gpio-sim.service",
@@ -450,7 +550,7 @@ class LinuxSystemdCommandBuilder:
                     [Service]
                     Type=oneshot
                     RemainAfterExit=yes
-                    RuntimeDirectory=Gapless Agent Runtime
+                    RuntimeDirectory=gar
                     Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
                     Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
                     Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
@@ -468,32 +568,36 @@ class LinuxSystemdCommandBuilder:
             _sudo_write_file_command("/etc/systemd/system/gar-sim.target", target_unit),
             "sudo systemctl daemon-reload",
         ]
-        return "; ".join(commands)
+        return _fail_fast_script(commands)
 
     def build_systemd_start(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
         hw = hw_definition
         services = " ".join(shlex.quote(service) for service in _runtime_services(hw))
-        return (
-            self.build_systemd_install(hw)
-            + "; "
-            + f"sudo systemctl stop gar-sim.target {services} >/dev/null 2>&1 || true; "
-            + "sudo pkill -x cuse_i2c || true; "
-            + "sudo pkill -x cuse_spi || true; "
-            + "sudo systemctl start gar-sim.target; "
-            + "sleep 3; "
-            + "sudo systemctl --no-pager --full status gar-sim.target; "
-            + 'pgrep -af "bridge.py|cuse_i2c|cuse_spi"'
+        install_runtime = self.build_systemd_install(hw)
+        stop_previous_runtime = f"sudo systemctl stop gar-sim.target {services}"
+        start_runtime = "sudo systemctl start gar-sim.target"
+        show_runtime_status = "sudo systemctl --no-pager --full status gar-sim.target"
+        verify_services = f"sudo systemctl is-active {services}"
+        return _fail_fast_script(
+            (
+                install_runtime,
+                stop_previous_runtime,
+                start_runtime,
+                "sleep 3",
+                show_runtime_status,
+                verify_services,
+            )
         )
 
     def build_systemd_stop(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
         hw = hw_definition
         services = " ".join(shlex.quote(service) for service in reversed(_runtime_services(hw)))
-        return (
-            f"sudo systemctl stop gar-sim.target {services} >/dev/null 2>&1 || true; "
-            "sudo pkill -x cuse_i2c || true; "
-            "sudo pkill -x cuse_spi || true; "
-            "pkill -f '[/]web-bridge/bridge.py' || true; "
-            'echo "Simulation device runtime stopped."'
+        stop_runtime = f"sudo systemctl stop gar-sim.target {services}"
+        return _fail_fast_script(
+            (
+                stop_runtime,
+                'echo "Simulation device runtime stopped."',
+            )
         )
 
     def build_sim_start(self, hw_definition: dict[str, list[dict[str, str]]]) -> str:
@@ -506,13 +610,13 @@ class LinuxSystemdCommandBuilder:
         hw = hw_definition
         return (
             'echo "--- processes ---"; '
-            'pgrep -af "bridge.py|cuse_i2c|cuse_spi" || true; '
+            f'pgrep -af "{SIM_RUNTIME_PROCESS_PATTERN}" || true; '
             'echo "--- devices ---"; '
             + "ls -l "
             + " ".join(shlex.quote(dev) for dev in _diag_devices(hw))
             + " 2>/dev/null || true; "
             'echo "--- api ---"; '
-            "curl -s http://127.0.0.1:8080/api/state || true"
+            f"curl {CURL_OPTIONS} http://127.0.0.1:8080/api/state || true"
         )
 
     def build_sim_log(self) -> str:
@@ -558,5 +662,5 @@ class LinuxSystemdCommandBuilder:
         if request.fields:
             url += "?" + urlencode(request.fields, safe=":")
         if request.method == "GET":
-            return f'curl -s "{url}"'
-        return f'curl -s -X {request.method} "{url}"'
+            return f"curl {CURL_OPTIONS} {shlex.quote(url)}"
+        return f"curl {CURL_OPTIONS} -X {request.method} {shlex.quote(url)}"

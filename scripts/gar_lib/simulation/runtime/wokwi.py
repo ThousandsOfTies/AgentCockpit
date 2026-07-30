@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 from datetime import UTC, datetime
@@ -12,19 +11,24 @@ from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifa
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.simulation.diagnostics.model import PayloadSimulationDiagnostic
-from scripts.gar_lib.simulation.runtime.process import ProcessChannel
+from scripts.gar_lib.simulation.runtime.process import (
+    ManagedProcess,
+    ProcessChannel,
+    ProcessStateStore,
+)
 
 DEFAULT_TIMEOUT_MS = 30000
 
 
 class WokwiSimulationEnvironment:
     requires_runtime_artifact = False
-    runtime_host: str | None = None
+    session_host: str | None = None
 
     def __init__(self, project_dir: Path, process_channel: ProcessChannel):
         self.project_dir = project_dir
         self.process_channel = process_channel
         self.state_path = project_dir / "state.json"
+        self.state_store = ProcessStateStore(self.state_path)
         self.log_path = project_dir / "wokwi.log"
 
     def deploy(self, artifact: Artifact) -> None:
@@ -34,17 +38,19 @@ class WokwiSimulationEnvironment:
         if loaded is None:
             raise GarDomainError(f"Wokwi artifact manifestを読み込めません: {artifact.bundle_path}")
         bundle_root, files = loaded
-        self.project_dir.mkdir(parents=True, exist_ok=True)
+        self._prepare_project_root()
         for entry in files:
+            self._reject_source_symlinks(bundle_root, entry["src"])
             source = resolve_artifact_src(bundle_root, entry["src"])
             if source is None:
                 raise GarDomainError(f"Wokwi artifact sourceがありません: {entry['src']}")
             destination = self._project_destination(entry["dest"])
-            destination.parent.mkdir(parents=True, exist_ok=True)
             if source.is_dir():
-                destination.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(source, destination, dirs_exist_ok=True)
+                self._copy_directory(source, destination, entry["dest"])
             else:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists() and destination.is_dir():
+                    raise GarDomainError(f"Wokwi artifact fileの配置先がdirectoryです: {destination}")
                 shutil.copy2(source, destination)
             mode = entry.get("mode")
             if isinstance(mode, str):
@@ -53,66 +59,73 @@ class WokwiSimulationEnvironment:
     def start(self, hardware: dict[str, list[dict[str, str]]]) -> int:
         del hardware
         self._require_project()
-        state = self._state()
-        pid = state.get("pid")
-        if isinstance(pid, int) and self.process_channel.is_running(pid):
-            self._print_status(running=True, pid=pid)
-            return 0
+        with self.state_store.locked():
+            state = self._state()
+            current_process = ManagedProcess.from_state(state)
+            if current_process is not None and self.process_channel.owns(current_process):
+                self._print_status(running=True, pid=current_process.pid)
+                return 0
 
-        executable = self._wokwi_executable()
-        if executable is None:
-            raise GarDomainError("wokwi-cliが見つかりません。gar setupでWokwiを設定してください。")
-        firmware = self._resolve_project_path(self._firmware_path())
-        if not firmware.is_file():
-            raise GarDomainError(f"Wokwi firmwareがありません。先にgar sim app buildを実行してください: {firmware}")
+            executable = self._wokwi_executable()
+            if executable is None:
+                raise GarDomainError("wokwi-cliが見つかりません。gar setupでWokwiを設定してください。")
+            firmware = self._resolve_project_path(self._firmware_path())
+            if not firmware.is_file():
+                raise GarDomainError(
+                    f"Wokwi firmwareがありません。先にgar sim app buildとgar sim app deployを実行してください: {firmware}"
+                )
 
-        timeout = self._timeout_ms()
-        argv = (
-            executable,
-            str(self.project_dir),
-            "--serial-log-file",
-            str(self.log_path),
-            "--timeout",
-            str(timeout),
-            *(("--timeout-exit-code", "0") if timeout > 0 else ()),
-        )
-        launched = self.process_channel.start(argv, cwd=self.project_dir, log_path=self.log_path)
-        self._write_state(
-            {
-                "environment": "wokwi",
-                "pid": launched.pid,
-                "argv": list(launched.argv),
-                "project_dir": str(self.project_dir),
-                "log": str(self.log_path),
-                "started_at": datetime.now(UTC).isoformat(),
-                "timeout_ms": timeout,
-            }
-        )
+            timeout = self._timeout_ms()
+            argv = (
+                executable,
+                str(self.project_dir),
+                "--serial-log-file",
+                str(self.log_path),
+                "--timeout",
+                str(timeout),
+                *(("--timeout-exit-code", "0") if timeout > 0 else ()),
+            )
+            launched = self.process_channel.start(argv, cwd=self.project_dir, log_path=self.log_path)
+            try:
+                self._write_state(
+                    {
+                        "environment": "wokwi",
+                        **launched.to_state(),
+                        "project_dir": str(self.project_dir),
+                        "log": str(self.log_path),
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "timeout_ms": timeout,
+                    }
+                )
+            except Exception:
+                self.process_channel.terminate_group(launched)
+                raise
         self._print_status(running=True, pid=launched.pid)
         return 0
 
     def stop(self, hardware: dict[str, list[dict[str, str]]]) -> int:
         del hardware
-        state = self._state()
-        pid = state.get("pid")
-        if isinstance(pid, int) and self.process_channel.is_running(pid):
-            self.process_channel.terminate_group(pid)
-        self._write_state(
-            {
-                **state,
-                "status": "stopped",
-                "stopped_at": datetime.now(UTC).isoformat(),
-            }
-        )
-        self._print_status(running=False, pid=pid if isinstance(pid, int) else None)
+        with self.state_store.locked():
+            state = self._state()
+            process = ManagedProcess.from_state(state)
+            if process is not None:
+                self.process_channel.terminate_group(process)
+            self._write_state(
+                {
+                    **state,
+                    "status": "stopped",
+                    "stopped_at": datetime.now(UTC).isoformat(),
+                }
+            )
+        self._print_status(running=False, pid=process.pid if process is not None else None)
         return 0
 
     def status(self, hardware: dict[str, list[dict[str, str]]]) -> int:
         del hardware
         state = self._state()
-        pid = state.get("pid")
-        running = isinstance(pid, int) and self.process_channel.is_running(pid)
-        self._print_status(running=running, pid=pid if isinstance(pid, int) else None)
+        process = ManagedProcess.from_state(state)
+        running = process is not None and self.process_channel.owns(process)
+        self._print_status(running=running, pid=process.pid if process is not None else None)
         return 0
 
     def diag(self, hardware: dict[str, list[dict[str, str]]]) -> PayloadSimulationDiagnostic:
@@ -147,14 +160,61 @@ class WokwiSimulationEnvironment:
     def _require_project(self) -> None:
         if not self.project_dir.is_dir() or not (self.project_dir / "wokwi.toml").is_file():
             raise GarDomainError(
-                f"Wokwi projectがありません。先にgar sim app buildを実行してください: {self.project_dir}"
+                f"Wokwi projectがありません。先にgar sim app buildとgar sim app deployを実行してください: {self.project_dir}"
             )
+
+    def _prepare_project_root(self) -> None:
+        absolute_project_dir = Path(os.path.abspath(self.project_dir))
+        current = Path(absolute_project_dir.anchor)
+        for part in absolute_project_dir.parts[1:]:
+            current /= part
+            if current.is_symlink():
+                raise GarDomainError(f"Wokwi project pathはsymlinkにできません: {current}")
+        self.project_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _reject_source_symlinks(bundle_root: Path, source_text: str) -> None:
+        source_path = Path(source_text)
+        if source_path.is_absolute() or ".." in source_path.parts:
+            return
+
+        current = bundle_root
+        for part in source_path.parts:
+            current /= part
+            if current.is_symlink():
+                raise GarDomainError(f"Wokwi artifact sourceはsymlinkにできません: {current}")
+
+    def _copy_directory(self, source: Path, destination: Path, destination_text: str) -> None:
+        source_entries = sorted(source.rglob("*"))
+        symlink = next((entry for entry in source_entries if entry.is_symlink()), None)
+        if symlink is not None:
+            raise GarDomainError(f"Wokwi artifact sourceはsymlinkを含められません: {symlink}")
+        if destination.exists() and not destination.is_dir():
+            raise GarDomainError(f"Wokwi artifact directoryの配置先がfileです: {destination}")
+
+        destination.mkdir(parents=True, exist_ok=True)
+        destination_base = Path(destination_text)
+        for source_entry in source_entries:
+            relative = source_entry.relative_to(source)
+            target = self._project_destination((destination_base / relative).as_posix())
+            if source_entry.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            elif source_entry.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_entry, target)
 
     def _project_destination(self, value: str) -> Path:
         destination = Path(value)
         if destination.is_absolute() or value.startswith("~") or ".." in destination.parts:
             raise GarDomainError(f"Wokwi artifactのdestはproject相対pathで指定してください: {value}")
-        return self.project_dir / destination
+        current = self.project_dir
+        for index, part in enumerate(destination.parts):
+            current /= part
+            if current.is_symlink():
+                raise GarDomainError(f"Wokwi artifactのdestはsymlinkを通れません: {current}")
+            if index < len(destination.parts) - 1 and current.exists() and not current.is_dir():
+                raise GarDomainError(f"Wokwi artifactのdest親pathがdirectoryではありません: {current}")
+        return current
 
     def _wokwi_executable(self) -> str | None:
         home = Path.home()
@@ -181,18 +241,10 @@ class WokwiSimulationEnvironment:
             return DEFAULT_TIMEOUT_MS
 
     def _state(self) -> dict[str, object]:
-        try:
-            payload = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
+        return self.state_store.read()
 
     def _write_state(self, payload: dict[str, object]) -> None:
-        self.project_dir.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self.state_store.write(payload)
 
     def _print_status(self, *, running: bool, pid: int | None) -> None:
         print("environment: wokwi")

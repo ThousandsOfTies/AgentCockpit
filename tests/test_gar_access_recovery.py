@@ -46,9 +46,7 @@ class GarAccessRecoveryTest(unittest.TestCase):
             returncode=1,
         )
 
-        action = plan_access_recovery(
-            error, workspace=self.workspace, retry_command="gar sim app deploy"
-        )
+        action = plan_access_recovery(error, workspace=self.workspace, retry_command="gar sim app deploy")
 
         self.assertIsNone(action.terminal_command)
         self.assertTrue(any("gar usb attach" in instruction for instruction in action.instructions))

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from abc import ABC
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -17,7 +16,7 @@ class DependencyStatus:
         return self.path is not None
 
 
-class EnvironmentSetupOption(ABC):
+class EnvironmentSetupOption:
     """Setup option metadata and dependency installation contract.
 
     Runtime behavior belongs to the dedicated build, simulation, target, and
@@ -35,18 +34,11 @@ class EnvironmentSetupOption(ABC):
 
     @classmethod
     def dependency_status(cls) -> list[DependencyStatus]:
-        return [
-            DependencyStatus(name=command, path=shutil.which(command))
-            for command in cls.required_commands
-        ]
+        return [DependencyStatus(name=command, path=shutil.which(command)) for command in cls.required_commands]
 
     @classmethod
     def missing_commands(cls) -> list[str]:
-        return [
-            status.name
-            for status in cls.dependency_status()
-            if not status.installed
-        ]
+        return [status.name for status in cls.dependency_status() if not status.installed]
 
     @classmethod
     def install_hint(cls, missing: list[str]) -> str:
@@ -59,5 +51,33 @@ class EnvironmentSetupOption(ABC):
         return 1
 
     @classmethod
+    def record_detected_configuration(cls, config: dict) -> None:
+        """Persist environment-specific values discovered during setup."""
+
+    @classmethod
     def run_install_command(cls, argv: list[str]) -> int:
         return subprocess.run(argv, check=False).returncode
+
+
+class DevelopmentEnvironmentSetupOption(EnvironmentSetupOption):
+    """An environment used to edit and build product source."""
+
+    category_id = "codespace"
+    category_name = "開発環境"
+    category_order = 10
+
+
+class SimulationEnvironmentSetupOption(EnvironmentSetupOption):
+    """An environment used to run a simulated target."""
+
+    category_id = "simulator"
+    category_name = "シミュレート環境"
+    category_order = 20
+
+
+class TargetEnvironmentSetupOption(EnvironmentSetupOption):
+    """An environment used to deploy to a physical target."""
+
+    category_id = "target"
+    category_name = "実機環境"
+    category_order = 30

@@ -1,6 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
+const {
+  processedStatusFor,
+  terminalCommand,
+  validateTerminalRequest,
+} = require("./terminal_request");
 
 const REQUEST_GLOB = "**/.gar/terminal-requests/*.json";
 // VS Code extensions (notably the Python extension) may enqueue environment
@@ -43,23 +48,29 @@ function activate(context) {
 function deactivate() {}
 
 function processRequest(uri) {
-  let request;
+  let rawRequest;
   try {
-    request = JSON.parse(fs.readFileSync(uri.fsPath, "utf8"));
+    rawRequest = JSON.parse(fs.readFileSync(uri.fsPath, "utf8"));
   } catch {
     return;
   }
 
-  const id = String(request.id || path.basename(uri.fsPath, ".json"));
+  const request = validateTerminalRequest(
+    rawRequest,
+    path.basename(uri.fsPath, ".json"),
+    workspaceFolder()?.fsPath
+  );
+  const id = request.id;
   if (processedRequests.has(id)) {
     return;
   }
   processedRequests.add(id);
 
-  if (typeof request.command !== "string" || request.command.trim() === "") {
-    vscode.window.showWarningMessage(`Gapless Agent Runtime terminal request ${id} has no command.`);
-    writeStatus(uri, request, "invalid", "Terminal request has no command.");
-    markRequest(uri, "invalid");
+  if (!request.valid) {
+    vscode.window.showWarningMessage(
+      `Gapless Agent Runtime terminal request ${id} is invalid: ${request.error}`
+    );
+    writeStatus(uri, request, "invalid", request.error);
     return;
   }
 
@@ -69,9 +80,18 @@ function processRequest(uri) {
     command: request.command,
     onStarted: (terminal) => {
       writeStatus(uri, request, "started", `Sent to VSCode terminal: ${terminal.name}`);
+      // A newly-created terminal waits for shell initialization. Keep the
+      // request recoverable until sendText() has actually been called.
+      const processedStatus = processedStatusFor(request, true);
+      if (processedStatus) {
+        markRequest(uri, processedStatus);
+      }
+    },
+    onFailed: (error) => {
+      writeStatus(uri, request, "failed", `Unable to send command: ${error.message}`);
+      processedRequests.delete(id);
     },
   });
-  markRequest(uri, "started");
 }
 
 function runInTerminal(request) {
@@ -89,11 +109,13 @@ function runInTerminal(request) {
     // Only emit `cd` when reusing an existing terminal; new terminals already
     // start in `request.cwd` from createTerminal({ cwd }). Keep cd and command
     // in one shell line so they cannot interleave with each other.
-    const command = !createdNew && request.cwd
-      ? `cd ${shellQuote(request.cwd)} && ${request.command}`
-      : request.command;
-    terminal.sendText(command);
-    request.onStarted?.(terminal);
+    const command = terminalCommand(request, createdNew);
+    try {
+      terminal.sendText(command);
+      request.onStarted?.(terminal);
+    } catch (error) {
+      request.onFailed?.(error);
+    }
   };
 
   if (createdNew) {
@@ -144,10 +166,6 @@ function agpRootFromRequestUri(uri) {
 
 function workspaceFolder() {
   return vscode.workspace.workspaceFolders?.[0]?.uri;
-}
-
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 module.exports = {

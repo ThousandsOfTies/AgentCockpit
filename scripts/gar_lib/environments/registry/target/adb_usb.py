@@ -4,10 +4,10 @@ import platform
 import shutil
 
 from scripts.gar_lib.environments.install import print_user_terminal_handoff, sudo_block_reason
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import TargetEnvironmentSetupOption
 
 
-class AdbUsbEnvironment(EnvironmentSetupOption):
+class AdbUsbEnvironment(TargetEnvironmentSetupOption):
     environment_id = "adb_usb"
     display_name = "ADB USB-C"
     description = "adb コマンドで USB-C 接続の実機へ接続します"
@@ -17,10 +17,7 @@ class AdbUsbEnvironment(EnvironmentSetupOption):
     @classmethod
     def install_hint(cls, missing: list[str]) -> str:
         commands = ", ".join(missing)
-        return (
-            f"不足: {commands}\n"
-            "Android Platform Tools の adb をインストールしてください。"
-        )
+        return f"不足: {commands}\n" "Android Platform Tools の adb をインストールしてください。"
 
     @classmethod
     def install_dependencies(cls, missing: list[str]) -> int:

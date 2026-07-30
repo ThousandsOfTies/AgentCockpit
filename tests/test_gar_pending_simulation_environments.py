@@ -38,9 +38,7 @@ class PendingSimulationEnvironmentTest(unittest.TestCase):
 
         for environment_id, expected_type, ec2, requires_runtime_artifact in cases:
             with self.subTest(environment_id=environment_id):
-                environment = simulation_environment_for(
-                    workspace(environment_id, ec2=ec2)
-                )
+                environment = simulation_environment_for(workspace(environment_id, ec2=ec2))
 
                 self.assertIsInstance(environment, expected_type)
                 self.assertEqual(

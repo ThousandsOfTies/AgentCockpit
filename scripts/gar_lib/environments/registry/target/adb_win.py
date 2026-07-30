@@ -16,24 +16,20 @@ import shutil
 import subprocess
 
 from scripts.gar_lib.core.config import (
-    load_config,
     save_config,
     saved_adb_exe,
     set_saved_adb_exe,
 )
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import TargetEnvironmentSetupOption
 
 # winget の Android Platform Tools パッケージ ID。
 WINGET_PACKAGE_ID = "Google.PlatformTools"
 
 
-class AdbWinEnvironment(EnvironmentSetupOption):
+class AdbWinEnvironment(TargetEnvironmentSetupOption):
     environment_id = "adb_win"
     display_name = "ADB (Windows native)"
-    description = (
-        "Windows ネイティブの adb.exe を WSL から呼び出して USB-C 実機へ接続します"
-        "（usbipd 不要）"
-    )
+    description = "Windows ネイティブの adb.exe を WSL から呼び出して USB-C 実機へ接続します" "（usbipd 不要）"
     display_order = 15
     required_commands = ("adb.exe",)
 
@@ -68,17 +64,17 @@ class AdbWinEnvironment(EnvironmentSetupOption):
             print(cls.install_hint(missing))
             return result
 
-        # winget 直後は同一プロセスの PATH が未更新で which が拾えないことがある。
-        # 確定できたパスは config に保存して以降 PATH 非依存にする。
-        cls.remember_adb_exe()
         return 0
 
-    # TODO(外形ゆえの暫定): `gar setup` で adb_win を選んだ際、検出成功時にも
-    # remember_adb_exe() を呼んで確定パスを保存する導線が必要。現状は
-    # install_dependencies 経由（winget インストール時）でのみ保存される。
     @classmethod
-    def remember_adb_exe(cls) -> str | None:
-        """adb.exe のパスを解決し、見つかれば config に保存して返す。"""
+    def record_detected_configuration(cls, config: dict) -> None:
+        """Record the detected executable in the selected workspace config."""
+
+        cls.remember_adb_exe(config)
+
+    @classmethod
+    def remember_adb_exe(cls, config: dict) -> str | None:
+        """Resolve adb.exe and save it to the explicitly supplied config."""
         exe = shutil.which("adb.exe")
         if exe is None:
             return None
@@ -93,7 +89,6 @@ class AdbWinEnvironment(EnvironmentSetupOption):
         if proc.returncode == 0 and proc.stdout.strip():
             version = proc.stdout.strip().splitlines()[0].strip()
 
-        config = load_config()
         if saved_adb_exe(config) != exe:
             set_saved_adb_exe(config, exe, version=version)
             save_config(config)

@@ -76,19 +76,24 @@ def run_target_command(
             raise GarDomainError(f"target commandにsubjectはありません: {command.subject}")
         if command.action not in TARGET_ACTIONS:
             raise GarDomainError(f"未対応の target action: {command.action}")
-        target = Gar(workspace).target
-        action = getattr(target, command.action, None)
-        if not callable(action):
-            raise GarDomainError(f"未対応の target action: {command.action}")
-        return action()
+        target_api = Gar(workspace).target
+        match command.action:
+            case "build":
+                artifact = target_api.build()
+            case "deploy":
+                artifact = target_api.deploy()
+            case "fetch":
+                artifact = target_api.fetch()
+            case _:
+                raise GarDomainError(f"未対応の target action: {command.action}")
+        print(f"Artifact: {artifact.bundle_path}")
+        return 0
     except AccessConnectionError as error:
-        device = getattr(args, "device", None)
         return report_access_failure(
             error,
             workspace=workspace,
             retry_command=command.to_cli(
                 workspace=workspace_selector,
-                options=("--device", str(device)) if device else (),
             ),
             purpose="target",
             run_terminal=run_terminal_run_command,

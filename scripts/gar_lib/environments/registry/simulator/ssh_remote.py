@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import SimulationEnvironmentSetupOption
 
 
-class SshRemoteEnvironment(EnvironmentSetupOption):
+class SshRemoteEnvironment(SimulationEnvironmentSetupOption):
     environment_id = "ssh_remote"
     display_name = "SSH Remote"
     description = "AWS EC2 を使う場合はこれを選択します。SSH config 経由で任意のリモート環境にも接続できます"

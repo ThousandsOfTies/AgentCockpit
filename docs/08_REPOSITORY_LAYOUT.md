@@ -2,8 +2,9 @@
 
 この資料は、`GaplessAgentRuntime`、`gar-tools`、`gar-build-env`、target app repo の関係を説明する。
 
-結論として、開発時は兄弟リポジトリとして並べて編集し、利用時は `gar setup`
-が `GaplessAgentRuntime/.gar/tools` に `gar-tools` を取得できる構成にする。
+結論として、GAR本体と共有repoは`Yurufuwa/GAR/`へ置き、再現可能なproduct buildは
+`Yurufuwa/GarAdhocApp`や`Yurufuwa/GarVibeRemote`の`sources/` submoduleで構成する。
+GARだけを利用する場合は`gar setup`が`GaplessAgentRuntime/.gar/tools`へ`gar-tools`を取得できる。
 
 ---
 
@@ -11,12 +12,16 @@
 
 ```mermaid
 flowchart TB
-  subgraph Dev["開発者 workspace: Yurufuwa/GAR/"]
+  subgraph Dev["GAR本体・共有repo: Yurufuwa/GAR/"]
     GAR["GaplessAgentRuntime/"]
     Tools["gar-tools/"]
     BuildEnv["gar-build-env/"]
     LinuxApp["gar-adhoc-app/"]
-    M5App["gar-vibe-ui/"]
+  end
+
+  subgraph Products["product workspaces: Yurufuwa/"]
+    LinuxProduct["GarAdhocApp/"]
+    M5Product["GarVibeRemote/"]
   end
 
   subgraph User["利用者 checkout: GaplessAgentRuntime/"]
@@ -29,11 +34,14 @@ flowchart TB
   Tools -->|target templates / hardware / simulation assets| ToolsRole["target資産の正本"]
   BuildEnv -->|Codespaces / build dependencies / artifact hub| BuildRole["ビルド環境の正本"]
   LinuxApp -->|Linux/RasPi app source / scenarios| LinuxAppRole["Linux target appの正本"]
-  M5App -->|M5Stack firmware / VS Code bridge| M5AppRole["ESP32/M5Stack appの正本"]
+  LinuxProduct -->|sources/gar-adhoc-app| LinuxProductSource["Linux target app build input"]
+  M5Product -->|sources/gar-vibe-ui| M5AppRole["ESP32/M5Stack appの正本"]
 
   UserGAR -->|gar setup| DotGar
   DotGar --> DotGarTools
-  DotGar --> GeneratedWorkspace["generated workspaces\nwokwi / logs / state"]
+  DotGar --> GeneratedWorkspace["artifact snapshots\nremote runtime state / logs"]
+  M5Product -->|product-sim-build / deploy.app| BuildRole
+  RuntimeRole -->|gar sim app deploy| M5RuntimeWorkspace[".gar/wokwi/m5stackc\nSIM_APP deploy output"]
   DotGarTools -. "auto clone of gar-tools" .-> ToolsRole
 ```
 
@@ -62,6 +70,7 @@ GaplessAgentRuntime/
   Makefile                 # bootstrap and convenience entrypoints
   pyproject.toml           # Python lint/tool config
   requirements-gar.txt     # gar CLI runtime dependencies
+  requirements-dev.txt     # make check 用の開発依存
 ```
 
 | パス | Git管理 | 役割 | 設計上の位置づけ |
@@ -76,18 +85,20 @@ GaplessAgentRuntime/
 | `infra/terraform/` | yes | EC2 simulation host を作る Terraform と bootstrap script | simulation host のインフラ正本 |
 | `tools/vscode-gar/` | yes | VS Code terminal bridge extension | AI から VS Code terminal へ依頼を渡すローカル補助 |
 | `tools/gar-mcp/` | yes | GAR MCP server | 外部 agent / tool 連携用の入口 |
-| `tools/*.sh` | yes | 旧コマンド互換・補助スクリプト | 主要操作は `gar` へ集約し、ここは薄く保つ |
-| `tests/` | yes | CLI / environment discovery / MCP の regression tests | 実装変更時の挙動固定 |
-| `Makefile` | yes | `make init` / `make start` などの bootstrap | 初回導入と日常開始の入口 |
+| `tools/*.py` | yes | port forward管理、DSM生成などの開発補助 | 状態管理や生成処理をテスト可能な形で実装 |
+| `tools/*.sh` | yes | 旧コマンド互換・Python補助ツールの薄い起動口 | 主要ロジックを持たず、引数を委譲 |
+| `tests/` | yes | command/domain別unittestと`tests/support/`の共通fixture | 実装変更時の挙動固定。巨大な単一CLI testへ集約しない |
+| `Makefile` | yes | `make init` / `make start` / `make check` | 初回導入、日常開始、品質確認の入口 |
 | `pyproject.toml` | yes | Ruff 設定 | Python 実装の静的品質設定 |
 | `requirements-gar.txt` | yes | `argcomplete` など CLI 実行に必要な依存 | GAR 自体の最小依存 |
-| `.gar/` | no | `config.json`、terminal request、generated workspace、`.gar/tools` | GaplessAgentRuntime 直下の machine-local state。`config.json` は product workspace ごとの設定を `workspaces` 配列で保存する |
+| `requirements-dev.txt` | yes | Ruffなど`make check`に必要なPython依存 | ローカル品質確認用。runtime依存とは分離 |
+| `.gar/` | no | `config.json`、artifact snapshot、terminal request、generated workspace、`.gar/tools` | GaplessAgentRuntime 直下の machine-local state。`config.json` は product workspace ごとの設定を `workspaces` 配列で保存する |
 | `.venv/` | no | `make init` / `scripts/gar` が作る Python venv | local execution cache |
 | `codespaces/` | no | `gar code start` が作る sshfs mount | Codespace の一時的な視界。正本ではない |
-| `hardware/` | no/任意 | `gar hw init` が作るローカル hardware CSV override | target 標準値からのプロジェクト固有上書き |
+| `hardware/` | no/任意 | `gar hw init` が選択中targetのテンプレートから作るローカルhardware CSV | プロジェクト固有上書き |
 
 `app/` を置かないことが重要である。アプリケーションの正本は
-`gar-adhoc-app` や `gar-vibe-ui` のような target app repo にあり、GAR は
+`gar-adhoc-app` や `gar-vibe-ui` のようなtarget app submoduleにあり、GARは
 その artifact を build / simulation / target access environment へ運ぶ。
 
 ---
@@ -99,28 +110,35 @@ GaplessAgentRuntime/
 
 ```text
 scripts/gar_lib/
-  cli.py                  # argparse parser and top-level dispatch
+  cli.py                  # command-owned parserの合成とtop-level dispatch
   api.py                  # Gar(workspace).sim / target programmatic API
   commands/
     sim.py                # `gar sim` parser, dispatch, CLI recovery
     target.py             # `gar target` parser, dispatch, CLI recovery
-    workspace_resolver.py # --workspace resolution shared by sim / target
+    workspace_resolver.py # --workspace resolution shared by code / sim / target
     recovery.py           # connection failure to user-action translation
-    code.py               # `gar code` command dispatcher and Codespaces helpers
+    code.py               # `gar code` command flow
+    code_connection.py    # Codespaces検出・SSH設定・mount操作
+    code_state.py         # 接続状態JSONとterminal script
+    completion.py         # shell completion parser / candidates
     hw.py                 # hardware template initialization
     infra.py              # Terraform wrapper for simulator infra
-    setup.py              # target/environment selection and dependency checks
+    setup/
+      command.py          # setup全体のphase orchestration
+      workspace_setup.py  # product workspace登録
+      target_setup.py     # target manifest選択・接続設定
+      environment_setup.py # environment選択・依存確認
     terminal.py           # VS Code terminal request writer
     usb.py                # usbipd / USB helper command
-  core/                   # shared config, models, errors, hardware and tools repository
+  core/                   # shared config, typed workspace settings, archive safety, errors
   access/                 # reusable SSH / ADB / AWS / Docker capabilities
   artifacts/              # artifact manifest and store
-  build/                  # local / Codespaces / ESP32 build environments
+  build/                  # local / Codespaces build environmentsとproduct hook spec
   simulation/             # setup selectionからsimulation object graphを構成
     composition.py        # selected simulator IDから各役割の実装を組み立てる
     runtime/              # artifactを動かすsimulation environment
       contract.py         # SimulationEnvironment protocol
-      process.py          # simulator-local background process capability
+      process.py          # process identity、atomic state、file lock
       linux_commands.py   # Linux/systemd command builderとGPIO計画
       linux_systemd.py    # Linux/systemd runtime
       wokwi.py            # Wokwi runtime
@@ -141,28 +159,32 @@ scripts/gar_lib/
     manifest.py           # gar-tools target manifest discovery
     composition.py        # target environment composition
     esp32.py              # ESP32 artifact installer
-    esp32_firmware.py     # ESP32 firmware artifact fetch / build helpers
+    esp32_firmware.py     # ESP32 flash artifact layout
     esptool.py            # ESP32 serial flashing
   environments/
+    discovery.py          # category registryを検証・整列
+    installers/           # Renode/AWS SSM等の共有installer
+    registry/             # categoryごとの明示的ENVIRONMENT_OPTIONS
   vscode/
     terminal_ui.py        # shared terminal UI helpers
     profile_manage.py     # VS Code terminal profile write/remove
     terminal_bridge.py    # VS Code Terminal Bridge extension install
+    terminal_requests.py  # request model・atomic publish・garbage collection
 ```
 
 役割の分け方は次の通り。
 
 | 種類 | ファイル/ディレクトリ | 責務 |
 |---|---|---|
-| CLI 表面 | `cli.py` | argparse の shape と各 command module への dispatch |
-| 内部API | `api.py` | Workspace・artifact・simulation/target domainの協調 |
-| 共有基盤 | `core/` | `.gar/config.json`、Workspace/Artifact、domain error、hardware、gar-tools探索 |
-| 初期設定 | `commands/setup.py` | target 選択、codespace/simulator/target environment 選択、依存コマンド確認 |
+| CLI 表面 | `cli.py`, `commands/*.py` | root parserの合成と、各commandが所有するparser・CLI表示・adapter |
+| 内部API | `api.py` | Workspace・artifact・simulation/target domainの協調。構造化結果を返し、表示しない |
+| 共有基盤 | `core/` | `.gar/config.json`、typed Workspace settings、Artifact、domain error、hardware、gar-tools探索 |
+| 初期設定 | `commands/setup/` | workspace、target、environmentのphaseをファイルごとに分離 |
 | target 定義 | `target/manifest.py`, `core/tools_repository.py` | `gar-tools/targets/*/target.json` の探索と auto clone |
 | code 環境 | `commands/code.py` | Local / Codespaces の開発環境操作。setupで保存した選択を読み、対応する操作を実行する |
 | simulator 環境 | `api.py` + `simulation/*` + `access/*` | VM / Wokwi / MuJoCo 等の simulation runtime 操作 |
 | target 環境 | `api.py` + `target/*` + `access/*` | 実機へのartifact配置とADB/SSH/esptool等の接続方式差し替え |
-| target 固有処理 | `target/esp32.py`, `target/esp32_firmware.py`, `target/esptool.py` | ESP32 firmwareのbuild・artifact管理と、esptoolによる実機書き込み |
+| target 固有処理 | `target/esp32.py`, `target/esp32_firmware.py`, `target/esptool.py` | ESP32 artifact layoutの検証とesptoolによる実機書き込み。buildはproduct hook |
 | インフラ | `commands/infra.py`, `simulation/host/aws_ec2.py`, `access/aws.py` | Terraform実行、EC2 instance lifecycle、AWS CLIアクセス |
 | ローカル補助 | `commands/terminal.py`, `commands/usb.py`, `vscode/profile_manage.py`, `vscode/terminal_bridge.py`, `vscode/terminal_ui.py` | VS Code terminal bridge、settings、USB、表示 |
 
@@ -180,7 +202,10 @@ scripts/gar_lib/
 scripts/gar_lib/environments/
   setup_option.py         # setup option metadata / dependency installation
   install.py              # setup時のsudo / Terminal Bridge補助
-  discovery.py            # registry package scan and category metadata
+  discovery.py            # 明示registryの検証と表示順整列
+  installers/
+    aws_ssm.py            # AWS CLI / SSM plugin導入
+    renode.py             # Renode archive導入
   registry/
     codespace/
       github_codespaces.py
@@ -209,7 +234,8 @@ scripts/gar_lib/environments/
 | `simulator` | `local_docker`, `ssh_remote`, `wokwi`, `mujoco`, `renode_mcu`, `esp32_qemu_firmware`, `aws_ssm` | `simulation/composition.py` |
 | `target` | `adb_usb`, `adb_win`, `ssh_scp`, `esp32_esptool` | `target/` |
 
-registryの選択IDは実行時resolverへの入力になるが、registry class自体は実行処理を
+各categoryの`__init__.py`が`ENVIRONMENT_OPTIONS`を明示し、root registryが結合する。
+reflectionやpackage scanには依存しない。registryの選択IDは実行時resolverへの入力になるが、registry class自体は実行処理を
 持たない。新しい接続方式を増やす場合は、setup用registry entryに加えて、対応する
 `access/` channelと`simulation/`または`target/` resolverを追加する。
 
@@ -252,14 +278,16 @@ Git の正本として扱わない。
 
 | パス | 作られるタイミング | 中身 |
 |---|---|---|
-| `.gar/config.json` | `gar setup` | target、environment、host、serial port などの local config |
+| `.gar/config.json` | `gar setup` | target、environment、host、serial portなどのlocal config。選択contextはmodule globalへ保持しない |
 | `.gar/tools/` | `gar setup` | `gar-tools` が見つからない場合の auto clone 先 |
-| `.gar/wokwi/` | Wokwi workspace 生成時 | template から展開した runnable workspace |
+| `.gar/artifacts/<workspace-id>/<kind>/<build-id>/` | build / fetch | workspace・artifact種別ごとの不変snapshotと`latest.json` |
+| `<runtime-workspace>/.gar/wokwi/` | `gar sim app deploy` | SIM_APP artifact から展開した runnable Wokwi project。local接続ではproduct workspace、remote buildではGAR管理下に置く |
+| `.gar/mujoco/` | MuJoCo app deploy/start | materializeしたmodel/runner、process state、log |
 | `.gar/terminal-requests/` | `gar terminal run` / setup handoff | VS Code terminal bridge への実行要求 JSON |
 | `.gar/mcp-config.json` | `make init` | MCP server 設定例 |
 | `.venv/` | `make init` または `scripts/gar` 初回実行 | GAR CLI 用 Python venv |
 | `codespaces/` | `gar code start` | Codespaces workspace の sshfs mount |
-| `hardware/` | `gar hw init` | target hardware CSV のローカル上書き |
+| `hardware/` | `gar hw init` | 選択中targetの hardware CSV のローカル上書き |
 
 この分離により、同じ repository checkout を使っても、ユーザーごとの environment 選択や
 接続先、生成 workspace は Git の差分として混ざらない。
@@ -268,8 +296,8 @@ Git の正本として扱わない。
 
 ## 開発時の配置
 
-開発者は `GaplessAgentRuntime`、`gar-tools`、`gar-build-env`、target app repo を普通のGitリポジトリとして並べる。
-この形だと、それぞれを独立して差分確認、commit、pushしやすい。
+GAR本体・共有repoは`Yurufuwa/GAR/`に並べ、product workspaceは`Yurufuwa/`直下に置く。
+product workspaceは`gar-build-env`を土台とし、appと`gar-tools`をsubmoduleとして保持する。
 
 ```mermaid
 flowchart LR
@@ -278,30 +306,41 @@ flowchart LR
     Tools["gar-tools/"]
     BuildEnv["gar-build-env/"]
     LinuxApp["gar-adhoc-app/"]
-    M5App["gar-vibe-ui/"]
+  end
+
+  subgraph ProductWorkspaces["Yurufuwa/"]
+    LinuxProduct["GarAdhocApp/"]
+    M5Product["GarVibeRemote/"]
   end
 
   GAR --> GARFiles["gar CLI\nsetup flow\ndocs\ntests\nruntime orchestration"]
   Tools --> ToolFiles["targets/*\nwokwi templates\nhardware templates\nruntime tools"]
   BuildEnv --> BuildFiles["Codespaces devcontainer\npost-create setup\nartifact bundle Makefile"]
   LinuxApp --> LinuxAppFiles["app/sensor_demo\napp drivers\napp scenarios"]
-  M5App --> M5AppFiles["vibe-remote\nm5stickc-client\nPlatformIO firmware artifacts"]
+  LinuxProduct -->|sources/gar-adhoc-app| LinuxProductFiles["app source\nscenarios"]
+  M5Product --> M5AppFiles["sources/gar-vibe-ui/vibe-remote\nm5stickc-client\nPlatformIO firmware artifacts"]
 
   GAR -. "default discovery" .-> Tools
   GAR -. "Codespace build/fetch" .-> BuildEnv
   GAR -. "Linux deploy/run inputs" .-> LinuxApp
-  GAR -. "ESP32 build/flash inputs" .-> M5App
+  GAR -. "ESP32 build/flash inputs" .-> M5Product
 ```
 
 代表的な配置:
 
 ```text
-Yurufuwa/GAR/
-  GaplessAgentRuntime/
-  gar-tools/
-  gar-build-env/
-  gar-adhoc-app/
-  gar-vibe-ui/
+Yurufuwa/
+  GAR/
+    GaplessAgentRuntime/
+    gar-tools/
+    gar-build-env/
+    gar-adhoc-app/
+  GarAdhocApp/
+    sources/gar-adhoc-app/
+    sources/gar-tools/
+  GarVibeRemote/
+    sources/gar-vibe-ui/
+    sources/gar-tools/
 ```
 
 ---
@@ -318,7 +357,7 @@ flowchart TB
   Check{"gar-tools found?"}
   UseExisting["既存のgar-toolsを使う"]
   CloneTools["git clone gar-tools\ninto .gar/tools"]
-  Run["target選択 / Wokwi生成 / hw init"]
+  Run["target / environment選択 / hw init"]
 
   Clone --> Setup --> Check
   Check -->|yes| UseExisting --> Run
@@ -331,9 +370,10 @@ flowchart TB
 GaplessAgentRuntime/
   .gar/
     config.json
+    artifacts/              # workspace / kind / build-id snapshots
     tools/                  # gar setup が取得する gar-tools
     wokwi/
-      m5stackc/             # generated Wokwi workspace
+      <workspace-id>/       # remote build用のdeploy先（localはproduct workspace側）
   codespaces/               # gar code start が作る sshfs mount（必要時）
   hardware/                 # gar hw init で作るローカル上書き（必要時）
   scripts/
@@ -342,7 +382,8 @@ GaplessAgentRuntime/
 
 `.gar/` はローカル状態、外部ツール、テンプレート展開済み workspace、ログの置き場なので、Git管理しない。
 アプリケーションのソースは `GaplessAgentRuntime/app` には置かず、
-target app repo（例: `../gar-adhoc-app/app`、`../gar-vibe-ui/vibe-remote/m5stickc-client`）を正本にする。
+product workspace内のtarget app submodule（例: `GarAdhocApp/sources/gar-adhoc-app/app`、
+`GarVibeRemote/sources/gar-vibe-ui/vibe-remote/m5stickc-client`）を正本にする。
 
 ---
 
@@ -382,8 +423,9 @@ flowchart LR
     Runtime["orchestration"]
     CodeMount["codespaces/\nsshfs mount"]
     LocalHW["hardware/\nlocal override"]
-    Generated[".gar/\ngenerated workspaces\nstate / logs"]
   end
+
+  RuntimeWorkspace["selected runtime workspace/.gar/\nwokwi project / state / logs"]
 
   subgraph Tools["gar-tools"]
     Targets["targets/*/target.json"]
@@ -396,7 +438,8 @@ flowchart LR
   subgraph BuildEnv["gar-build-env"]
     Codespace["Codespaces devcontainer"]
     BuildArtifacts["artifacts/from-codespace"]
-    BuildRepos["repos/tools/gar-tools\nrepos/apps/gar-adhoc-app\nrepos/apps/gar-vibe-ui"]
+    BuildRepos["sources/gar-tools\nsources/gar-adhoc-app または sources/gar-vibe-ui"]
+    WokwiHook["product-sim-build.sh"]
   end
 
   subgraph LinuxAppRepo["gar-adhoc-app"]
@@ -404,7 +447,7 @@ flowchart LR
     LinuxAppScenarios["scenarios/*.json"]
   end
 
-  subgraph M5AppRepo["gar-vibe-ui"]
+  subgraph M5AppRepo["GarVibeRemote/sources/gar-vibe-ui"]
     VibeRemote["vibe-remote"]
     M5Client["vibe-remote/m5stickc-client"]
     M5Artifacts["m5stickc-client/artifacts/*.bin"]
@@ -412,7 +455,6 @@ flowchart LR
 
   CLI --> Targets
   Setup --> Targets
-  Runtime --> Wokwi
   Runtime -. "必要な時だけ" .-> OptionalTools
   Runtime --> HW
   Runtime --> LinuxRuntime
@@ -424,8 +466,10 @@ flowchart LR
   Runtime --> CodeMount
   Codespace --> BuildRepos
   HW -->|gar hw init| LocalHW
-  Wokwi -->|render template| Generated
-  M5Client -->|src_dir in generated platformio.ini| Generated
+  Wokwi -->|template| WokwiHook
+  M5Client -->|app source| WokwiHook
+  WokwiHook -->|deploy.app artifact| BuildArtifacts
+  Runtime -->|SIM_APP deploy| RuntimeWorkspace
 ```
 
 責務の分け方:
@@ -433,14 +477,15 @@ flowchart LR
 | 種類 | 正本 | ローカル生成先 |
 |---|---|---|
 | target manifest | `gar-tools/targets/*/target.json` | なし |
-| Wokwi workspace template | `gar-tools/targets/esp32/wokwi/m5stackc/` | `.gar/wokwi/m5stackc/` |
+| Wokwi workspace template | `gar-tools/targets/esp32/wokwi/m5stackc/` | product hookの一時build workspaceからSIM_APP artifactへ格納 |
+| Wokwi runnable project | `.gar/artifacts/<workspace-id>/sim_app/<build-id>/` | `gar sim app deploy`で`<runtime-workspace>/.gar/wokwi/`へ展開 |
 | ESP32 optional tools | `gar-tools/targets/esp32/{qemu,renode,fake-idf,probes}/` | 必要時のみ |
 | Linux hardware CSV template | `gar-tools/targets/linux-device/hardware/` | `hardware/` |
-| target app source | `gar-adhoc-app/app/` | build artifact |
-| app scenario | `gar-adhoc-app/scenarios/` | remote scenario copy |
-| Codespaces build hub | `gar-build-env/` | `codespaces/` sshfs mount |
-| ESP32/M5Stack firmware source | `gar-vibe-ui/vibe-remote/m5stickc-client/` | `.bin` artifact |
-| ESP32/M5Stack firmware artifact | `gar-vibe-ui/vibe-remote/m5stickc-client/artifacts/` | flash input |
+| target app source | `GarAdhocApp/sources/gar-adhoc-app/app/` | build artifact |
+| app scenario | `GarAdhocApp/sources/gar-adhoc-app/scenarios/` | remote scenario copy |
+| Codespaces build hub | `gar-build-env`由来のproduct workspace | `codespaces/` sshfs mount |
+| ESP32/M5Stack firmware source | `GarVibeRemote/sources/gar-vibe-ui/vibe-remote/m5stickc-client/` | product hookが`.bin` bundleをstaging |
+| ESP32/M5Stack firmware artifact | `.gar/artifacts/<workspace-id>/target_app/<build-id>/` | esptool flash input |
 | Runtime state / logs | なし | `.gar/` |
 
 `hardware/` はプロジェクト固有の上書きとして扱う。標準テンプレートの正本は
@@ -448,16 +493,17 @@ flowchart LR
 `app/` は target app repo の責務なので、`GaplessAgentRuntime` には置かない。
 `codespaces/` は `gar code start` が作るローカル mount なので、正本ではなく一時的な視界として扱う。
 
-Wokwi も同じ考え方にする。`gar-tools` は配線、shim、scenario、`*.template`
-の正本だけを持つ。アプリソースは target app repo を参照し、GAR は両者を
-`.gar/wokwi/<target>/` に展開して、VS Code Wokwi 拡張や `wokwi-cli` が読める
-workspace を作る。展開ルールのアプリ固有入口は target app repo 側に置き、
-Vibe Remote M5StickC では `gar-vibe-ui/vibe-remote/m5stickc-client/Makefile` の
-`make wokwi-workspace` として明示する。
+Wokwi も同じ考え方にする。`gar-tools` は配線、shim、`*.template`、generator
+の正本を持ち、アプリソースとbuild hookはproduct workspaceが持つ。Vibe Remote
+では`GarVibeRemote/scripts/product-sim-build.sh`が両者を一時build workspaceで
+合成・ビルドし、runnable fileを`deploy.app` artifactへ格納する。GARはartifactを
+captureし、`gar sim app deploy`で選択中のruntime workspaceへ展開する。
+`gar setup`と`gar sim runtime start`はgeneratorを呼ばない。共有Wokwi scenarioは
+現在提供しておらず、必要なscenarioは製品側が所有してartifactへ明示的に含める。
 
 ---
 
-## なぜ submodule にしないか
+## なぜGAR本体にgar-tools submoduleを持たないか
 
 ```mermaid
 flowchart LR
@@ -468,7 +514,8 @@ flowchart LR
   Parallel --> Commit["それぞれcommit/push"]
 ```
 
-Git submodule にすると、利用者が `--recurse-submodules` や
+GAR本体が`gar-tools`をGit submoduleにすると、利用者が`--recurse-submodules`や
 `git submodule update --init` を意識する必要が出る。GARの狙いはセットアップを
 `gar setup` に集約することなので、submodule より `.gar/tools` 自動取得のほうが
-操作モデルが単純になる。
+操作モデルが単純になる。なお、再現可能なbuild contextを作るproduct workspaceでは、
+appと`gar-tools`を`sources/`配下のsubmoduleとして明示的に固定する。

@@ -96,13 +96,19 @@ def _sync_config_from_outputs(outputs: dict[str, str], *, region: str | None) ->
 
     if public_ip:
         host = default_ec2_host(config)
-        if SshConfigHostAddressUpdater().update(host, public_ip):
+        if host is None:
+            print(
+                "gar sim infra: public IPは取得しましたがSSH hostが未設定です。"
+                "`gar setup --ec2-host HOST` を実行してください。",
+                file=sys.stderr,
+            )
+        elif SshConfigHostAddressUpdater().update(host, public_ip):
             print(f"gar sim infra: SSH config の Host {host} を {public_ip} に更新しました。")
 
 
 def _print_current_settings(config: dict, outputs: dict[str, str], *, region: str) -> None:
     print("Current simulation infra settings:")
-    print(f"  host       : {default_ec2_host(config)}")
+    print(f"  host       : {default_ec2_host(config) or '(none)'}")
     print(f"  region     : {region}")
     print(f"  instance_id: {outputs.get('instance_id') or default_ec2_instance_id(config) or '(none)'}")
     print(f"  public_ip  : {outputs.get('public_ip') or '(none)'}")

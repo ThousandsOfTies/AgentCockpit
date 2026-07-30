@@ -3,10 +3,11 @@
 
 Usage:
     .venv/bin/python3 tools/gen_gar_lib_dsm.py
+    .venv/bin/python3 tools/gen_gar_lib_dsm.py --check
 
 以下の3ファイルを repo ルートに (再)生成します:
   - GAR_LIB_DSM.md               package粒度のDSM表とサマリ
-  - GAR_LIB_DSM_file_level.csv    file粒度の依存matrix (98x98)
+  - GAR_LIB_DSM_file_level.csv    file粒度の依存matrix (要素数は自動算出)
   - GAR_LIB_PUBLIC_API_USAGE.md   公開メンバ(top-level関数/class/定数)の参照元一覧
 
 解析は import 文の静的解析のみで行うため、`getattr`/動的import/文字列参照
@@ -15,10 +16,15 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import ast
 import csv
+import io
 import math
+import sys
 from collections import defaultdict
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -26,7 +32,25 @@ SCAN_ROOTS = [REPO / "scripts", REPO / "tests"]
 GAR_LIB_PREFIX = "scripts.gar_lib"
 
 
-def iter_py_files():
+@dataclass(frozen=True)
+class ModuleInfo:
+    """One parsed Python module and the public definitions declared in it."""
+
+    path: Path
+    tree: ast.Module
+    public_definitions: dict[str, int]
+
+
+@dataclass(frozen=True)
+class ImportBinding:
+    """A local import name and the module/member to which it resolves."""
+
+    local_name: str
+    target_module: str
+    target_member: str | None
+
+
+def iter_py_files() -> Iterator[Path]:
     for root in SCAN_ROOTS:
         if not root.exists():
             continue
@@ -85,7 +109,7 @@ def file_tree_distance(left: Path, right: Path) -> int:
     return len(left_parts) + len(right_parts) - (2 * common)
 
 
-def resolve_relative(current_mod: str, is_package: bool, level: int, module: str | None):
+def resolve_relative(current_mod: str, is_package: bool, level: int, module: str | None) -> list[str]:
     parts = current_mod.split(".")
     base_parts = parts if is_package else parts[:-1]
     if level > 1:
@@ -95,45 +119,75 @@ def resolve_relative(current_mod: str, is_package: bool, level: int, module: str
     return base_parts
 
 
-def main() -> None:
+def sync_generated_file(path: Path, contents: str, *, check: bool) -> bool:
+    """Write one generated file, or report whether its checked-in copy matches."""
+
+    if check:
+        try:
+            with path.open("r", encoding="utf-8", newline="") as current_file:
+                current_contents = current_file.read()
+        except OSError:
+            print(f"out of date: {path} does not exist", file=sys.stderr)
+            return False
+        if current_contents != contents:
+            print(f"out of date: {path}", file=sys.stderr)
+            return False
+        print(f"up to date: {path}")
+        return True
+
+    path.write_text(contents, encoding="utf-8", newline="")
+    print(f"wrote {path}")
+    return True
+
+
+def generate(*, check: bool = False) -> int:
     files = list(iter_py_files())
-    modules: dict[str, dict] = {}
-    parsed: dict[str, tuple[Path, ast.Module]] = {}
+    modules: dict[str, ModuleInfo] = {}
+    syntax_errors: list[str] = []
 
     for path in files:
         mod = module_name(path)
         src = path.read_text(encoding="utf-8")
         try:
             tree = ast.parse(src, filename=str(path))
-        except SyntaxError as e:
-            print(f"SYNTAX ERROR (skipped) in {path}: {e}")
+        except SyntaxError as exc:
+            syntax_errors.append(f"SYNTAX ERROR in {path}: {exc}")
             continue
-        parsed[mod] = (path, tree)
-        public_defs = {}
+        public_definitions: dict[str, int] = {}
         for node in tree.body:
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 if is_public(node.name):
-                    public_defs[node.name] = node.lineno
+                    public_definitions[node.name] = node.lineno
             elif isinstance(node, ast.Assign):
                 for t in node.targets:
                     if isinstance(t, ast.Name) and is_public(t.id) and t.id.isupper():
-                        public_defs[t.id] = node.lineno
+                        public_definitions[t.id] = node.lineno
             elif isinstance(node, ast.AnnAssign):
                 if isinstance(node.target, ast.Name) and is_public(node.target.id) and node.target.id.isupper():
-                    public_defs[node.target.id] = node.lineno
-        modules[mod] = {"path": str(path.relative_to(REPO)), "public_defs": public_defs}
+                    public_definitions[node.target.id] = node.lineno
+        modules[mod] = ModuleInfo(
+            path=path,
+            tree=tree,
+            public_definitions=public_definitions,
+        )
+
+    if syntax_errors:
+        for message in syntax_errors:
+            print(message, file=sys.stderr)
+        print("Generation aborted; existing DSM files were not changed.", file=sys.stderr)
+        return 1
 
     module_set = set(modules.keys())
-    local_bindings: dict[str, list[tuple[str, str, str | None]]] = defaultdict(list)
+    local_bindings: dict[str, list[ImportBinding]] = defaultdict(list)
 
-    for mod, (path, tree) in parsed.items():
-        is_package = path.name == "__init__.py"
-        for node in ast.walk(tree):
+    for mod, module in modules.items():
+        is_package = module.path.name == "__init__.py"
+        for node in ast.walk(module.tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     target = alias.name
                     bound = alias.asname or alias.name.split(".")[0]
-                    local_bindings[mod].append((bound, target, None))
+                    local_bindings[mod].append(ImportBinding(bound, target, None))
             elif isinstance(node, ast.ImportFrom):
                 if node.level and node.level > 0:
                     base_parts = resolve_relative(mod, is_package, node.level, node.module)
@@ -144,28 +198,28 @@ def main() -> None:
                     bound = alias.asname or alias.name
                     candidate_submodule = f"{target_module}.{alias.name}" if target_module else alias.name
                     if candidate_submodule in module_set:
-                        local_bindings[mod].append((bound, candidate_submodule, None))
+                        local_bindings[mod].append(ImportBinding(bound, candidate_submodule, None))
                     else:
-                        local_bindings[mod].append((bound, target_module, alias.name))
+                        local_bindings[mod].append(ImportBinding(bound, target_module, alias.name))
 
     dep_edges: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for mod, bindings in local_bindings.items():
-        for _local, target_module, _symbol in bindings:
-            if target_module.startswith(GAR_LIB_PREFIX) and target_module != mod:
-                dep_edges[mod][target_module] += 1
+        for binding in bindings:
+            if binding.target_module.startswith(GAR_LIB_PREFIX) and binding.target_module != mod:
+                dep_edges[mod][binding.target_module] += 1
 
     usage: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for mod, (_path, tree) in parsed.items():
+    for mod, module in modules.items():
         bindings = local_bindings.get(mod, [])
-        name_map = {}
-        module_alias_map = {}
-        for local, target_module, symbol in bindings:
-            if symbol is not None:
-                name_map[local] = (target_module, symbol)
+        name_map: dict[str, tuple[str, str]] = {}
+        module_alias_map: dict[str, str] = {}
+        for binding in bindings:
+            if binding.target_member is not None:
+                name_map[binding.local_name] = (binding.target_module, binding.target_member)
             else:
-                module_alias_map[local] = target_module
+                module_alias_map[binding.local_name] = binding.target_module
 
-        for node in ast.walk(tree):
+        for node in ast.walk(module.tree):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 if node.id in name_map:
                     def_mod, symbol = name_map[node.id]
@@ -179,15 +233,16 @@ def main() -> None:
 
     # --- file_level_dsm.csv ---
     csv_path = REPO / "GAR_LIB_DSM_file_level.csv"
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        header = [short_name(m) for m in gar_lib_modules]
-        w.writerow(["consumer \\ provider"] + header)
-        for consumer in gar_lib_modules:
-            row = [short_name(consumer)]
-            for provider in gar_lib_modules:
-                row.append(dep_edges.get(consumer, {}).get(provider, 0))
-            w.writerow(row)
+    csv_buffer = io.StringIO(newline="")
+    csv_writer = csv.writer(csv_buffer)
+    header = [short_name(m) for m in gar_lib_modules]
+    csv_writer.writerow(["consumer \\ provider"] + header)
+    for consumer in gar_lib_modules:
+        row = [short_name(consumer)]
+        for provider in gar_lib_modules:
+            row.append(dep_edges.get(consumer, {}).get(provider, 0))
+        csv_writer.writerow(row)
+    csv_contents = csv_buffer.getvalue()
 
     # --- package-level DSM ---
     packages = sorted(set(package_of(m) for m in modules))
@@ -233,11 +288,10 @@ def main() -> None:
         if provider in gar_lib_modules
     ]
     distances = sorted(
-        file_tree_distance(parsed[consumer][0], parsed[provider][0])
-        for consumer, provider, _count in file_edges
+        file_tree_distance(modules[consumer].path, modules[provider].path) for consumer, provider, _count in file_edges
     )
     weighted_distance_sum = sum(
-        file_tree_distance(parsed[consumer][0], parsed[provider][0]) * count
+        file_tree_distance(modules[consumer].path, modules[provider].path) * count
         for consumer, provider, count in file_edges
     )
     binding_count = sum(count for _consumer, _provider, count in file_edges)
@@ -260,11 +314,11 @@ def main() -> None:
     lines.append("")
     lines.append("## 公開メンバの参照状況サマリ")
     lines.append("")
-    total_members = sum(len(modules[m]["public_defs"]) for m in gar_lib_modules)
+    total_members = sum(len(modules[m].public_definitions) for m in gar_lib_modules)
     unused = [
         (m, n)
         for m in gar_lib_modules
-        for n in modules[m]["public_defs"]
+        for n in modules[m].public_definitions
         if sum(v for k, v in usage.get((m, n), {}).items() if k != m) == 0
     ]
     lines.append(f"- 対象module数: {len(gar_lib_modules)}")
@@ -276,7 +330,7 @@ def main() -> None:
     lines.append("")
     lines.append("詳細な「メンバ単位でどこから参照されているか」は" " `GAR_LIB_PUBLIC_API_USAGE.md` を参照。")
     lines.append("")
-    (REPO / "GAR_LIB_DSM.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    dsm_contents = "\n".join(lines) + "\n"
 
     # --- public API usage ---
     lines2 = []
@@ -294,10 +348,10 @@ def main() -> None:
     lines2.append("")
 
     for mod in gar_lib_modules:
-        defs = modules[mod]["public_defs"]
+        defs = modules[mod].public_definitions
         if not defs:
             continue
-        lines2.append(f"## `{short_name(mod)}` ({modules[mod]['path']})")
+        lines2.append(f"## `{short_name(mod)}` ({modules[mod].path.relative_to(REPO)})")
         lines2.append("")
         lines2.append("| メンバ | 行 | 参照元module (回数) |")
         lines2.append("|---|---:|---|")
@@ -320,15 +374,30 @@ def main() -> None:
     lines2.append("| module | メンバ | 行 |")
     lines2.append("|---|---|---:|")
     for mod, name in sorted(unused):
-        lines2.append(f"| `{short_name(mod)}` | `{name}` | {modules[mod]['public_defs'][name]} |")
+        lines2.append(f"| `{short_name(mod)}` | `{name}` | {modules[mod].public_definitions[name]} |")
 
-    (REPO / "GAR_LIB_PUBLIC_API_USAGE.md").write_text("\n".join(lines2) + "\n", encoding="utf-8")
-
-    print(f"wrote {csv_path}")
-    print(f"wrote {REPO / 'GAR_LIB_DSM.md'}")
-    print(f"wrote {REPO / 'GAR_LIB_PUBLIC_API_USAGE.md'}")
+    public_api_contents = "\n".join(lines2) + "\n"
+    generated_files = (
+        (csv_path, csv_contents),
+        (REPO / "GAR_LIB_DSM.md", dsm_contents),
+        (REPO / "GAR_LIB_PUBLIC_API_USAGE.md", public_api_contents),
+    )
+    file_results = [sync_generated_file(path, contents, check=check) for path, contents in generated_files]
+    files_match = all(file_results)
     print(f"modules={len(gar_lib_modules)} public_members={total_members} unused={len(unused)}")
+    return 0 if files_match else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="generated filesを変更せず、checked-in内容が最新か確認します",
+    )
+    args = parser.parse_args(argv)
+    return generate(check=args.check)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

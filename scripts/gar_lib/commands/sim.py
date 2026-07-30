@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from argparse import Namespace
 from collections.abc import Mapping, Sequence
@@ -12,13 +13,18 @@ from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.recovery import report_access_failure
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
+from scripts.gar_lib.core.artifact import Artifact
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
+from scripts.gar_lib.simulation.diagnostics.model import SimulationDiagnosticReport
+from scripts.gar_lib.simulation.hardware.control import HardwareControlResult
+from scripts.gar_lib.simulation.host.contract import (
+    SimulationHostStartResult,
+    SimulationHostState,
+)
 
-IO_PARAMETERS = ("device", "button", "line", "duration_ms", "value", "uid")
-
-# This is the single whitelist used to create the parser surface and resolve API
-# methods. The action name deliberately matches the programmatic API method name.
+# This is the single definition of the public parser surface. Execution below
+# deliberately uses explicit ``match`` statements instead of method-name lookup.
 SIM_ACTIONS: dict[str, dict[str, str]] = {
     "app": {
         "build": "product の simulation build hook を実行します",
@@ -93,32 +99,6 @@ def _print_help(
         subcommand_parsers[target].print_help()
 
 
-def _action_kwargs(command: GarCommand, args: Namespace) -> dict[str, object]:
-    if command.subject == "runtime" and command.action == "start":
-        return {
-            "settings": getattr(args, "settings", None),
-            "profile_name": getattr(args, "profile_name", None),
-            "no_port_forward": getattr(args, "no_port_forward", False),
-        }
-    if command.subject == "runtime" and command.action == "stop":
-        return {"keep_port_forward": getattr(args, "keep_port_forward", False)}
-    if command.subject == "host" and command.action == "start":
-        return {
-            "no_update_ssh": getattr(args, "no_update_ssh", False),
-            "pull": getattr(args, "pull", False),
-        }
-    if (
-        (command.subject == "runtime" and command.action == "diag")
-        or (command.subject == "host" and command.action == "status")
-        or command.subject == "gpio"
-    ):
-        return {"json_output": getattr(args, "json_output", False)}
-    if command.subject == "io":
-        params = {name: value for name in IO_PARAMETERS if (value := getattr(args, name, None)) is not None}
-        return {"json_output": getattr(args, "json_output", False), **params}
-    return {}
-
-
 def add_sim_parser(
     subparsers: argparse._SubParsersAction,
 ) -> dict[str, argparse.ArgumentParser]:
@@ -177,7 +157,7 @@ def add_sim_parser(
     sim_runtime_actions["start"].add_argument(
         "--no-port-forward",
         action="store_true",
-        help="Hardware Panel 用の 8080/8765 port forward を開始しません",
+        help="Hardware Panel 用の 8080 port forward を開始しません",
     )
     sim_runtime_actions["stop"].add_argument(
         "--keep-port-forward",
@@ -238,26 +218,44 @@ def add_sim_parser(
         help="共通 Bridge control plane 経由で virtual H/W を操作します（AI / CI 向け）",
     )
     sim_io_parser.set_defaults(help_target="sim_io")
-    io_option = _shared_option(
-        "--device",
-        default=None,
-        metavar="NAME",
-        help="操作対象の device 種別（button / rfid / range など）",
+    io_actions = sim_io_parser.add_subparsers(dest="action", metavar="action")
+    state_parser = io_actions.add_parser(
+        "state",
+        help=SIM_ACTIONS["io"]["state"],
+        parents=list(workspace_json),
     )
-    for name, kwargs in (
-        ("--button", {"default": None}),
-        ("--line", {"default": None}),
-        ("--duration-ms", {"type": int, "default": 150}),
-        ("--value", {"default": None}),
-        ("--uid", {"default": None}),
-    ):
-        io_option.add_argument(name, **kwargs)  # type: ignore[arg-type]
-    _add_actions(
-        sim_io_parser.add_subparsers(dest="action", metavar="action"),
-        "io",
-        SIM_ACTIONS["io"],
-        parents=(*workspace_json, io_option),
+    state_parser.set_defaults(gar_command=GarCommand("sim", "io", "state"))
+
+    press_parser = io_actions.add_parser(
+        "press",
+        help=SIM_ACTIONS["io"]["press"],
+        parents=list(workspace_json),
     )
+    press_parser.set_defaults(gar_command=GarCommand("sim", "io", "press"))
+    press_parser.add_argument("--device", choices=("button",), required=True)
+    press_parser.add_argument("--button", default=None)
+    press_parser.add_argument("--line", default=None)
+    press_parser.add_argument("--duration-ms", type=int, default=150)
+
+    set_parser = io_actions.add_parser(
+        "set",
+        help=SIM_ACTIONS["io"]["set"],
+        parents=list(workspace_json),
+    )
+    set_parser.set_defaults(gar_command=GarCommand("sim", "io", "set"))
+    set_parser.add_argument("--device", choices=("button", "rfid", "range"), required=True)
+    set_parser.add_argument("--button", default=None)
+    set_parser.add_argument("--line", default=None)
+    set_parser.add_argument("--value", default=None)
+    set_parser.add_argument("--uid", default=None)
+
+    clear_parser = io_actions.add_parser(
+        "clear",
+        help=SIM_ACTIONS["io"]["clear"],
+        parents=list(workspace_json),
+    )
+    clear_parser.set_defaults(gar_command=GarCommand("sim", "io", "clear"))
+    clear_parser.add_argument("--device", choices=("rfid",), required=True)
 
     sim_infra_parser = sim_subparsers.add_parser("infra", help="simulation host インフラを Terraform で管理します")
     sim_infra_parser.set_defaults(help_target="sim_infra")
@@ -323,11 +321,7 @@ def run_sim_command(
         subject_name = command.subject
         if subject_name is None or command.action not in SIM_ACTIONS.get(subject_name, {}):
             raise GarDomainError(f"未対応の simulation command: {subject_name or '(none)'} {command.action}")
-        subject = getattr(Gar(workspace).sim, subject_name, None)
-        action = getattr(subject, command.action, None)
-        if not callable(action):
-            raise GarDomainError(f"未対応の simulation command: {subject_name} {command.action}")
-        return action(**_action_kwargs(command, args))
+        return _run_simulation_action(Gar(workspace), command, args)
     except AccessConnectionError as error:
         device = getattr(args, "device", None)
         return report_access_failure(
@@ -343,3 +337,227 @@ def run_sim_command(
     except GarDomainError as error:
         print(f"gar: {error}", file=sys.stderr)
         return 1
+
+
+def _run_simulation_action(gar: Gar, command: GarCommand, args: Namespace) -> int:
+    """Call the public API explicitly so signatures remain visible to readers and type checkers."""
+
+    match command.subject:
+        case "app":
+            return _run_app_action(gar, command.action)
+        case "runtime":
+            return _run_runtime_action(gar, command.action, args)
+        case "host":
+            return _run_host_action(gar, command.action, args)
+        case "gpio":
+            return _run_gpio_action(gar, command.action, args)
+        case "io":
+            return _run_io_action(gar, command.action, args)
+        case _:
+            raise GarDomainError(f"未対応の simulation subject: {command.subject or '(none)'}")
+
+
+def _run_app_action(gar: Gar, action: str) -> int:
+    match action:
+        case "build":
+            return _render_artifact(gar.sim.app.build())
+        case "clean":
+            gar.sim.app.clean()
+            print("Simulation artifactを削除しました。")
+            return 0
+        case "deploy":
+            return _render_artifact(gar.sim.app.deploy())
+        case _:
+            raise GarDomainError(f"未対応の simulation app action: {action}")
+
+
+def _run_runtime_action(gar: Gar, action: str, args: Namespace) -> int:
+    match action:
+        case "build":
+            return _render_optional_runtime_artifact(gar.sim.runtime.build())
+        case "deploy":
+            return _render_optional_runtime_artifact(gar.sim.runtime.deploy())
+        case "start":
+            return gar.sim.runtime.start(
+                settings=getattr(args, "settings", None),
+                profile_name=getattr(args, "profile_name", None),
+                no_port_forward=getattr(args, "no_port_forward", False),
+            )
+        case "stop":
+            return gar.sim.runtime.stop(keep_port_forward=getattr(args, "keep_port_forward", False))
+        case "status":
+            return gar.sim.runtime.status()
+        case "log":
+            return gar.sim.runtime.log()
+        case "diag":
+            report = gar.sim.runtime.diag()
+            _render_diagnostic(
+                report,
+                host=gar.sim.runtime.session_host,
+                json_output=getattr(args, "json_output", False),
+            )
+            return report.exit_code
+        case _:
+            raise GarDomainError(f"未対応の simulation runtime action: {action}")
+
+
+def _run_host_action(gar: Gar, action: str, args: Namespace) -> int:
+    match action:
+        case "start":
+            result = gar.sim.host.start(
+                no_update_ssh=getattr(args, "no_update_ssh", False),
+                pull=getattr(args, "pull", False),
+            )
+            _render_host_start(result)
+            return 0
+        case "stop":
+            gar.sim.host.stop()
+            print("gar sim host: shutdown要求を送信しました。")
+            return 0
+        case "status":
+            _render_host_status(
+                gar.sim.host.status(),
+                json_output=getattr(args, "json_output", False),
+            )
+            return 0
+        case _:
+            raise GarDomainError(f"未対応の simulation host action: {action}")
+
+
+def _run_gpio_action(gar: Gar, action: str, args: Namespace) -> int:
+    match action:
+        case "install":
+            result = gar.sim.gpio.install()
+        case "start":
+            result = gar.sim.gpio.start()
+        case "stop":
+            result = gar.sim.gpio.stop()
+        case "plan":
+            result = gar.sim.gpio.plan()
+        case "status":
+            result = gar.sim.gpio.status()
+        case "check":
+            result = gar.sim.gpio.check()
+        case _:
+            raise GarDomainError(f"未対応の simulation gpio action: {action}")
+    _render_hardware_result(result, json_output=getattr(args, "json_output", False))
+    return result.exit_code
+
+
+def _run_io_action(gar: Gar, action: str, args: Namespace) -> int:
+    params = _io_parameters(action, args)
+    try:
+        match action:
+            case "state":
+                result = gar.sim.io.state(**params)
+            case "press":
+                result = gar.sim.io.press(**params)
+            case "set":
+                result = gar.sim.io.set(**params)
+            case "clear":
+                result = gar.sim.io.clear(**params)
+            case _:
+                raise GarDomainError(f"未対応の simulation io action: {action}")
+    except (KeyError, TypeError, ValueError) as error:
+        raise GarDomainError(f"simulation ioの引数が不正です: {error}") from error
+    _render_hardware_result(result, json_output=getattr(args, "json_output", False))
+    return result.exit_code
+
+
+def _io_parameters(action: str, args: Namespace) -> dict[str, object]:
+    if action == "state":
+        return {}
+    device = getattr(args, "device", None)
+    if not isinstance(device, str) or not device:
+        raise GarDomainError(f"io {action} には --device が必要です")
+    params: dict[str, object] = {"device": device}
+    for name in ("button", "line", "duration_ms", "value", "uid"):
+        value = getattr(args, name, None)
+        if value is not None:
+            params[name] = value
+    if action == "set" and device == "rfid" and not params.get("uid"):
+        raise GarDomainError("io set --device rfid には --uid が必要です")
+    if action == "set" and device == "range" and params.get("value") is None:
+        raise GarDomainError("io set --device range には --value が必要です")
+    return params
+
+
+def _render_artifact(artifact: Artifact) -> int:
+    print(f"Artifact: {artifact.bundle_path}")
+    return 0
+
+
+def _render_optional_runtime_artifact(artifact: Artifact | None) -> int:
+    if artifact is None:
+        print("このsimulation environmentには個別のruntime artifactは不要です。")
+        return 0
+    return _render_artifact(artifact)
+
+
+def _render_host_start(result: SimulationHostStartResult) -> None:
+    print(f"gar sim host: running. address = {result.state.address or '(local)'}")
+    if result.address_updated:
+        print(f"gar sim host: SSH config の Host {result.state.host} を " f"{result.state.address} に更新しました。")
+    if result.repository_updated:
+        print("gar sim host: simulation hostのrepositoryを更新しました。")
+    if result.repository_update_skipped:
+        print(
+            "gar sim host: --pullが指定されましたがrepo_dirが未設定のため、" "git pullをスキップしました。",
+            file=sys.stderr,
+        )
+
+
+def _render_host_status(state: SimulationHostState, *, json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(state.to_payload(), ensure_ascii=False, indent=2))
+        return
+    print(f"backend : {state.backend}")
+    print(f"id      : {state.id}")
+    print(f"state   : {state.state}")
+    print(f"address : {state.address or '(none)'}")
+    for name, value in state.details.items():
+        print(f"{name:8}: {value}")
+
+
+def _render_hardware_result(result: HardwareControlResult, *, json_output: bool) -> None:
+    if json_output and result.payload is not None:
+        print(json.dumps(result.payload, ensure_ascii=False, indent=2))
+        return
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    if result.stderr:
+        print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+    if result.payload is not None and not result.stdout:
+        for key, value in result.payload.items():
+            print(f"{key}: {value}")
+
+
+def _render_diagnostic(
+    report: SimulationDiagnosticReport,
+    *,
+    host: str | None,
+    json_output: bool,
+) -> None:
+    payload = report.to_payload(host=host)
+    if json_output:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    print(f"status: {'ok' if payload.get('ok') is True else 'error'}")
+    if payload.get("host"):
+        print(f"host: {payload['host']}")
+    if payload.get("error"):
+        print(f"error: {payload['error']}")
+    processes = payload.get("processes")
+    if isinstance(processes, list):
+        print(f"processes: {len(processes)}")
+        for process in processes:
+            if isinstance(process, dict):
+                print(f"  {process.get('pid', '?')}: {process.get('cmd', '')}")
+    devices = payload.get("devices")
+    if isinstance(devices, dict):
+        print("devices:")
+        for path, available in devices.items():
+            print(f"  {path}: {'OK' if available else 'missing'}")
+    if payload.get("api") is not None:
+        print("api:")
+        print(json.dumps(payload["api"], ensure_ascii=False, indent=2))

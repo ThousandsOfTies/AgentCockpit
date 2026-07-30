@@ -60,7 +60,7 @@ GAR は **開発環境・操作面・検証足場** であり、完成させた�
 - GAR に機能を足す前に、それが **開発支援/仮想操作/成果物搬送** なのか、
   **対象システムの実行時機能** なのかを確認する。
 - 対象システムの実行時機能なら、まず対象リポジトリ側
-  （例: `gar-vibe-ui/vibe-remote` の VS Code extension / npm scripts / firmware）へ置く。
+  （例: `GarVibeRemote/sources/gar-vibe-ui/vibe-remote` の VS Code extension / npm scripts / firmware）へ置く。
 - GAR 側には、必要なら「その対象リポジトリの開発手順を呼び出す薄い入口」や
   「artifact/flash/diagnostic」だけを置く。
 - 迷った場合は、ユーザーに「これは GAR の開発環境機能として残すべきか、
@@ -264,7 +264,7 @@ bridge / CUSE スタブ（I2C・SPI）/ gpio-sim は systemd unit で管理さ�
 gar sim runtime start
 
 # EC2 に SSH してアプリ本体を起動
-ssh vibecode-graviton
+ssh my-sim-host
 ~/sensor_demo
 ```
 
@@ -316,7 +316,7 @@ gar sim host status    # 状態確認
 
 | ファイル | 用途 |
 |---|---|
-| `../gar-adhoc-app/app/sensor_demo` | 統合デモアプリ（GPIO + I2C OLED + SPI RFID） |
+| `../../GarAdhocApp/sources/gar-adhoc-app/app/sensor_demo` | 統合デモアプリ（GPIO + I2C OLED + SPI RFID） |
 | `gar-tools/targets/linux-device/runtime/spi-stub/cuse_spi` | SPI CUSE スタブ（MFRC-522 sim、EC2 用） |
 | `gar-tools/targets/linux-device/runtime/i2c-stub/cuse_i2c` | I2C CUSE スタブ（VL53L0X + SSD1306、EC2 用） |
 | `gar-tools/targets/linux-device/runtime/test/gpio_led_button` | GPIO 単機能デモ |

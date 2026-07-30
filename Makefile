@@ -1,4 +1,7 @@
-# Gapless Agent Runtime WSL hub commands.
+# Gapless Agent Runtime bootstrap and developer checks.
+# 日常のproduct操作は make targetではなく `gar` CLIを使用します。
+
+.DEFAULT_GOAL := help
 
 UID ?= 04:AB:CD:EF:01:23
 APP_REPO ?= ../gar-adhoc-app
@@ -8,13 +11,33 @@ VSCODE_EXT_VERSION = 0.0.3
 VSCODE_EXT_SRC = tools/vscode-gar
 VSCODE_EXT_DEST ?= $(HOME)/.vscode-server/extensions/$(VSCODE_EXT_NAME)-$(VSCODE_EXT_VERSION)
 MCP_SERVER = $(CURDIR)/tools/gar-mcp/server.py
-GAR_REQUIREMENTS = requirements-gar.txt
+GAR_DEV_REQUIREMENTS = requirements-dev.txt
+PYTHON = .venv/bin/python
+RUFF = .venv/bin/ruff
 
 SSH_DST = $(if $(KEY),ubuntu@$(EC2),$(EC2))
 SSH     = ssh $(if $(KEY),-i $(KEY),)
 SCP     = scp $(if $(KEY),-i $(KEY),)
 
-.PHONY: gar init start port-forward port-forward-stop port-forward-status sim-test sim-scenario
+.PHONY: help check gar init start port-forward port-forward-stop port-forward-status sim-test sim-scenario
+
+help:
+	@echo "Gapless Agent Runtime development commands"
+	@echo "  make init          Create the venv and install local VS Code/MCP integration"
+	@echo "  make start         Enter an interactive shell with gar completion"
+	@echo "  make check         Run lint, tests, generated-file checks, and syntax checks"
+	@echo "  make port-forward  Start the selected EC2 hardware-panel port forward"
+
+check:
+	@test -x $(PYTHON) || { echo "Run 'make init' first."; exit 1; }
+	@test -x $(RUFF) || { echo "Ruff is missing from .venv; run 'make init' first."; exit 1; }
+	$(RUFF) check scripts tests tools/*.py tools/gar-mcp/server.py
+	$(RUFF) format --check scripts tests tools/*.py tools/gar-mcp/server.py
+	$(PYTHON) -m unittest discover -s tests -v
+	$(PYTHON) tools/gen_gar_lib_dsm.py --check
+	bash -n tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
+	node --check tools/vscode-gar/extension.js
+	node --test tools/vscode-gar/*.test.js
 
 gar:
 	$(error make gar は廃止しました。初期構築は make init、日常開始は make start を使ってください)
@@ -32,7 +55,7 @@ init:
 	  echo "例: sudo apt-get install python3-venv && rm -rf .venv && make init"; \
 	  exit 1; \
 	}
-	.venv/bin/python -m pip install -r $(GAR_REQUIREMENTS)
+	.venv/bin/python -m pip install -r $(GAR_DEV_REQUIREMENTS)
 	chmod +x scripts/gar
 	ln -sf $(CURDIR)/scripts/gar .venv/bin/gar
 	mkdir -p $(dir $(VSCODE_EXT_DEST))
@@ -60,13 +83,22 @@ start:
 	@bash -c 'TMP_RC=$$(mktemp); echo "source ~/.bashrc" > $$TMP_RC; echo "source $(CURDIR)/.venv/bin/activate" >> $$TMP_RC; echo "source <($(CURDIR)/.venv/bin/gar completion bash)" >> $$TMP_RC; echo "rm -f $$TMP_RC" >> $$TMP_RC; exec bash --rcfile $$TMP_RC -i'
 
 port-forward:
-	tools/forward_ec2_ports.sh --host $(or $(EC2),vibecode-graviton)
+ifndef EC2
+	$(error EC2 変数を指定してください: make port-forward EC2=your-ssh-host)
+endif
+	tools/forward_ec2_ports.sh --host $(EC2)
 
 port-forward-stop:
-	tools/forward_ec2_ports.sh --host $(or $(EC2),vibecode-graviton) --stop
+ifndef EC2
+	$(error EC2 変数を指定してください: make port-forward-stop EC2=your-ssh-host)
+endif
+	tools/forward_ec2_ports.sh --host $(EC2) --stop
 
 port-forward-status:
-	tools/forward_ec2_ports.sh --host $(or $(EC2),vibecode-graviton) --status
+ifndef EC2
+	$(error EC2 変数を指定してください: make port-forward-status EC2=your-ssh-host)
+endif
+	tools/forward_ec2_ports.sh --host $(EC2) --status
 
 sim-test:
 ifndef WORKSPACE
@@ -81,7 +113,7 @@ endif
 
 sim-scenario:
 ifndef EC2
-	$(error EC2 変数を指定してください: make sim-scenario EC2=vibecode-graviton SCENARIO=$(APP_REPO)/scenarios/sensor_demo_rfid.json)
+	$(error EC2 変数を指定してください: make sim-scenario EC2=your-ssh-host SCENARIO=$(APP_REPO)/scenarios/sensor_demo_rfid.json)
 endif
 	$(SSH) $(SSH_DST) 'mkdir -p ~/gar-scenarios'
 	$(SCP) scripts/run_scenario.py scripts/gar_lib/simulation/hardware/io_actions.py $(SCENARIO) $(SSH_DST):~/gar-scenarios/

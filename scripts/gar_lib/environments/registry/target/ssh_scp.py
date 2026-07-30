@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
+from scripts.gar_lib.environments.setup_option import TargetEnvironmentSetupOption
 
 
-class SshScpEnvironment(EnvironmentSetupOption):
+class SshScpEnvironment(TargetEnvironmentSetupOption):
     environment_id = "ssh_scp"
     display_name = "SSH / scp"
     description = (
-        "ssh / scp でネットワーク越しに実機へ接続します"
-        "（adb が使えない / 既に SSH 経路が整っている環境向け）"
+        "ssh / scp でネットワーク越しに実機へ接続します" "（adb が使えない / 既に SSH 経路が整っている環境向け）"
     )
     display_order = 20
     required_commands = ("ssh", "scp")
