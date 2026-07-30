@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 from scripts.gar_lib.artifacts.manifest import gh_env
-from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
 
 DEFAULT_ESP32_ARTIFACT_ROOT = (

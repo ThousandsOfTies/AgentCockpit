@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from scripts.gar_lib.config import (
+from scripts.gar_lib.core.config import (
     PROJECT_ROOT,
     VSCODE_EXT_NAME,
     VSCODE_EXT_VERSION,

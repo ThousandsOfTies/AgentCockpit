@@ -6,8 +6,8 @@ import csv
 import shutil
 from pathlib import Path
 
-from scripts.gar_lib.config import PROJECT_ROOT
-from scripts.gar_lib.tools_repository import gar_tools_root
+from scripts.gar_lib.core.config import PROJECT_ROOT
+from scripts.gar_lib.core.tools_repository import gar_tools_root
 
 HardwareDefinition = dict[str, list[dict[str, str]]]
 

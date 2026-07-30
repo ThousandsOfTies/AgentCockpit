@@ -12,7 +12,7 @@ import sys
 import venv
 from pathlib import Path
 
-from scripts.gar_lib.config import load_config, saved_esp32_serial_port
+from scripts.gar_lib.core.config import load_config, saved_esp32_serial_port
 from scripts.gar_lib.target.esp32_firmware import (
     DEFAULT_ESP32_ARTIFACT_ROOT,
     FLASH_LAYOUT,

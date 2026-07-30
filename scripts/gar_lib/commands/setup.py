@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
-from scripts.gar_lib.config import (
+from scripts.gar_lib.core.config import (
     default_ec2_host,
     is_valid_runtime_host,
     load_config,
@@ -23,6 +23,7 @@ from scripts.gar_lib.config import (
     set_saved_target_setting,
     set_saved_workspaces,
 )
+from scripts.gar_lib.core.tools_repository import ensure_gar_tools_available
 from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.environments.discovery import discover_environments
 from scripts.gar_lib.environments.registry.simulator.wokwi import WokwiEnvironment  # noqa: F401
@@ -31,7 +32,6 @@ from scripts.gar_lib.target.manifest import (
     discover_target_manifests,
     target_by_id,
 )
-from scripts.gar_lib.tools_repository import ensure_gar_tools_available
 from scripts.gar_lib.vscode.terminal_bridge import (
     install_vscode_terminal_bridge,
     installed_vscode_terminal_bridge_path,

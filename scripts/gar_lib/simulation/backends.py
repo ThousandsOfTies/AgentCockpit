@@ -19,8 +19,9 @@ from scripts.gar_lib.access.docker import (
 )
 from scripts.gar_lib.access.local import LocalProcessChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
-from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
+from scripts.gar_lib.core.tools_repository import gar_tools_root
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.aws_ec2 import AwsEc2SimulationHostController
 from scripts.gar_lib.simulation.aws_ssm import AwsSsmSimulationEnvironment
@@ -47,7 +48,6 @@ from scripts.gar_lib.simulation.renode import RenodeSimulationEnvironment
 from scripts.gar_lib.simulation.ssh_config import SshConfigHostAddressUpdater
 from scripts.gar_lib.simulation.wokwi import WokwiSimulationEnvironment
 from scripts.gar_lib.target.manifest import active_target_manifest
-from scripts.gar_lib.tools_repository import gar_tools_root
 
 LOCAL_DOCKER = "local_docker"
 

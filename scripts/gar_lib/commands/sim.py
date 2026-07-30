@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from scripts.gar_lib.api import Gar
 from scripts.gar_lib.commands.common.workspace import workspace_for
 from scripts.gar_lib.commands.infra import run_sim_infra_command
+from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.recovery.access import report_access_failure
@@ -303,6 +304,7 @@ def run_sim_command(
                 options=("--device", str(device)) if device else (),
             ),
             purpose="simulation",
+            run_terminal=run_terminal_run_command,
         )
     except GarDomainError as error:
         print(f"gar: {error}", file=sys.stderr)

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Protocol
 
 from scripts.gar_lib.artifacts.manifest import fetch_codespace_artifacts, load_deploy_files
-from scripts.gar_lib.config import PROJECT_ROOT
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
+from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 

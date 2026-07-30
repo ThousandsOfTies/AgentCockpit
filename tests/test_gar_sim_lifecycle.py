@@ -43,7 +43,7 @@ class GarSimulationLifecycleTest(unittest.TestCase):
                 "scripts.gar_lib.api.simulation_host_for", return_value=controller
             ),
             mock.patch(
-                "scripts.gar_lib.recovery.access.run_terminal_run_command", return_value=0
+                "scripts.gar_lib.commands.sim.run_terminal_run_command", return_value=0
             ) as terminal_request,
             contextlib.redirect_stderr(io.StringIO()),
         ):

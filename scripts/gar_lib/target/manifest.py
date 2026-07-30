@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from scripts.gar_lib.config import load_config
-from scripts.gar_lib.tools_repository import gar_tools_root
+from scripts.gar_lib.core.config import load_config
+from scripts.gar_lib.core.tools_repository import gar_tools_root
 
 
 @dataclass(frozen=True)

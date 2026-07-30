@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts.gar_lib.config import load_config, saved_workspaces
+from scripts.gar_lib.core.config import load_config, saved_workspaces
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 

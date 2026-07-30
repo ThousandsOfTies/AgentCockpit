@@ -6,7 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.core.config import PROJECT_ROOT
 
 DEFAULT_GAR_TOOLS_REPO = "https://github.com/ThousandsOfTies/gar-tools"
 

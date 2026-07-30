@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import shlex
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
 
@@ -25,14 +25,20 @@ def report_access_failure(
     workspace: Workspace,
     retry_command: str,
     purpose: str = "simulation",
+    run_terminal: Callable[..., int] | None = None,
 ) -> int:
-    """接続失敗を stderr へ報告し、必要なら見える terminal で復旧コマンドを走らせる。"""
+    """接続失敗を stderr へ報告し、必要なら見える terminal で復旧コマンドを走らせる。
+
+    terminalへの実際の起動は行わず、呼び出し側が渡した `run_terminal`（例:
+    `commands.terminal.run_terminal_run_command`）へ委譲する。recoveryがcommands
+    package へ依存しないようにするため。
+    """
 
     action = plan_access_recovery(
         error, workspace=workspace, retry_command=retry_command, purpose=purpose
     )
-    if action.terminal_command is not None:
-        run_terminal_run_command(
+    if action.terminal_command is not None and run_terminal is not None:
+        run_terminal(
             command_parts=[],
             command_text=shlex.join(action.terminal_command),
             title=action.title,

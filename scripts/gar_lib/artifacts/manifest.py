@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path
 
 from scripts.gar_lib.access.codespaces import select_codespace_from_list
-from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.core.config import PROJECT_ROOT
 
 DEFAULT_CODESPACE_ARTIFACT_ROOT = "/workspaces/gar-build-env/artifacts/from-codespace"
 

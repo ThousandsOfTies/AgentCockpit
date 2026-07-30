@@ -7,7 +7,7 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from scripts.gar_lib.config import PROJECT_ROOT
+from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.vscode.profile_manage import write_vscode_terminal_profile
 
 

@@ -30,7 +30,6 @@ from scripts.gar_lib.commands.infra import run_sim_infra_command
 from scripts.gar_lib.commands.setup import run_setup
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.usb import parse_usbipd_list, run_usb_command
-from scripts.gar_lib.config import load_config, save_config
 from scripts.gar_lib.core.command import (
     SIM_APP_BUILD,
     SIM_APP_CLEAN,
@@ -47,6 +46,8 @@ from scripts.gar_lib.core.command import (
     TARGET_FETCH,
     GarCommand,
 )
+from scripts.gar_lib.core.config import load_config, save_config
+from scripts.gar_lib.core.tools_repository import ensure_gar_tools_available
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.environments._base import EnvironmentSetupOption
 from scripts.gar_lib.simulation import io_actions
@@ -59,7 +60,6 @@ from scripts.gar_lib.target.esp32_firmware import (
 )
 from scripts.gar_lib.target.esptool import normalize_esp32_serial_port, run_esp32_flash_command
 from scripts.gar_lib.target.manifest import TargetManifest, discover_target_manifests
-from scripts.gar_lib.tools_repository import ensure_gar_tools_available
 
 
 class FakeDevelopmentEnvironment(EnvironmentSetupOption):
@@ -1944,7 +1944,7 @@ class GarCliTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch("scripts.gar_lib.config.CONFIG_PATH", config_path):
+            with mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path):
                 config = load_config()
 
         self.assertEqual("wsl", config["selected_environments"]["codespace"])
@@ -1964,7 +1964,7 @@ class GarCliTest(unittest.TestCase):
             }
             config_path.write_text(json.dumps({"workspaces": [entry]}), encoding="utf-8")
 
-            with mock.patch("scripts.gar_lib.config.CONFIG_PATH", config_path):
+            with mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path):
                 config = load_config()
                 save_config(config)
                 migrated = json.loads(config_path.read_text(encoding="utf-8"))
@@ -2021,8 +2021,8 @@ class GarCliTest(unittest.TestCase):
             )
 
             with (
-                mock.patch("scripts.gar_lib.config.CONFIG_PATH", config_path),
-                mock.patch("scripts.gar_lib.config._ACTIVE_WORKSPACE_ROOT", "local/GarStreamRx"),
+                mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path),
+                mock.patch("scripts.gar_lib.core.config._ACTIVE_WORKSPACE_ROOT", "local/GarStreamRx"),
             ):
                 config = load_config()
 
@@ -2060,8 +2060,8 @@ class GarCliTest(unittest.TestCase):
             )
 
             with (
-                mock.patch("scripts.gar_lib.config.CONFIG_PATH", config_path),
-                mock.patch("scripts.gar_lib.config._ACTIVE_WORKSPACE_ROOT", None),
+                mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path),
+                mock.patch("scripts.gar_lib.core.config._ACTIVE_WORKSPACE_ROOT", None),
             ):
                 config = load_config()
 
@@ -2123,9 +2123,9 @@ class GarCliTest(unittest.TestCase):
             project_root.mkdir()
             completed = subprocess.CompletedProcess(["git"], 0)
             with (
-                mock.patch("scripts.gar_lib.tools_repository.PROJECT_ROOT", project_root),
+                mock.patch("scripts.gar_lib.core.tools_repository.PROJECT_ROOT", project_root),
                 mock.patch.dict(os.environ, {"GAR_TOOLS_REPO": "https://example.invalid/gar-tools"}, clear=True),
-                mock.patch("scripts.gar_lib.tools_repository.subprocess.run", return_value=completed) as run,
+                mock.patch("scripts.gar_lib.core.tools_repository.subprocess.run", return_value=completed) as run,
             ):
                 root = ensure_gar_tools_available()
 
@@ -2136,7 +2136,7 @@ class GarCliTest(unittest.TestCase):
         )
 
     def test_load_config_warns_on_invalid_json(self) -> None:
-        from scripts.gar_lib.config import default_config
+        from scripts.gar_lib.core.config import default_config
 
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / ".gar" / "config.json"
@@ -2145,7 +2145,7 @@ class GarCliTest(unittest.TestCase):
 
             stderr = io.StringIO()
             with (
-                mock.patch("scripts.gar_lib.config.CONFIG_PATH", config_path),
+                mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path),
                 contextlib.redirect_stderr(stderr),
             ):
                 config = load_config()
@@ -2154,7 +2154,7 @@ class GarCliTest(unittest.TestCase):
         self.assertIn("not valid JSON", stderr.getvalue())
 
     def test_default_config_leaves_target_unselected(self) -> None:
-        from scripts.gar_lib.config import default_config
+        from scripts.gar_lib.core.config import default_config
 
         config = default_config()
 
@@ -2164,13 +2164,13 @@ class GarCliTest(unittest.TestCase):
         self.assertNotIn("region", config["ec2"])
 
     def test_save_config_is_atomic_and_leaves_no_temp_file(self) -> None:
-        from scripts.gar_lib.config import save_config
+        from scripts.gar_lib.core.config import save_config
 
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / ".gar" / "config.json"
             workspace_path = str(Path(tmp) / "product")
 
-            with mock.patch("scripts.gar_lib.config.CONFIG_PATH", config_path):
+            with mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path):
                 save_config(
                     {
                         "workspace_id": "ws_test",
@@ -2198,7 +2198,7 @@ class GarCliTest(unittest.TestCase):
 
     def test_project_root_points_to_repository_root(self) -> None:
         """PROJECT_ROOT must resolve to the repo root, not scripts/."""
-        from scripts.gar_lib.config import PROJECT_ROOT
+        from scripts.gar_lib.core.config import PROJECT_ROOT
 
         self.assertTrue(
             (PROJECT_ROOT / "AGENT.md").is_file(),

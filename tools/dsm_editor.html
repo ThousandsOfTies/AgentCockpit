@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>DSM Editor - 行/列を連動して並べ替え</title>
+<style>
+  :root {
+    --border: #ccc;
+    --diag-bg: #444;
+    --nonzero-bg: #cfe8ff;
+    --header-bg: #f2f2f2;
+    --hover-bg: #fff3b0;
+    --dragover-bg: #ffd479;
+  }
+  body {
+    font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic", sans-serif;
+    margin: 0;
+    padding: 0;
+    color: #222;
+  }
+  header {
+    padding: 10px 16px;
+    background: #24313f;
+    color: #fff;
+  }
+  header h1 { font-size: 15px; margin: 0 0 4px; }
+  header p { font-size: 12px; margin: 0; color: #cdd6de; }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 16px;
+    background: #f7f7f7;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .toolbar label.file-btn {
+    background: #2f6fed;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .toolbar input[type=file] { display: none; }
+  .toolbar button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid #999;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .toolbar button:disabled { opacity: 0.5; cursor: default; }
+  .toolbar input[type=text] {
+    padding: 5px 8px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    font-size: 13px;
+    width: 220px;
+  }
+  .toolbar .status { font-size: 12px; color: #444; margin-left: auto; }
+  #drop-hint {
+    margin: 16px;
+    padding: 24px;
+    border: 2px dashed #aaa;
+    border-radius: 8px;
+    text-align: center;
+    color: #666;
+    font-size: 14px;
+  }
+  #table-wrap {
+    overflow: auto;
+    max-height: calc(100vh - 92px);
+    display: none;
+  }
+  table {
+    border-collapse: collapse;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 3px 6px;
+    text-align: center;
+  }
+  thead th {
+    background: var(--header-bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    max-height: 140px;
+    letter-spacing: 1.5px;
+    cursor: grab;
+    user-select: none;
+  }
+  thead th.corner {
+    writing-mode: horizontal-tb;
+    transform: none;
+    left: 0;
+    z-index: 21;
+    position: sticky;
+    top: 0;
+    cursor: default;
+  }
+  thead th.drag-over { background: var(--dragover-bg); }
+  tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: var(--header-bg);
+    text-align: left;
+    cursor: grab;
+    user-select: none;
+  }
+  tbody tr.drag-over th { background: var(--dragover-bg); }
+  tbody tr:hover td, tbody tr:hover th { background: var(--hover-bg); }
+  td.diag { background: var(--diag-bg); }
+  td.nonzero { background: var(--nonzero-bg); font-weight: 600; }
+  td.cycle { background: #ff6b6b; color: #3a0000; font-weight: 700; }
+  thead th.cycle-node { color: #b30000; }
+  tbody th.cycle-node .name { color: #b30000; font-weight: 700; }
+  th.row-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  th.row-name .handle { color: #888; flex: none; }
+  th.row-name .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  tbody tr.filtered-out th, tbody tr.filtered-out td { opacity: 0.15; }
+  thead th.filtered-out { opacity: 0.15; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DSM Editor</h1>
+  <p>行または列見出しをドラッグ&amp;ドロップで並べ替えると、対応するもう一方も同時に入れ替わります。並べ替え後は「CSVとして保存」で書き出せます。</p>
+</header>
+<div class="toolbar">
+  <label class="file-btn">CSVを開く
+    <input type="file" id="file-input" accept=".csv,text/csv">
+  </label>
+  <button id="save-btn" disabled>CSVとして保存</button>
+  <button id="reset-btn" disabled>読み込み時の順序に戻す</button>
+  <button id="sort-btn" disabled>名前順にソート</button>
+  <button id="cluster-btn" disabled title="相互依存が強い要素同士を対角ブロックにまとめて並べ替えます">自動クラスタリング</button>
+  <button id="cycle-btn" disabled title="強連結成分(SCC)を検出し、循環依存に関わるセルと要素名を赤くハイライトします">循環依存を検出</button>
+  <input type="text" id="filter-input" placeholder="名前でフィルタ..." disabled>
+  <span class="status" id="status"></span>
+</div>
+<div id="drop-hint">CSVファイルをここにドラッグ&amp;ドロップ、または上の「CSVを開く」から選択してください。<br>
+(このDSM用に生成された <code>GAR_LIB_DSM_file_level.csv</code> のような、1行目と1列目に同じ要素名が並ぶ正方行列CSVを想定しています)</div>
+<div id="table-wrap">
+  <table>
+    <thead><tr id="header-row"></tr></thead>
+    <tbody id="body"></tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /** @type {string[]} 要素名の現在の並び順 (行=列 共通) */
+  let order = [];
+  /** @type {string[]} 読み込み直後の並び順 (リセット用) */
+  let initialOrder = [];
+  /** @type {Object<string, Object<string,string>>} matrix[row][col] = value */
+  let matrix = {};
+  let cornerLabel = "consumer \\ provider";
+  let draggedName = null;
+  /** @type {{sccs: string[][], nodes: Set<string>, edges: Set<string>} | null} 循環依存ハイライトのON/OFF状態 */
+  let cycleInfo = null;
+
+  const fileInput = document.getElementById("file-input");
+  const saveBtn = document.getElementById("save-btn");
+  const resetBtn = document.getElementById("reset-btn");
+  const sortBtn = document.getElementById("sort-btn");
+  const clusterBtn = document.getElementById("cluster-btn");
+  const cycleBtn = document.getElementById("cycle-btn");
+  const filterInput = document.getElementById("filter-input");
+  const statusEl = document.getElementById("status");
+  const dropHint = document.getElementById("drop-hint");
+  const tableWrap = document.getElementById("table-wrap");
+  const headerRow = document.getElementById("header-row");
+  const bodyEl = document.getElementById("body");
+
+  function parseCsv(text) {
+    const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(l => l.length > 0);
+    return lines.map(parseCsvLine);
+  }
+
+  function parseCsvLine(line) {
+    const result = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+        } else { cur += c; }
+      } else {
+        if (c === '"') { inQuotes = true; }
+        else if (c === ",") { result.push(cur); cur = ""; }
+        else { cur += c; }
+      }
+    }
+    result.push(cur);
+    return result;
+  }
+
+  function csvField(v) {
+    const s = String(v == null ? "" : v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function loadFromCsvText(text) {
+    const rows = parseCsv(text);
+    if (rows.length < 2) {
+      alert("CSVの内容が読み取れませんでした。");
+      return;
+    }
+    const header = rows[0];
+    cornerLabel = header[0];
+    const cols = header.slice(1);
+    matrix = {};
+    const rowNames = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const name = row[0];
+      rowNames.push(name);
+      matrix[name] = {};
+      for (let j = 0; j < cols.length; j++) {
+        matrix[name][cols[j]] = row[j + 1] !== undefined ? row[j + 1] : "";
+      }
+    }
+    // 列見出しと行見出しの和集合を採用順で並べる（通常は同一集合のはず）
+    const seen = new Set();
+    const combined = [];
+    cols.forEach(c => { if (!seen.has(c)) { seen.add(c); combined.push(c); } });
+    rowNames.forEach(r => { if (!seen.has(r)) { seen.add(r); combined.push(r); } });
+
+    order = combined;
+    initialOrder = combined.slice();
+    rowNames.forEach(r => { if (!matrix[r]) matrix[r] = {}; });
+
+    dropHint.style.display = "none";
+    tableWrap.style.display = "block";
+    saveBtn.disabled = false;
+    resetBtn.disabled = false;
+    sortBtn.disabled = false;
+    clusterBtn.disabled = false;
+    cycleBtn.disabled = false;
+    cycleBtn.textContent = "循環依存を検出";
+    cycleInfo = null;
+    filterInput.disabled = false;
+    statusEl.textContent = `${order.length} 要素を読み込みました`;
+    render();
+  }
+
+  function numericValue(v) {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * 相互依存の強い要素同士が対角ブロックへ集まるよう、UPGMA(平均連結法)による
+   * 階層クラスタリングで並び順を作る。結合のたびに境界(継ぎ目)の重みが最大になる
+   * 向きを選ぶことで、隣接要素の結び付きが強くなるようにする。
+   */
+  function computeClusterOrder() {
+    const names = order.slice();
+    const n = names.length;
+    if (n <= 2) return names;
+
+    const w = {};
+    names.forEach(a => { w[a] = {}; });
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = names[i], b = names[j];
+        const sum = numericValue(cellValue(a, b)) + numericValue(cellValue(b, a));
+        w[a][b] = sum;
+        w[b][a] = sum;
+      }
+    }
+    const weight = (a, b) => (a === b ? 0 : w[a][b]);
+
+    function bestJoin(listA, listB) {
+      const rA = listA.slice().reverse();
+      const rB = listB.slice().reverse();
+      const candidates = [[listA, listB], [listA, rB], [rA, listB], [rA, rB]];
+      let best = candidates[0];
+      let bestScore = -Infinity;
+      candidates.forEach(([left, right]) => {
+        const score = weight(left[left.length - 1], right[0]);
+        if (score > bestScore) { bestScore = score; best = [left, right]; }
+      });
+      return best[0].concat(best[1]);
+    }
+
+    let clusters = names.map(name => ({ list: [name], size: 1 }));
+    let link = clusters.map((_, i) => clusters.map((_, j) =>
+      i === j ? -Infinity : weight(clusters[i].list[0], clusters[j].list[0])
+    ));
+
+    while (clusters.length > 1) {
+      let bi = 0, bj = 1, bestLink = -Infinity;
+      for (let i = 0; i < clusters.length; i++) {
+        for (let j = i + 1; j < clusters.length; j++) {
+          if (link[i][j] > bestLink) { bestLink = link[i][j]; bi = i; bj = j; }
+        }
+      }
+      const a = clusters[bi], b = clusters[bj];
+      const mergedList = bestJoin(a.list, b.list);
+      const mergedSize = a.size + b.size;
+
+      const keepIdx = clusters.map((_, idx) => idx).filter(idx => idx !== bi && idx !== bj);
+      const mergedLinkByOldIdx = {};
+      keepIdx.forEach(k => {
+        mergedLinkByOldIdx[k] = (a.size * link[bi][k] + b.size * link[bj][k]) / mergedSize;
+      });
+
+      const nextClusters = keepIdx.map(k => clusters[k]);
+      nextClusters.push({ list: mergedList, size: mergedSize });
+      const mergedIdx = nextClusters.length - 1;
+
+      const nextLink = nextClusters.map(() => []);
+      for (let x = 0; x < keepIdx.length; x++) {
+        for (let y = 0; y < keepIdx.length; y++) {
+          nextLink[x][y] = x === y ? -Infinity : link[keepIdx[x]][keepIdx[y]];
+        }
+        nextLink[x][mergedIdx] = mergedLinkByOldIdx[keepIdx[x]];
+        nextLink[mergedIdx][x] = mergedLinkByOldIdx[keepIdx[x]];
+      }
+      nextLink[mergedIdx][mergedIdx] = -Infinity;
+
+      clusters = nextClusters;
+      link = nextLink;
+    }
+
+    return clusters[0].list;
+  }
+
+  /** a\u2192b の有向辺(非ゼロセル)一覧を隣接リストとして作る。 */
+  function buildAdjacency() {
+    const adj = {};
+    order.forEach(a => {
+      adj[a] = order.filter(b => b !== a && numericValue(cellValue(a, b)) > 0);
+    });
+    return adj;
+  }
+
+  /** Tarjanのアルゴリズムで強連結成分(SCC)を列挙し、要素数2以上のものだけ返す。 */
+  function computeStronglyConnectedComponents() {
+    const adj = buildAdjacency();
+    let index = 0;
+    const indices = new Map();
+    const lowlink = new Map();
+    const onStack = new Set();
+    const stack = [];
+    const sccs = [];
+
+    function strongconnect(v) {
+      indices.set(v, index);
+      lowlink.set(v, index);
+      index++;
+      stack.push(v);
+      onStack.add(v);
+
+      adj[v].forEach(w => {
+        if (!indices.has(w)) {
+          strongconnect(w);
+          lowlink.set(v, Math.min(lowlink.get(v), lowlink.get(w)));
+        } else if (onStack.has(w)) {
+          lowlink.set(v, Math.min(lowlink.get(v), indices.get(w)));
+        }
+      });
+
+      if (lowlink.get(v) === indices.get(v)) {
+        const component = [];
+        let w;
+        do {
+          w = stack.pop();
+          onStack.delete(w);
+          component.push(w);
+        } while (w !== v);
+        sccs.push(component);
+      }
+    }
+
+    order.forEach(v => { if (!indices.has(v)) strongconnect(v); });
+    return sccs.filter(component => component.length > 1);
+  }
+
+  /** SCCに属する要素名と、SCC内で閉じている有向辺(=循環依存)を求める。 */
+  function computeCycleHighlights() {
+    const sccs = computeStronglyConnectedComponents();
+    const nodeToScc = new Map();
+    sccs.forEach((component, idx) => component.forEach(name => nodeToScc.set(name, idx)));
+
+    const edges = new Set();
+    nodeToScc.forEach((sccIdx, a) => {
+      order.forEach(b => {
+        if (a === b || nodeToScc.get(b) !== sccIdx) return;
+        if (numericValue(cellValue(a, b)) > 0) edges.add(a + "\u0000" + b);
+      });
+    });
+
+    return { sccs, nodes: new Set(nodeToScc.keys()), edges };
+  }
+
+  function cellValue(rowName, colName) {
+    const v = matrix[rowName] && matrix[rowName][colName];
+    return v === undefined ? "" : v;
+  }
+
+  function render() {
+    // header
+    headerRow.innerHTML = "";
+    const corner = document.createElement("th");
+    corner.className = "corner";
+    corner.textContent = cornerLabel;
+    headerRow.appendChild(corner);
+    order.forEach(name => {
+      const th = document.createElement("th");
+      th.textContent = name;
+      th.dataset.name = name;
+      th.draggable = true;
+      if (cycleInfo && cycleInfo.nodes.has(name)) th.classList.add("cycle-node");
+      headerRow.appendChild(th);
+    });
+
+    // body
+    bodyEl.innerHTML = "";
+    order.forEach((rowName) => {
+      const tr = document.createElement("tr");
+      tr.draggable = true;
+      tr.dataset.name = rowName;
+
+      const th = document.createElement("th");
+      th.className = "row-name";
+      if (cycleInfo && cycleInfo.nodes.has(rowName)) th.classList.add("cycle-node");
+      const handle = document.createElement("span");
+      handle.className = "handle";
+      handle.textContent = "⋮⋮";
+      handle.title = "ドラッグして並べ替え";
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "name";
+      nameSpan.textContent = rowName;
+      nameSpan.title = rowName;
+      th.appendChild(handle);
+      th.appendChild(nameSpan);
+      tr.appendChild(th);
+
+      order.forEach(colName => {
+        const td = document.createElement("td");
+        const v = cellValue(rowName, colName);
+        if (rowName === colName) {
+          td.className = "diag";
+        } else if (cycleInfo && cycleInfo.edges.has(rowName + "\u0000" + colName)) {
+          td.className = "cycle";
+          td.textContent = v;
+        } else if (v !== "" && v !== "0") {
+          td.className = "nonzero";
+          td.textContent = v;
+        }
+        tr.appendChild(td);
+      });
+      bodyEl.appendChild(tr);
+    });
+
+    applyFilter();
+  }
+
+  function moveNameBefore(name, targetName) {
+    if (name === targetName) return;
+    const fromIdx = order.indexOf(name);
+    if (fromIdx === -1) return;
+    order.splice(fromIdx, 1);
+    const toIdx = order.indexOf(targetName);
+    order.splice(toIdx, 0, name);
+  }
+
+  function applyFilter() {
+    const q = filterInput.value.trim().toLowerCase();
+    const rows = bodyEl.querySelectorAll("tr");
+    const headerCells = headerRow.querySelectorAll("th[data-name]");
+    if (!q) {
+      rows.forEach(r => r.classList.remove("filtered-out"));
+      headerCells.forEach(h => h.classList.remove("filtered-out"));
+      return;
+    }
+    rows.forEach(r => {
+      const match = r.dataset.name.toLowerCase().includes(q);
+      r.classList.toggle("filtered-out", !match);
+    });
+    headerCells.forEach(h => {
+      const match = h.dataset.name.toLowerCase().includes(q);
+      h.classList.toggle("filtered-out", !match);
+    });
+  }
+
+  function exportCsv() {
+    const lines = [];
+    lines.push([cornerLabel, ...order].map(csvField).join(","));
+    order.forEach(rowName => {
+      const row = [rowName, ...order.map(colName => cellValue(rowName, colName))];
+      lines.push(row.map(csvField).join(","));
+    });
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "dsm_reordered.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // drag & drop of rows
+  bodyEl.addEventListener("dragstart", (e) => {
+    const tr = e.target.closest("tr");
+    if (!tr) return;
+    draggedName = tr.dataset.name;
+    e.dataTransfer.effectAllowed = "move";
+  });
+  bodyEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    const tr = e.target.closest("tr");
+    if (tr) tr.classList.add("drag-over");
+  });
+  bodyEl.addEventListener("dragleave", (e) => {
+    const tr = e.target.closest("tr");
+    if (tr) tr.classList.remove("drag-over");
+  });
+  bodyEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const tr = e.target.closest("tr");
+    if (tr) tr.classList.remove("drag-over");
+    if (!tr || !draggedName) return;
+    moveNameBefore(draggedName, tr.dataset.name);
+    draggedName = null;
+    render();
+  });
+  bodyEl.addEventListener("dragend", () => {
+    bodyEl.querySelectorAll("tr.drag-over").forEach(tr => tr.classList.remove("drag-over"));
+  });
+
+  // drag & drop of columns (header cells)
+  headerRow.addEventListener("dragstart", (e) => {
+    const th = e.target.closest("th[data-name]");
+    if (!th) return;
+    draggedName = th.dataset.name;
+    e.dataTransfer.effectAllowed = "move";
+  });
+  headerRow.addEventListener("dragover", (e) => {
+    const th = e.target.closest("th[data-name]");
+    if (!th) return;
+    e.preventDefault();
+    th.classList.add("drag-over");
+  });
+  headerRow.addEventListener("dragleave", (e) => {
+    const th = e.target.closest("th[data-name]");
+    if (th) th.classList.remove("drag-over");
+  });
+  headerRow.addEventListener("drop", (e) => {
+    const th = e.target.closest("th[data-name]");
+    if (!th) return;
+    e.preventDefault();
+    th.classList.remove("drag-over");
+    if (!draggedName) return;
+    moveNameBefore(draggedName, th.dataset.name);
+    draggedName = null;
+    render();
+  });
+  headerRow.addEventListener("dragend", () => {
+    headerRow.querySelectorAll("th.drag-over").forEach(th => th.classList.remove("drag-over"));
+  });
+
+  // file loading (input + drag&drop onto page)
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    file.text().then(loadFromCsvText);
+  });
+  ["dragover", "drop"].forEach(evt => {
+    document.body.addEventListener(evt, (e) => e.preventDefault());
+  });
+  document.body.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) file.text().then(loadFromCsvText);
+  });
+
+  saveBtn.addEventListener("click", exportCsv);
+  resetBtn.addEventListener("click", () => { order = initialOrder.slice(); render(); });
+  sortBtn.addEventListener("click", () => { order.sort((a, b) => a.localeCompare(b)); render(); });
+  clusterBtn.addEventListener("click", () => {
+    order = computeClusterOrder();
+    statusEl.textContent = `${order.length} 要素を自動クラスタリングしました`;
+    render();
+  });
+  cycleBtn.addEventListener("click", () => {
+    if (cycleInfo) {
+      cycleInfo = null;
+      cycleBtn.textContent = "循環依存を検出";
+      statusEl.textContent = `${order.length} 要素`;
+      render();
+      return;
+    }
+    cycleInfo = computeCycleHighlights();
+    cycleBtn.textContent = "循環依存ハイライトを解除";
+    statusEl.textContent = cycleInfo.sccs.length > 0
+      ? `循環依存: ${cycleInfo.sccs.length}グループ / ${cycleInfo.nodes.size}要素が関与`
+      : "循環依存は見つかりませんでした";
+    render();
+  });
+  filterInput.addEventListener("input", applyFilter);
+
+  // 同一originでhttp(s)経由で開かれている場合は、隣にあるDSM CSVの自動読み込みを試みる
+  // (file:// で開いた場合はブラウザのCORS制限で失敗するため、その場合は無視して手動選択を促す)
+  if (location.protocol !== "file:") {
+    fetch("../GAR_LIB_DSM_file_level.csv").then(r => {
+      if (r.ok) return r.text();
+      throw new Error("not found");
+    }).then(loadFromCsvText).catch(() => { /* 手動選択にフォールバック */ });
+  }
+})();
+</script>
+</body>
+</html>

@@ -128,7 +128,7 @@ class GarTargetArchitectureTest(unittest.TestCase):
                 return_value=environment,
             ),
             mock.patch(
-                "scripts.gar_lib.recovery.access.run_terminal_run_command"
+                "scripts.gar_lib.commands.target.run_terminal_run_command"
             ) as terminal_request,
             contextlib.redirect_stdout(io.StringIO()),
             contextlib.redirect_stderr(stderr),

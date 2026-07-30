@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.gar_lib.config import (
+from scripts.gar_lib.core.config import (
     PROJECT_ROOT,
     default_ec2_host,
     default_ec2_instance_id,

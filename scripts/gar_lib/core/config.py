@@ -9,8 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-# scripts/gar_lib/config.py -> scripts/gar_lib -> scripts -> repo root
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# scripts/gar_lib/core/config.py -> core -> scripts/gar_lib -> scripts -> repo root
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # GAR's control-plane settings belong to the Runtime checkout, never to the
 # current product workspace from which the command happened to be invoked.

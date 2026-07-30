@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from scripts.gar_lib.access.codespaces import codespace_list_rows, select_codespace_from_list
-from scripts.gar_lib.config import load_config
+from scripts.gar_lib.core.config import load_config
 from scripts.gar_lib.vscode.profile_manage import (
     remove_vscode_terminal_profile,
     write_vscode_terminal_profile,

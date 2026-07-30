@@ -15,7 +15,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 
-from scripts.gar_lib.config import (
+from scripts.gar_lib.core.config import (
     load_config,
     save_config,
     saved_adb_exe,

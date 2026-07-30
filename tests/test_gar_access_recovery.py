@@ -81,14 +81,13 @@ class GarAccessRecoveryTest(unittest.TestCase):
             returncode=255,
         )
 
-        with mock.patch(
-            "scripts.gar_lib.recovery.access.run_terminal_run_command", return_value=0
-        ) as requester:
-            exit_code = report_access_failure(
-                error,
-                workspace=self.workspace,
-                retry_command="gar sim host start --workspace Local/Product",
-            )
+        requester = mock.Mock(return_value=0)
+        exit_code = report_access_failure(
+            error,
+            workspace=self.workspace,
+            retry_command="gar sim host start --workspace Local/Product",
+            run_terminal=requester,
+        )
 
         self.assertEqual(1, exit_code)
         requester.assert_called_once()

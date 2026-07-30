@@ -7,8 +7,8 @@ import sys
 
 from scripts.gar_lib.artifacts.store import ArtifactStore, LocalArtifactStore
 from scripts.gar_lib.build.backends import build_environment_for
-from scripts.gar_lib.commands.common.hardware import load_hw_definition
 from scripts.gar_lib.core.artifact import ArtifactKind
+from scripts.gar_lib.core.hardware import load_hw_definition
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.backends import (
     hardware_control_for,
