@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.commands.setup.workspace_setup import _prompt_local_connection
+from scripts.gar_lib.commands.setup.workspace_setup import (
+    _prompt_local_connection,
+    configure_workspace_root,
+)
 
 
 class WorkspaceSetupTests(unittest.TestCase):
@@ -28,6 +31,45 @@ class WorkspaceSetupTests(unittest.TestCase):
 
         self.assertEqual({"type": "local", "path": str(existing_path)}, connection)
         self.assertEqual("GarStreamTx", branch)
+
+    def test_successful_edit_moves_to_next_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = {
+                "workspaces": [
+                    {
+                        "id": "rx",
+                        "name": "Local/GarStreamRx",
+                        "connection": {"type": "local", "path": str(root)},
+                        "branch": "GarStreamRx",
+                    },
+                    {
+                        "id": "tx",
+                        "name": "Local/GarStreamTx",
+                        "connection": {"type": "local", "path": str(root)},
+                        "branch": "GarStreamTx",
+                    },
+                ],
+                "workspace_id": "tx",
+            }
+            with (
+                mock.patch(
+                    "scripts.gar_lib.commands.setup.workspace_setup.safe_input",
+                    side_effect=["e", "2", "", ""],
+                ),
+                mock.patch(
+                    "scripts.gar_lib.commands.setup.workspace_setup.probe_git_workspace",
+                    return_value=("origin", "GarStreamTx"),
+                ),
+                mock.patch(
+                    "scripts.gar_lib.commands.setup.workspace_setup.sys.stdin.isatty",
+                    return_value=True,
+                ),
+                mock.patch("scripts.gar_lib.commands.setup.workspace_setup.save_config"),
+            ):
+                selected = configure_workspace_root(config)
+
+        self.assertEqual("tx", selected)
 
 
 if __name__ == "__main__":

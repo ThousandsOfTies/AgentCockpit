@@ -66,7 +66,9 @@ def configure_workspace_root(config: dict) -> str | None:
             changed |= _delete_workspace(workspaces)
             continue
         if action in {"e", "edit", "modify", "修正"}:
-            changed |= _edit_workspace(workspaces)
+            if _edit_workspace(workspaces):
+                changed = True
+                break
             continue
         print(f"  {style('a（追加）/ d（削除）/ e（修正）/ Enter（次へ）を入力してください。', YELLOW)}")
 
