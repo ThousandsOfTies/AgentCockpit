@@ -25,6 +25,7 @@ from scripts.gar_lib.commands.setup.target_setup import (
     prepare_target_backend,
     print_target_next_steps,
     save_selected_target,
+    saved_target_setting,
     select_target,
     selected_target_manifest,
 )
@@ -130,7 +131,11 @@ def run_setup(
         no_install=no_install,
         ec2_host=ec2_host,
     )
-    configure_default_ec2_host(config, ec2_host=ec2_host)
+    # An explicit CLI value may be supplied even when the environment menu was
+    # skipped.  Otherwise, defer to the selection flow and only fill a missing
+    # SSH simulation host here.
+    if ec2_host is not None or default_ec2_host(config) is None:
+        configure_default_ec2_host(config, ec2_host=ec2_host)
 
     missing_categories = _required_missing_categories(
         config,
@@ -257,9 +262,30 @@ def _run_environment_selection_phase(
 
         config["selected_environments"][environment.category_id] = environment.environment_id
         save_config(config)
+        _configure_selected_environment_connection(
+            environment.category_id,
+            environment.environment_id,
+            config,
+            ec2_host=ec2_host,
+        )
         redraw_notice = f"更新しました: {category.name} = {environment.display_name}"
 
     return optional_categories
+
+
+def _configure_selected_environment_connection(
+    category_id: str,
+    environment_id: str,
+    config: dict,
+    *,
+    ec2_host: str | None,
+) -> None:
+    """Ask for SSH details immediately after choosing an SSH environment."""
+
+    if category_id == "simulator" and environment_id == "ssh_remote":
+        configure_default_ec2_host(config, ec2_host=ec2_host)
+    elif category_id == "target" and environment_id == "ssh_scp":
+        configure_target_connection(config)
 
 
 def _begin_selection_screen(redraw_notice: str | None) -> None:
@@ -321,7 +347,11 @@ def _run_completion_phase(
     print()
     configure_esp32_serial_port(config, esp32_port=esp32_port)
     print()
-    configure_target_connection(config)
+    if (
+        config.get("selected_environments", {}).get("target") != "ssh_scp"
+        or saved_target_setting(config, "host") is None
+    ):
+        configure_target_connection(config)
     print()
     print_target_next_steps(config)
     print()

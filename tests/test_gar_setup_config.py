@@ -18,6 +18,7 @@ from support.gar_cli_test_support import (
 )
 
 from scripts.gar_lib.commands.setup import run_setup
+from scripts.gar_lib.commands.setup.command import _configure_selected_environment_connection
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.config import load_config, save_config
 from scripts.gar_lib.core.tools_repository import ensure_gar_tools_available
@@ -25,6 +26,40 @@ from scripts.gar_lib.target.manifest import TargetManifest, discover_target_mani
 
 
 class GarSetupConfigTest(unittest.TestCase):
+    def test_selecting_ssh_simulation_prompts_for_its_host_immediately(self) -> None:
+        config = {"selected_environments": {"simulator": "ssh_remote"}}
+        with (
+            mock.patch(
+                "scripts.gar_lib.commands.setup.command.configure_default_ec2_host"
+            ) as configure_host,
+            mock.patch(
+                "scripts.gar_lib.commands.setup.command.configure_target_connection"
+            ) as configure_target,
+        ):
+            _configure_selected_environment_connection(
+                "simulator", "ssh_remote", config, ec2_host=None
+            )
+
+        configure_host.assert_called_once_with(config, ec2_host=None)
+        configure_target.assert_not_called()
+
+    def test_selecting_ssh_target_prompts_for_its_host_immediately(self) -> None:
+        config = {"selected_environments": {"target": "ssh_scp"}}
+        with (
+            mock.patch(
+                "scripts.gar_lib.commands.setup.command.configure_default_ec2_host"
+            ) as configure_host,
+            mock.patch(
+                "scripts.gar_lib.commands.setup.command.configure_target_connection"
+            ) as configure_target,
+        ):
+            _configure_selected_environment_connection(
+                "target", "ssh_scp", config, ec2_host=None
+            )
+
+        configure_host.assert_not_called()
+        configure_target.assert_called_once_with(config)
+
     def test_setup_lists_only_selected_environment_for_configured_category(self) -> None:
         environments = [FakeDevelopmentEnvironment, FakeSimulationEnvironment, FakeTargetAccessEnvironment]
         targets = [
