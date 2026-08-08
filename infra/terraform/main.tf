@@ -51,6 +51,10 @@ data "aws_ami" "ubuntu_noble_arm64" {
   }
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
 locals {
   simulation_name = "gar-sim-${terraform.workspace}"
   resolved_ami_id = coalesce(var.ami_id, data.aws_ami.ubuntu_noble_arm64.id)
@@ -71,6 +75,14 @@ resource "aws_security_group" "gar_sim" {
     cidr_blocks = [var.ssh_ingress_cidr]
   }
 
+  ingress {
+    description = "GarStream MJPEG RTP within the default VPC"
+    from_port   = 5600
+    to_port     = 5600
+    protocol    = "udp"
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -88,7 +100,8 @@ resource "aws_instance" "gar_sim" {
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.gar_sim.id]
 
-  user_data = file("${path.module}/user_data.sh")
+  user_data                   = file("${path.module}/user_data.sh")
+  user_data_replace_on_change = true
 
   root_block_device {
     volume_size = 20
@@ -96,8 +109,8 @@ resource "aws_instance" "gar_sim" {
   }
 
   tags = {
-    Name    = local.simulation_name
-    Project = "GaplessAgentRuntime"
+    Name      = local.simulation_name
+    Project   = "GaplessAgentRuntime"
     Workspace = terraform.workspace
   }
 }
@@ -111,4 +124,9 @@ output "instance_id" {
 
 output "public_ip" {
   value = aws_instance.gar_sim.public_ip
+}
+
+
+output "private_ip" {
+  value = aws_instance.gar_sim.private_ip
 }

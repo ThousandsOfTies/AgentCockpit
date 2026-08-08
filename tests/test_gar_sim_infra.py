@@ -18,6 +18,7 @@ class GarSimulationInfrastructureTest(unittest.TestCase):
             stdout=json.dumps(
                 {
                     "instance_id": {"value": "i-from-tf"},
+                    "private_ip": {"value": "10.0.1.25"},
                     "public_ip": {"value": "203.0.113.55"},
                 }
             ),
@@ -72,6 +73,7 @@ class GarSimulationInfrastructureTest(unittest.TestCase):
             stdout=json.dumps(
                 {
                     "instance_id": {"value": "i-from-tf"},
+                    "private_ip": {"value": "10.0.1.25"},
                     "public_ip": {"value": "203.0.113.55"},
                 }
             ),
@@ -111,6 +113,7 @@ class GarSimulationInfrastructureTest(unittest.TestCase):
         self.assertEqual(["apply", "-input=false", "-auto-approve"], run_tf.call_args_list[2].args[0])
         saved_config = save_config.call_args.args[0]
         self.assertEqual("i-from-tf", saved_config["ec2"]["instance_id"])
+        self.assertEqual("10.0.1.25", saved_config["ec2"]["private_ip"])
         self.assertEqual("ap-test-2", saved_config["ec2"]["region"])
         updater_type.return_value.update.assert_called_once_with("configured-ec2", "203.0.113.55")
 

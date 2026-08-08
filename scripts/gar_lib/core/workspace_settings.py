@@ -79,12 +79,13 @@ class SelectedEnvironments(SettingsMapping):
 class Ec2Settings(SettingsMapping):
     host: str | None = None
     instance_id: str | None = None
+    private_ip: str | None = None
     region: str | None = None
     repo_dir: str | None = None
     identity_file: str | None = None
     arch: str | None = None
 
-    field_names = ("host", "instance_id", "region", "repo_dir", "identity_file", "arch")
+    field_names = ("host", "instance_id", "private_ip", "region", "repo_dir", "identity_file", "arch")
 
     @classmethod
     def from_value(cls, value: Ec2Settings | Mapping[str, Any]) -> Self:

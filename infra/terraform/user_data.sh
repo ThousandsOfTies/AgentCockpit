@@ -9,9 +9,19 @@ set -eux
 
 apt-get update
 apt-get install -y \
+  linux-headers-"$(uname -r)" \
   linux-modules-extra-"$(uname -r)" \
+  v4l2loopback-dkms \
+  v4l2loopback-utils \
   gpiod \
+  gir1.2-gstreamer-1.0 \
+  gstreamer1.0-tools \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
   python3-aiohttp \
+  python3-gi \
+  python3-periphery \
+  python3-spidev \
   python3-websockets \
   strace
 

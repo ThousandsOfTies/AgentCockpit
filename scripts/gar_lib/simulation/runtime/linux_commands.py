@@ -7,6 +7,7 @@ import io
 import shlex
 import textwrap
 from collections.abc import Sequence
+from pathlib import Path
 from urllib.parse import urlencode
 
 from scripts.gar_lib.simulation.hardware import io_actions
@@ -25,9 +26,11 @@ GAR_GPIO_SIM_START = f"{GAR_SBIN_DIR}/gar-gpio-sim-start"
 GAR_GPIO_SIM_STOP = f"{GAR_SBIN_DIR}/gar-gpio-sim-stop"
 GAR_CUSE_I2C = f"{GAR_SBIN_DIR}/cuse_i2c"
 GAR_CUSE_SPI = f"{GAR_SBIN_DIR}/cuse_spi"
+GAR_V4L2_CAMERA_SERVICE = "gar-v4l2-camera.service"
+GAR_SIM_APP_SERVICE = "gar-sim-app.service"
 PANEL_BASE_URL = "http://127.0.0.1:8080"
 CURL_OPTIONS = "--silent --show-error --fail --connect-timeout 2 --max-time 5"
-SIM_RUNTIME_PROCESS_PATTERN = "[b]ridge.py|[c]use_i2c|[c]use_spi"
+SIM_RUNTIME_PROCESS_PATTERN = "[b]ridge.py|[c]use_i2c|[c]use_spi|[c]amera_tx.py|[v]ideo_monitor.py|[g]st-launch-1.0"
 
 SIM_GPIO_SIM_CHECK_COMMAND = (
     'echo "@@KERNEL@@"; '
@@ -120,8 +123,16 @@ def _spi_devs(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
     )
 
 
+def _video_devs(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
+    return _unique_nonempty(
+        [row.get("dev", "").strip() for row in _csv_rows_for("video", hw_definition) if row.get("sim", "").strip()]
+    )
+
+
 def _diag_devices(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
-    return _unique_nonempty([*_i2c_devs(hw_definition), _gpiochip_path(hw_definition), *_spi_devs(hw_definition)])
+    return _unique_nonempty(
+        [*_i2c_devs(hw_definition), _gpiochip_path(hw_definition), *_spi_devs(hw_definition), *_video_devs(hw_definition)]
+    )
 
 
 def _i2c_services(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
@@ -155,7 +166,7 @@ def _simulated_devs_or_legacy_default(
 
     if devices:
         return devices
-    if any(_csv_rows_for(kind, hw_definition) for kind in ("gpio", "i2c", "spi")):
+    if any(_csv_rows_for(kind, hw_definition) for kind in ("gpio", "i2c", "spi", "video")):
         return []
     return [default]
 
@@ -176,11 +187,14 @@ def _spi_service_options(hw_definition: dict[str, list[dict[str, str]]]) -> str:
 
 
 def _runtime_services(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
+    video_services = [GAR_V4L2_CAMERA_SERVICE] if _video_devs(hw_definition) else []
     return [
         "gar-gpio-sim.service",
         "gar-bridge.service",
+        *video_services,
         *_i2c_services(hw_definition),
         *_spi_services(hw_definition),
+        GAR_SIM_APP_SERVICE,
     ]
 
 
@@ -465,7 +479,7 @@ class LinuxSystemdCommandBuilder:
             Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
             Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
             Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
-            PassEnvironment=GAR_BRIDGE_HOST GAR_BRIDGE_PORT GAR_BRIDGE_ALLOWED_HOSTS
+            PassEnvironment=GAR_BRIDGE_HOST GAR_BRIDGE_PORT GAR_BRIDGE_ALLOWED_HOSTS GAR_CAMERA_DEVICE GAR_CAMERA_WIDTH GAR_CAMERA_HEIGHT GAR_CAMERA_FPS
             ExecStart={GAR_BRIDGE_START}
             Restart=on-failure
             RestartSec=1
@@ -518,6 +532,40 @@ class LinuxSystemdCommandBuilder:
             WantedBy=multi-user.target
             """
         ).lstrip()
+        video_device = (_video_devs(hw) or ["/dev/video0"])[0]
+        video_unit = textwrap.dedent(
+            f"""
+            [Unit]
+            Description=Gapless Agent Runtime V4L2 camera input
+
+            [Service]
+            Type=oneshot
+            RemainAfterExit=yes
+            ExecStart=/sbin/modprobe v4l2loopback video_nr={Path(video_device).name.removeprefix("video")} card_label=GAR_Camera exclusive_caps=1
+            ExecStartPost=/bin/sh -c 'for n in $(seq 1 30); do [ -e {video_device} ] && chmod 666 {video_device} && exit 0; sleep 0.1; done; exit 1'
+
+            [Install]
+            WantedBy=multi-user.target
+            """
+        ).lstrip()
+        default_app_unit = textwrap.dedent(
+            f"""
+            [Unit]
+            Description=Gapless Agent Runtime empty simulation application
+            PartOf=gar-sim.target
+
+            [Service]
+            Type=oneshot
+            RemainAfterExit=yes
+            ExecStart=/bin/true
+            """
+        ).lstrip()
+        app_unit_path = f"/etc/systemd/system/{GAR_SIM_APP_SERVICE}"
+        install_default_app = (
+            f"if [ ! -f {shlex.quote(app_unit_path)} ]; then\n"
+            + _sudo_write_file_command(app_unit_path, default_app_unit)
+            + "\nfi"
+        )
         target_unit = textwrap.dedent(
             f"""
             [Unit]
@@ -565,6 +613,8 @@ class LinuxSystemdCommandBuilder:
             _sudo_write_file_command("/etc/systemd/system/gar-bridge.service", bridge_unit),
             _sudo_write_file_command("/etc/systemd/system/gar-cuse-i2c@.service", i2c_unit),
             _sudo_write_file_command("/etc/systemd/system/gar-cuse-spi@.service", spi_unit),
+            _sudo_write_file_command(f"/etc/systemd/system/{GAR_V4L2_CAMERA_SERVICE}", video_unit),
+            install_default_app,
             _sudo_write_file_command("/etc/systemd/system/gar-sim.target", target_unit),
             "sudo systemctl daemon-reload",
         ]

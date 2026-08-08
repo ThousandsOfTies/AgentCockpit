@@ -39,6 +39,7 @@ HW_TEMPLATE_FILES: dict[str, list[str]] = {
         "sim",
         "description",
     ],
+    "video.csv": ["name", "dev", "driver", "sim", "width", "height", "fps", "description"],
     "connections.csv": ["source", "source_pin", "target", "target_pin", "signal", "description"],
 }
 
@@ -87,6 +88,7 @@ def load_hw_definition(*, hw_dir: str | None = None) -> HardwareDefinition:
         "gpio": _read_hw_csv(root, "gpio.csv"),
         "i2c": _read_hw_csv(root, "i2c.csv"),
         "spi": _read_hw_csv(root, "spi.csv"),
+        "video": _read_hw_csv(root, "video.csv"),
         "connections": _read_hw_csv(root, "connections.csv"),
     }
 

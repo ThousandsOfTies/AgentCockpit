@@ -23,7 +23,7 @@ class WorkspaceSettingsTest(unittest.TestCase):
                 "simulator": "local_docker",
                 "target": "ssh_scp",
             },
-            ec2={"host": "sim-host", "region": "ap-test-1"},
+            ec2={"host": "sim-host", "private_ip": "10.0.1.25", "region": "ap-test-1"},
             docker={"container": "gar-sim", "bridge_port": 9090},
         )
 
@@ -33,6 +33,7 @@ class WorkspaceSettingsTest(unittest.TestCase):
         self.assertIsInstance(workspace.docker, DockerSettings)
         self.assertEqual("local_docker", workspace.selected_environments.simulator)
         self.assertEqual("sim-host", workspace.ec2.host)
+        self.assertEqual("10.0.1.25", workspace.ec2.private_ip)
         self.assertEqual(9090, workspace.docker.bridge_port)
 
     def test_typed_settings_keep_mapping_compatibility_at_legacy_boundaries(self) -> None:

@@ -18,6 +18,7 @@ from scripts.gar_lib.core.config import (
     load_config,
     save_config,
     set_default_ec2_instance_id,
+    set_default_ec2_private_ip,
     set_default_ec2_region,
 )
 from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
@@ -166,11 +167,14 @@ def _terraform_output_json(env: dict[str, str], *, quiet: bool = False) -> dict[
 def _sync_config_from_outputs(config: dict, outputs: dict[str, str], *, region: str | None) -> None:
     instance_id = outputs.get("instance_id")
     public_ip = outputs.get("public_ip")
-    if not instance_id and not public_ip:
+    private_ip = outputs.get("private_ip")
+    if not instance_id and not public_ip and not private_ip:
         return
 
     if instance_id:
         set_default_ec2_instance_id(config, instance_id)
+    if private_ip:
+        set_default_ec2_private_ip(config, private_ip)
     if region:
         set_default_ec2_region(config, region)
     save_config(config)
@@ -193,6 +197,7 @@ def _print_current_settings(config: dict, outputs: dict[str, str], *, region: st
     print(f"  region     : {region}")
     print(f"  instance_id: {outputs.get('instance_id') or default_ec2_instance_id(config) or '(none)'}")
     print(f"  public_ip  : {outputs.get('public_ip') or '(none)'}")
+    print(f"  private_ip : {outputs.get('private_ip') or '(none)'}")
 
 
 def run_sim_infra_command(

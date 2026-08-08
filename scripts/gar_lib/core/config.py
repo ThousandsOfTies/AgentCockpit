@@ -161,6 +161,7 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
     ec2 = data.get("ec2")
     ec2_host = None
     ec2_instance_id = None
+    ec2_private_ip = None
     ec2_region = None
     ec2_repo_dir = None
     ec2_identity_file = None
@@ -172,6 +173,8 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
             invalid_ec2_host = True
         if isinstance(ec2.get("instance_id"), str):
             ec2_instance_id = ec2["instance_id"]
+        if isinstance(ec2.get("private_ip"), str):
+            ec2_private_ip = ec2["private_ip"]
         if isinstance(ec2.get("region"), str):
             ec2_region = ec2["region"]
         if isinstance(ec2.get("repo_dir"), str):
@@ -217,6 +220,7 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
         "ec2": {
             **({"host": ec2_host} if ec2_host else {}),
             **({"instance_id": ec2_instance_id} if ec2_instance_id else {}),
+            **({"private_ip": ec2_private_ip} if ec2_private_ip else {}),
             **({"region": ec2_region} if ec2_region else {}),
             **({"repo_dir": ec2_repo_dir} if ec2_repo_dir else {}),
             **({"identity_file": ec2_identity_file} if ec2_identity_file else {}),
@@ -421,6 +425,14 @@ def set_default_ec2_instance_id(config: dict, instance_id: str) -> None:
         ec2 = {}
         config["ec2"] = ec2
     ec2["instance_id"] = instance_id
+
+
+def set_default_ec2_private_ip(config: dict, private_ip: str) -> None:
+    ec2 = config.setdefault("ec2", {})
+    if not isinstance(ec2, dict):
+        ec2 = {}
+        config["ec2"] = ec2
+    ec2["private_ip"] = private_ip
 
 
 def set_default_ec2_region(config: dict, region: str) -> None:
