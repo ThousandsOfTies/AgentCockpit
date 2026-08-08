@@ -12,6 +12,7 @@ apt-get install -y \
   linux-modules-extra-"$(uname -r)" \
   gpiod \
   python3-aiohttp \
+  python3-websockets \
   strace
 
 # gpio-sim を事前ロードしてインストール確認（失敗してもブートは止めない）

@@ -11,8 +11,8 @@ from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.vscode.profile_manage import write_vscode_terminal_profile
 
 
-def start_sim_port_forward(host: str) -> int:
-    return _port_forward(host)
+def start_sim_port_forward(host: str, *, panel_port: int = 8080) -> int:
+    return _port_forward(host, panel_port=panel_port)
 
 
 def stop_sim_port_forward(host: str) -> int:
@@ -23,8 +23,9 @@ def status_sim_port_forward(host: str) -> int:
     return _port_forward(host, "--status")
 
 
-def _port_forward(host: str, action: str | None = None) -> int:
+def _port_forward(host: str, action: str | None = None, *, panel_port: int = 8080) -> int:
     command = [str(PROJECT_ROOT / "tools" / "forward_ec2_ports.sh"), "--host", host]
+    command.extend(("--http", str(panel_port)))
     if action:
         command.append(action)
     return subprocess.run(command, check=False).returncode

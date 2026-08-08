@@ -86,6 +86,7 @@ class SimulationRuntime:
         settings: str | None = None,
         profile_name: str | None = None,
         no_port_forward: bool = False,
+        panel_port: int = 8080,
     ) -> int:
         environment = simulation_environment_for(self.workspace)
         exit_code = environment.start(_workspace_hardware(self.workspace))
@@ -97,7 +98,7 @@ class SimulationRuntime:
         sessions.configure_terminal(host, settings=settings, profile_name=profile_name)
         if no_port_forward:
             return 0
-        return sessions.start(host)
+        return sessions.start(host, panel_port=panel_port)
 
     def stop(self, *, keep_port_forward: bool = False) -> int:
         environment = simulation_environment_for(self.workspace)

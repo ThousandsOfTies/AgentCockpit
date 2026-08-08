@@ -359,14 +359,17 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = PortForwardConfig(args.host, args.http)
     directory = state_directory()
-    store = PortForwardStateStore(directory / "ec2-port-forward.json")
-    log_path = directory / "ec2-port-forward.log"
+    # Each local port owns its own process/state.  This lets independent
+    # product workspaces expose their own remote panels concurrently.
+    suffix = "" if args.http == DEFAULT_HTTP_PORT else f"-{args.http}"
+    store = PortForwardStateStore(directory / f"ec2-port-forward{suffix}.json")
+    log_path = directory / f"ec2-port-forward{suffix}.log"
     ssh_executable = selected_ssh_executable()
     ssh_config = Path.home() / ".ssh" / "config"
     command = config.ssh_command(ssh_executable, ssh_config)
     legacy_command = config.legacy_ssh_command(ssh_executable, ssh_config)
     migrate_legacy_pid_file(
-        legacy_pid_path=directory / "ec2-port-forward.pid",
+        legacy_pid_path=directory / "ec2-port-forward.pid" if args.http == DEFAULT_HTTP_PORT else directory / ".none",
         store=store,
         config=config,
         expected_command=command,

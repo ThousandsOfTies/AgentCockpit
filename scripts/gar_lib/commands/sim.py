@@ -155,6 +155,14 @@ def add_sim_parser(
     sim_runtime_actions["start"].add_argument("--settings", default=None, help="VS Code settings.json path")
     sim_runtime_actions["start"].add_argument("--profile-name", default=None, help="VS Code terminal profile 名")
     sim_runtime_actions["start"].add_argument(
+        "--panel-port",
+        type=int,
+        default=8080,
+        choices=range(1, 65536),
+        metavar="PORT",
+        help="Hardware Panel を公開するローカル port（既定: 8080）",
+    )
+    sim_runtime_actions["start"].add_argument(
         "--no-port-forward",
         action="store_true",
         help="Hardware Panel 用の 8080 port forward を開始しません",
@@ -265,6 +273,11 @@ def add_sim_parser(
         infra_action_parser.add_argument("--key-name", default=None, help="EC2 SSH key pair name")
         infra_action_parser.add_argument("--region", default=None, help="AWS region")
         infra_action_parser.add_argument(
+            "--ssh-cidr",
+            default=None,
+            help="SSHを許可する接続元CIDR（例: 203.0.113.4/32）",
+        )
+        infra_action_parser.add_argument(
             "--auto-approve",
             action="store_true",
             help="--auto-approve を terraform に渡します",
@@ -296,6 +309,7 @@ def run_sim_command(
             args.infra_action,
             key_name=getattr(args, "key_name", None),
             region=getattr(args, "region", None),
+            ssh_cidr=getattr(args, "ssh_cidr", None),
             auto_approve=getattr(args, "auto_approve", False),
         )
 
@@ -382,6 +396,7 @@ def _run_runtime_action(gar: Gar, action: str, args: Namespace) -> int:
                 settings=getattr(args, "settings", None),
                 profile_name=getattr(args, "profile_name", None),
                 no_port_forward=getattr(args, "no_port_forward", False),
+                panel_port=getattr(args, "panel_port", 8080),
             )
         case "stop":
             return gar.sim.runtime.stop(keep_port_forward=getattr(args, "keep_port_forward", False))

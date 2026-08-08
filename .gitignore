@@ -12,6 +12,8 @@ id_ed25519*
 codespaces/*
 !codespaces/README.md
 .venv/
+.terraform/
+terraform.tfstate*
 __pycache__/
 *.pyc
 tools/gar-terminal-bridge-*.vsix

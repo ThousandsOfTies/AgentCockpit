@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,13 +40,72 @@ def _run_terraform(args: list[str], *, cwd: Path, env: dict[str, str]) -> subpro
     )
 
 
-def _terraform_env(region: str | None, key_name: str | None) -> dict[str, str]:
+def _terraform_env(
+    region: str | None,
+    key_name: str | None,
+    ssh_cidr: str | None,
+) -> dict[str, str]:
     env = os.environ.copy()
     if region:
         env["TF_VAR_aws_region"] = region
+        # AWS CLI's console-login credential exporter also needs an explicit
+        # region; the Terraform provider receives its region through TF_VAR.
+        env["AWS_REGION"] = region
     if key_name:
         env["TF_VAR_key_name"] = key_name
+    if ssh_cidr:
+        env["TF_VAR_ssh_ingress_cidr"] = ssh_cidr
     return env
+
+
+def _inject_aws_cli_credentials(env: dict[str, str]) -> bool:
+    """Bridge ``aws login`` credentials to Terraform without persisting secrets.
+
+    AWS CLI's console-login cache is understood by the CLI but not by the AWS
+    Terraform provider.  ``export-credentials --format process`` refreshes the
+    short-lived CLI credentials and returns the standard credential fields.  We
+    pass them only to the Terraform child process environment.
+    """
+
+    if env.get("AWS_ACCESS_KEY_ID") and env.get("AWS_SECRET_ACCESS_KEY"):
+        return True
+
+    aws = shutil.which("aws")
+    if aws is None:
+        print("gar sim infra: AWS CLIが見つかりません。aws loginを実行できません。", file=sys.stderr)
+        return False
+
+    result = subprocess.run(
+        [aws, "configure", "export-credentials", "--format", "process"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.returncode != 0:
+        print(
+            "gar sim infra: AWS認証情報を取得できません。"
+            "`aws login --remote --region <region>` を実行してから再試行してください。",
+            file=sys.stderr,
+        )
+        return False
+
+    try:
+        credentials = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("gar sim infra: AWS CLIの認証情報形式を解析できません。", file=sys.stderr)
+        return False
+
+    fields = {
+        "AWS_ACCESS_KEY_ID": credentials.get("AccessKeyId"),
+        "AWS_SECRET_ACCESS_KEY": credentials.get("SecretAccessKey"),
+        "AWS_SESSION_TOKEN": credentials.get("SessionToken"),
+    }
+    if not all(isinstance(value, str) and value for value in fields.values()):
+        print("gar sim infra: AWS CLIから有効な一時認証情報を取得できません。", file=sys.stderr)
+        return False
+    env.update(fields)
+    return True
 
 
 def _print_completed(result: subprocess.CompletedProcess[str]) -> None:
@@ -57,6 +117,28 @@ def _print_completed(result: subprocess.CompletedProcess[str]) -> None:
 
 def _terraform_init(env: dict[str, str]) -> bool:
     result = _run_terraform(["init", "-input=false"], cwd=TERRAFORM_DIR, env=env)
+    _print_completed(result)
+    return result.returncode == 0
+
+
+def _terraform_workspace_name(config: dict) -> str:
+    """Return a Terraform workspace isolated to one GAR product workspace."""
+
+    workspace_id = config.get("workspace_id")
+    if not isinstance(workspace_id, str) or not workspace_id:
+        return "default"
+    return re.sub(r"[^0-9A-Za-z_-]", "-", f"gar-{workspace_id}")
+
+
+def _terraform_select_workspace(env: dict[str, str], config: dict) -> bool:
+    """Select or create the Terraform state namespace for the active product."""
+
+    workspace = _terraform_workspace_name(config)
+    result = _run_terraform(
+        ["workspace", "select", "-or-create=true", workspace],
+        cwd=TERRAFORM_DIR,
+        env=env,
+    )
     _print_completed(result)
     return result.returncode == 0
 
@@ -81,13 +163,12 @@ def _terraform_output_json(env: dict[str, str], *, quiet: bool = False) -> dict[
     return values
 
 
-def _sync_config_from_outputs(outputs: dict[str, str], *, region: str | None) -> None:
+def _sync_config_from_outputs(config: dict, outputs: dict[str, str], *, region: str | None) -> None:
     instance_id = outputs.get("instance_id")
     public_ip = outputs.get("public_ip")
     if not instance_id and not public_ip:
         return
 
-    config = load_config()
     if instance_id:
         set_default_ec2_instance_id(config, instance_id)
     if region:
@@ -119,6 +200,7 @@ def run_sim_infra_command(
     *,
     key_name: str | None = None,
     region: str | None = None,
+    ssh_cidr: str | None = None,
     auto_approve: bool = False,
 ) -> int:
     if not TERRAFORM_DIR.exists():
@@ -133,9 +215,20 @@ def run_sim_infra_command(
     if not resolved_region:
         print("gar sim infra: region が未設定です。--region を指定してください。", file=sys.stderr)
         return 1
-    env = _terraform_env(resolved_region, key_name)
+    if ssh_cidr is None:
+        print(
+            "gar sim infra: SSH公開範囲を `--ssh-cidr <接続元IP>/32` で指定してください。",
+            file=sys.stderr,
+        )
+        return 1
+
+    env = _terraform_env(resolved_region, key_name, ssh_cidr)
+    if not _inject_aws_cli_credentials(env):
+        return 1
 
     if not _terraform_init(env):
+        return 1
+    if not _terraform_select_workspace(env, config):
         return 1
 
     if command == "setup":
@@ -160,6 +253,6 @@ def run_sim_infra_command(
 
     if command == "apply":
         outputs = _terraform_output_json(env)
-        _sync_config_from_outputs(outputs, region=resolved_region)
+        _sync_config_from_outputs(config, outputs, region=resolved_region)
 
     return 0

@@ -53,6 +53,7 @@ class GarSimulationIoTest(GarCliDispatchAssertions, unittest.TestCase):
             settings=None,
             profile_name=None,
             no_port_forward=False,
+            panel_port=8080,
         )
 
     def test_parse_sim_diag_builds_structured_payload(self) -> None:

@@ -182,13 +182,26 @@ class GarCliRootParserTest(GarCliDispatchAssertions, unittest.TestCase):
 
     def test_sim_infra_setup_is_available_from_cli(self) -> None:
         with mock.patch("scripts.gar_lib.commands.sim.run_sim_infra_command", return_value=0) as run_infra:
-            result = main(["sim", "infra", "setup", "--region", "ap-test-1", "--key-name", "gar-key"])
+            result = main(
+                [
+                    "sim",
+                    "infra",
+                    "setup",
+                    "--region",
+                    "ap-test-1",
+                    "--key-name",
+                    "gar-key",
+                    "--ssh-cidr",
+                    "203.0.113.4/32",
+                ]
+            )
 
         self.assertEqual(0, result)
         run_infra.assert_called_once_with(
             "setup",
             key_name="gar-key",
             region="ap-test-1",
+            ssh_cidr="203.0.113.4/32",
             auto_approve=False,
         )
 
