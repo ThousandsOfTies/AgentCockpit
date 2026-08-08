@@ -13,6 +13,13 @@ from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.core.hardware import HW_TEMPLATE_FILES, write_hw_template
 
 
+def _create_hardware_templates(tools_root: Path, target: str = "linux-device") -> None:
+    template_dir = tools_root / "targets" / target / "hardware"
+    template_dir.mkdir(parents=True)
+    for name, headers in HW_TEMPLATE_FILES.items():
+        (template_dir / name).write_text(",".join(headers) + "\n", encoding="utf-8")
+
+
 class GarTerminalHardwareTest(unittest.TestCase):
     def test_terminal_run_creates_vscode_terminal_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,13 +183,19 @@ class GarTerminalHardwareTest(unittest.TestCase):
 
     def test_hw_init_refuses_to_overwrite_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            hw_dir = Path(tmp) / "hardware"
+            root = Path(tmp)
+            tools_root = root / "gar-tools"
+            _create_hardware_templates(tools_root)
+            hw_dir = root / "hardware"
             hw_dir.mkdir()
             gpio_csv = hw_dir / "gpio.csv"
             gpio_csv.write_text("keep me\n", encoding="utf-8")
 
             output = io.StringIO()
-            with contextlib.redirect_stdout(output):
+            with (
+                mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(tools_root)}),
+                contextlib.redirect_stdout(output),
+            ):
                 result = main(["hw", "init", "--dir", str(hw_dir)])
 
             self.assertEqual(1, result)
@@ -218,7 +231,12 @@ class GarTerminalHardwareTest(unittest.TestCase):
     def test_hw_init_defaults_to_the_current_product_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace_root = Path(tmp)
-            with mock.patch("scripts.gar_lib.core.hardware.Path.cwd", return_value=workspace_root):
+            tools_root = workspace_root / "gar-tools"
+            _create_hardware_templates(tools_root)
+            with (
+                mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(tools_root)}),
+                mock.patch("scripts.gar_lib.core.hardware.Path.cwd", return_value=workspace_root),
+            ):
                 result = main(["hw", "init"])
 
             self.assertEqual(0, result)

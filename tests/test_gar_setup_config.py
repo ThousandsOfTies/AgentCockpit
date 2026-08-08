@@ -29,16 +29,10 @@ class GarSetupConfigTest(unittest.TestCase):
     def test_selecting_ssh_simulation_prompts_for_its_host_immediately(self) -> None:
         config = {"selected_environments": {"simulator": "ssh_remote"}}
         with (
-            mock.patch(
-                "scripts.gar_lib.commands.setup.command.configure_default_ec2_host"
-            ) as configure_host,
-            mock.patch(
-                "scripts.gar_lib.commands.setup.command.configure_target_connection"
-            ) as configure_target,
+            mock.patch("scripts.gar_lib.commands.setup.command.configure_default_ec2_host") as configure_host,
+            mock.patch("scripts.gar_lib.commands.setup.command.configure_target_connection") as configure_target,
         ):
-            _configure_selected_environment_connection(
-                "simulator", "ssh_remote", config, ec2_host=None
-            )
+            _configure_selected_environment_connection("simulator", "ssh_remote", config, ec2_host=None)
 
         configure_host.assert_called_once_with(config, ec2_host=None)
         configure_target.assert_not_called()
@@ -46,16 +40,10 @@ class GarSetupConfigTest(unittest.TestCase):
     def test_selecting_ssh_target_prompts_for_its_host_immediately(self) -> None:
         config = {"selected_environments": {"target": "ssh_scp"}}
         with (
-            mock.patch(
-                "scripts.gar_lib.commands.setup.command.configure_default_ec2_host"
-            ) as configure_host,
-            mock.patch(
-                "scripts.gar_lib.commands.setup.command.configure_target_connection"
-            ) as configure_target,
+            mock.patch("scripts.gar_lib.commands.setup.command.configure_default_ec2_host") as configure_host,
+            mock.patch("scripts.gar_lib.commands.setup.command.configure_target_connection") as configure_target,
         ):
-            _configure_selected_environment_connection(
-                "target", "ssh_scp", config, ec2_host=None
-            )
+            _configure_selected_environment_connection("target", "ssh_scp", config, ec2_host=None)
 
         configure_host.assert_not_called()
         configure_target.assert_called_once_with(config)

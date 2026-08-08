@@ -25,9 +25,7 @@ class WorkspaceSetupTests(unittest.TestCase):
                     return_value=("origin", "GarStreamTx"),
                 ),
             ):
-                connection, branch = _prompt_local_connection(
-                    {"path": str(existing_path)}, None
-                )
+                connection, branch = _prompt_local_connection({"path": str(existing_path)}, None)
 
         self.assertEqual({"type": "local", "path": str(existing_path)}, connection)
         self.assertEqual("GarStreamTx", branch)
@@ -73,9 +71,7 @@ class WorkspaceSetupTests(unittest.TestCase):
                     return_value=True,
                 ),
                 mock.patch("scripts.gar_lib.commands.setup.workspace_setup.save_config"),
-                mock.patch(
-                    "scripts.gar_lib.commands.setup.workspace_setup._select_active_workspace"
-                ) as select_active,
+                mock.patch("scripts.gar_lib.commands.setup.workspace_setup._select_active_workspace") as select_active,
             ):
                 selected = configure_workspace_root(config)
 

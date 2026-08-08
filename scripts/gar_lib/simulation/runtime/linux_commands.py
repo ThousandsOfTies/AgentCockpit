@@ -131,7 +131,12 @@ def _video_devs(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
 
 def _diag_devices(hw_definition: dict[str, list[dict[str, str]]]) -> list[str]:
     return _unique_nonempty(
-        [*_i2c_devs(hw_definition), _gpiochip_path(hw_definition), *_spi_devs(hw_definition), *_video_devs(hw_definition)]
+        [
+            *_i2c_devs(hw_definition),
+            _gpiochip_path(hw_definition),
+            *_spi_devs(hw_definition),
+            *_video_devs(hw_definition),
+        ]
     )
 
 
@@ -551,7 +556,7 @@ class LinuxSystemdCommandBuilder:
             """
         ).lstrip()
         default_app_unit = textwrap.dedent(
-            f"""
+            """
             [Unit]
             Description=Gapless Agent Runtime empty simulation application
             PartOf=gar-sim.target
