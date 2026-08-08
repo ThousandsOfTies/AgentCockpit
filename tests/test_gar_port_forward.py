@@ -31,6 +31,8 @@ class PortForwardStateTest(unittest.TestCase):
 
         self.assertEqual(1, command.count("-L"))
         self.assertIn("8080:127.0.0.1:8080", command)
+        self.assertIn("StrictHostKeyChecking=accept-new", command)
+        self.assertIn("HostKeyAlias=host-a", command)
 
     def test_state_reader_accepts_legacy_ws_port_field(self) -> None:
         payload = state_for(forward_ec2_ports.PortForwardConfig("host-a", 8080)).to_payload()

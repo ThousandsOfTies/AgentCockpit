@@ -44,6 +44,10 @@ class PortForwardConfig:
             "-n",
             "-o",
             "ExitOnForwardFailure=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            f"HostKeyAlias={self.host}",
             "-L",
             f"{self.http_port}:127.0.0.1:{REMOTE_HTTP_PORT}",
             self.host,
@@ -245,7 +249,7 @@ def start_forward(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with log_path.open("a", encoding="utf-8") as log_file:
+        with log_path.open("w", encoding="utf-8") as log_file:
             process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,

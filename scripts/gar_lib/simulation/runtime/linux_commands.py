@@ -541,8 +541,10 @@ class LinuxSystemdCommandBuilder:
             [Service]
             Type=oneshot
             RemainAfterExit=yes
-            ExecStart=/sbin/modprobe v4l2loopback video_nr={Path(video_device).name.removeprefix("video")} card_label=GAR_Camera exclusive_caps=1
+            ExecStartPre=-/sbin/modprobe -r v4l2loopback
+            ExecStart=/sbin/modprobe v4l2loopback video_nr={Path(video_device).name.removeprefix("video")} card_label=GAR_Camera exclusive_caps=0
             ExecStartPost=/bin/sh -c 'for n in $(seq 1 30); do [ -e {video_device} ] && chmod 666 {video_device} && exit 0; sleep 0.1; done; exit 1'
+            ExecStop=-/sbin/modprobe -r v4l2loopback
 
             [Install]
             WantedBy=multi-user.target
@@ -674,7 +676,13 @@ class LinuxSystemdCommandBuilder:
             'echo "--- journalctl gar runtime ---"; '
             "journalctl --no-pager -n 120 "
             "-u gar-sim.target -u gar-gpio-sim.service -u gar-bridge.service "
+            "-u gar-v4l2-camera.service -u gar-sim-app.service "
             "-u 'gar-cuse-i2c@*.service' -u 'gar-cuse-spi@*.service' || true; "
+            'echo "--- V4L2 ---"; '
+            "if [ -e /dev/video0 ] && command -v v4l2-ctl >/dev/null; then "
+            "v4l2-ctl --device=/dev/video0 --all --list-formats-ext 2>&1 || true; fi; "
+            'echo "--- UDP sockets ---"; '
+            "if command -v ss >/dev/null; then ss -uapn 2>&1 || true; fi; "
             'echo "--- legacy logs ---"; '
             "tail -n 80 /tmp/bridge.log /tmp/cuse.log /tmp/cuse_spi.log 2>/dev/null || true"
         )
