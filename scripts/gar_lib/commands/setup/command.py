@@ -373,10 +373,10 @@ def ensure_gar_tools_for_setup() -> None:
     print(style("GAR Tools:", BOLD, BLUE))
     if root is None:
         print(f"  {style('未取得', YELLOW)}")
-        print(
-            f"     {style('gar-tools を .gar/tools に取得できませんでした。'
-            'ネットワークまたは git を確認してください。', DIM)}"
+        unavailable_message = (
+            "gar-tools を .gar/tools に取得できませんでした。" "ネットワークまたは git を確認してください。"
         )
+        print(f"     {style(unavailable_message, DIM)}")
         return
     print(f"  {style('利用可能', GREEN)} {style(str(root), DIM)}")
 

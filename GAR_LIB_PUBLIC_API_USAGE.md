@@ -22,7 +22,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `AccessResult` | 13 | access.adb(4), access.aws(2), access.docker(6), access.ssh(4), simulation.diagnostics.model(1), simulation.hardware.control(1), simulation.host.aws_ec2(1), tests.test_gar_docker_simulation_host(23), tests.test_gar_hardware_control(4), tests.test_gar_linux_systemd_environment(5), tests.test_gar_simulation_host(10) |
+| `AccessResult` | 13 | access.adb(4), access.aws(2), access.docker(6), access.ssh(4), simulation.diagnostics.model(1), simulation.hardware.control(1), simulation.host.aws_ec2(1), tests.test_gar_docker_simulation_host(23), tests.test_gar_hardware_control(4), tests.test_gar_linux_systemd_environment(7), tests.test_gar_simulation_host(10) |
 | `ConsoleSession` | 23 | access.serial(2) |
 | `CommandChannel` | 27 | simulation.hardware.control(1), simulation.host.aws_ec2(1), simulation.host.docker(1), simulation.runtime.linux_systemd(1), target.file_transfer(1) |
 | `FileChannel` | 31 | simulation.runtime.linux_systemd(1), target.file_transfer(1) |
@@ -71,10 +71,10 @@
 | `Simulation` | 32 | _(外部参照なし)_ |
 | `SimulationApp` | 43 | _(外部参照なし)_ |
 | `SimulationRuntime` | 61 | _(外部参照なし)_ |
-| `SimulationHost` | 125 | _(外部参照なし)_ |
-| `SimulationGpio` | 147 | _(外部参照なし)_ |
-| `SimulationIo` | 176 | _(外部参照なし)_ |
-| `Target` | 201 | _(外部参照なし)_ |
+| `SimulationHost` | 126 | _(外部参照なし)_ |
+| `SimulationGpio` | 148 | _(外部参照なし)_ |
+| `SimulationIo` | 177 | _(外部参照なし)_ |
+| `Target` | 202 | _(外部参照なし)_ |
 
 ## `artifacts.manifest` (scripts/gar_lib/artifacts/manifest.py)
 
@@ -222,8 +222,8 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `TERRAFORM_DIR` | 24 | _(外部参照なし)_ |
-| `run_sim_infra_command` | 117 | commands.sim(1), tests.test_gar_sim_infra(2) |
+| `TERRAFORM_DIR` | 26 | _(外部参照なし)_ |
+| `run_sim_infra_command` | 203 | commands.sim(1), tests.test_gar_sim_infra(4) |
 
 ## `commands.recovery` (scripts/gar_lib/commands/recovery.py)
 
@@ -237,12 +237,12 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `add_setup_parser` | 63 | _(外部参照なし)_ |
-| `run_setup_cli` | 88 | _(外部参照なし)_ |
-| `run_setup` | 96 | _(外部参照なし)_ |
-| `ensure_gar_tools_for_setup` | 341 | _(外部参照なし)_ |
-| `clear_setup_screen` | 354 | _(外部参照なし)_ |
-| `print_terminal_bridge_status` | 360 | _(外部参照なし)_ |
+| `add_setup_parser` | 64 | _(外部参照なし)_ |
+| `run_setup_cli` | 89 | _(外部参照なし)_ |
+| `run_setup` | 97 | _(外部参照なし)_ |
+| `ensure_gar_tools_for_setup` | 371 | _(外部参照なし)_ |
+| `clear_setup_screen` | 384 | _(外部参照なし)_ |
+| `print_terminal_bridge_status` | 390 | _(外部参照なし)_ |
 
 ## `commands.setup.environment_setup` (scripts/gar_lib/commands/setup/environment_setup.py)
 
@@ -252,15 +252,15 @@
 | `SetupMenuChoice` | 41 | commands.setup.command(2) |
 | `EnvironmentSelectionStatus` | 46 | commands.setup.command(2) |
 | `EnvironmentSelection` | 53 | _(外部参照なし)_ |
-| `configure_default_ec2_host` | 72 | commands.setup.command(1) |
-| `ensure_environment_dependencies` | 118 | commands.setup.command(1), tests.test_gar_config_context(1) |
-| `print_environment_overview` | 172 | commands.setup.command(1) |
-| `select_setup_category` | 208 | commands.setup.command(1) |
-| `select_environment_for_category` | 280 | commands.setup.command(1) |
-| `unconfigured_categories` | 344 | commands.setup.command(2) |
-| `first_unconfigured_category_index` | 369 | _(外部参照なし)_ |
-| `grouped_environments` | 400 | _(外部参照なし)_ |
-| `environment_by_id` | 423 | _(外部参照なし)_ |
+| `configure_default_ec2_host` | 72 | commands.setup.command(2) |
+| `ensure_environment_dependencies` | 119 | commands.setup.command(1), tests.test_gar_config_context(1) |
+| `print_environment_overview` | 173 | commands.setup.command(1) |
+| `select_setup_category` | 209 | commands.setup.command(1) |
+| `select_environment_for_category` | 281 | commands.setup.command(1) |
+| `unconfigured_categories` | 345 | commands.setup.command(2) |
+| `first_unconfigured_category_index` | 370 | _(外部参照なし)_ |
+| `grouped_environments` | 401 | _(外部参照なし)_ |
+| `environment_by_id` | 424 | _(外部参照なし)_ |
 
 ## `commands.setup.target_setup` (scripts/gar_lib/commands/setup/target_setup.py)
 
@@ -279,22 +279,22 @@
 | `selected_target_manifest` | 138 | commands.setup.command(3) |
 | `optional_setup_categories` | 146 | commands.setup.command(2) |
 | `configure_esp32_serial_port` | 175 | commands.setup.command(1) |
-| `configure_target_connection` | 223 | commands.setup.command(1) |
-| `detect_esp32_serial_port_candidates` | 272 | _(外部参照なし)_ |
-| `print_target_next_steps` | 282 | commands.setup.command(1) |
+| `configure_target_connection` | 223 | commands.setup.command(2) |
+| `detect_esp32_serial_port_candidates` | 273 | _(外部参照なし)_ |
+| `print_target_next_steps` | 283 | commands.setup.command(1) |
 
 ## `commands.setup.workspace_setup` (scripts/gar_lib/commands/setup/workspace_setup.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `configure_workspace_root` | 29 | commands.setup.command(1) |
-| `print_workspace_entry` | 150 | _(外部参照なし)_ |
-| `workspace_duplicate` | 166 | _(外部参照なし)_ |
-| `default_workspace_name` | 188 | _(外部参照なし)_ |
-| `default_workspace_product_name` | 199 | _(外部参照なし)_ |
-| `prompt_workspace_entry` | 207 | _(外部参照なし)_ |
-| `print_codespace_candidates` | 324 | _(外部参照なし)_ |
-| `probe_git_workspace` | 339 | _(外部参照なし)_ |
+| `configure_workspace_root` | 29 | commands.setup.command(1), tests.test_gar_workspace_setup(1) |
+| `print_workspace_entry` | 157 | _(外部参照なし)_ |
+| `workspace_duplicate` | 168 | _(外部参照なし)_ |
+| `default_workspace_name` | 190 | _(外部参照なし)_ |
+| `default_workspace_product_name` | 201 | _(外部参照なし)_ |
+| `prompt_workspace_entry` | 209 | _(外部参照なし)_ |
+| `print_codespace_candidates` | 327 | _(外部参照なし)_ |
+| `probe_git_workspace` | 342 | _(外部参照なし)_ |
 
 ## `commands.sim` (scripts/gar_lib/commands/sim.py)
 
@@ -302,7 +302,7 @@
 |---|---:|---|
 | `SIM_ACTIONS` | 28 | _(外部参照なし)_ |
 | `add_sim_parser` | 102 | cli(1) |
-| `run_sim_command` | 284 | cli(1) |
+| `run_sim_command` | 297 | cli(1) |
 
 ## `commands.target` (scripts/gar_lib/commands/target.py)
 
@@ -352,8 +352,8 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactKind` | 12 | api(8), artifacts.store(16), build.codespaces(3), build.environment(3), build.local(3), build.spec(6), simulation.runtime.linux_systemd(2), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(5), tests.test_gar_build_variables(8), tests.test_gar_linux_systemd_environment(1), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(7), tests.test_gar_wokwi_environment(5) |
-| `Artifact` | 19 | api(7), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(1), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(2), tests.test_gar_wokwi_environment(5) |
+| `ArtifactKind` | 12 | api(8), artifacts.store(16), build.codespaces(3), build.environment(3), build.local(3), build.spec(6), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(5), tests.test_gar_build_variables(8), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(7), tests.test_gar_wokwi_environment(5) |
+| `Artifact` | 19 | api(7), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(2), tests.test_gar_wokwi_environment(5) |
 
 ## `core.command` (scripts/gar_lib/core/command.py)
 
@@ -389,44 +389,45 @@
 | `DEFAULT_EC2_REGION` | 23 | _(外部参照なし)_ |
 | `RUNTIME_HOST_PATTERN` | 24 | _(外部参照なし)_ |
 | `is_valid_runtime_host` | 27 | commands.setup.command(1), commands.setup.environment_setup(1) |
-| `load_config` | 110 | commands.hw(1), commands.infra(2), commands.setup.command(2), commands.usb(1), commands.workspace_resolver(1), tests.test_gar_config_context(3), tests.test_gar_setup_config(5) |
-| `save_config` | 242 | commands.infra(1), commands.setup.command(1), commands.setup.environment_setup(3), commands.setup.target_setup(6), commands.setup.workspace_setup(1), commands.usb(1), environments.registry.target.adb_win(1), tests.test_gar_setup_config(8) |
-| `default_config` | 297 | tests.test_gar_setup_config(2) |
-| `default_ec2_host` | 305 | commands.infra(2), commands.setup.command(1), commands.setup.environment_setup(1) |
-| `default_ec2_instance_id` | 312 | commands.infra(1) |
-| `default_ec2_region` | 319 | commands.infra(1) |
-| `ec2_repo_dir` | 326 | _(外部参照なし)_ |
-| `saved_usb_busid` | 333 | commands.usb(2) |
-| `set_saved_usb_busid` | 340 | commands.usb(1) |
-| `saved_esp32_serial_port` | 348 | commands.setup.target_setup(1) |
-| `set_saved_esp32_serial_port` | 355 | commands.setup.target_setup(2) |
-| `saved_target_setting` | 363 | commands.setup.target_setup(2) |
-| `set_saved_target_setting` | 370 | commands.setup.target_setup(2) |
-| `saved_workspaces` | 378 | commands.setup.workspace_setup(1), commands.workspace_resolver(1) |
-| `set_saved_workspaces` | 382 | commands.setup.workspace_setup(1) |
-| `saved_adb_exe` | 393 | environments.registry.target.adb_win(1) |
-| `set_saved_adb_exe` | 400 | environments.registry.target.adb_win(1) |
-| `set_default_ec2_host` | 410 | commands.setup.environment_setup(2) |
-| `set_default_ec2_instance_id` | 418 | commands.infra(1) |
-| `set_default_ec2_region` | 426 | commands.infra(1) |
+| `load_config` | 110 | commands.hw(1), commands.infra(1), commands.setup.command(2), commands.usb(1), commands.workspace_resolver(1), tests.test_gar_config_context(3), tests.test_gar_setup_config(5) |
+| `save_config` | 246 | commands.infra(1), commands.setup.command(1), commands.setup.environment_setup(3), commands.setup.target_setup(6), commands.setup.workspace_setup(1), commands.usb(1), environments.registry.target.adb_win(1), tests.test_gar_setup_config(8) |
+| `default_config` | 301 | tests.test_gar_setup_config(2) |
+| `default_ec2_host` | 309 | commands.infra(2), commands.setup.command(2), commands.setup.environment_setup(1) |
+| `default_ec2_instance_id` | 316 | commands.infra(1) |
+| `default_ec2_region` | 323 | commands.infra(1) |
+| `ec2_repo_dir` | 330 | _(外部参照なし)_ |
+| `saved_usb_busid` | 337 | commands.usb(2) |
+| `set_saved_usb_busid` | 344 | commands.usb(1) |
+| `saved_esp32_serial_port` | 352 | commands.setup.target_setup(1) |
+| `set_saved_esp32_serial_port` | 359 | commands.setup.target_setup(2) |
+| `saved_target_setting` | 367 | commands.setup.target_setup(2) |
+| `set_saved_target_setting` | 374 | commands.setup.target_setup(2) |
+| `saved_workspaces` | 382 | commands.setup.workspace_setup(1), commands.workspace_resolver(1) |
+| `set_saved_workspaces` | 386 | commands.setup.workspace_setup(1) |
+| `saved_adb_exe` | 397 | environments.registry.target.adb_win(1) |
+| `set_saved_adb_exe` | 404 | environments.registry.target.adb_win(1) |
+| `set_default_ec2_host` | 414 | commands.setup.environment_setup(2) |
+| `set_default_ec2_instance_id` | 422 | commands.infra(1) |
+| `set_default_ec2_private_ip` | 430 | commands.infra(1) |
+| `set_default_ec2_region` | 438 | commands.infra(1) |
 
 ## `core.errors` (scripts/gar_lib/core/errors.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(11), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(5), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), target.composition(4), target.esp32(4), target.file_transfer(6), target.manifest(1), tests.test_gar_artifacts(1), tests.test_gar_docker_simulation_host(5), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(3), tests.test_gar_wokwi_environment(4) |
+| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(11), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(6), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), target.composition(4), target.esp32(4), target.file_transfer(6), target.manifest(1), tests.test_gar_artifacts(1), tests.test_gar_docker_simulation_host(5), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(3), tests.test_gar_wokwi_environment(4) |
 | `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1) |
 
 ## `core.hardware` (scripts/gar_lib/core/hardware.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `HW_TEMPLATE_FILES` | 16 | tests.test_gar_terminal_hw(1) |
-| `HW_DIR` | 45 | _(外部参照なし)_ |
-| `DEFAULT_HW_TARGET` | 46 | _(外部参照なし)_ |
-| `TARGET_ID_PATTERN` | 47 | _(外部参照なし)_ |
-| `load_hw_definition` | 81 | api(1) |
-| `write_hw_template` | 94 | commands.hw(1), tests.test_gar_terminal_hw(1) |
+| `HW_TEMPLATE_FILES` | 16 | tests.test_gar_terminal_hw(2) |
+| `HW_DIR` | 46 | _(外部参照なし)_ |
+| `DEFAULT_HW_TARGET` | 47 | _(外部参照なし)_ |
+| `TARGET_ID_PATTERN` | 48 | _(外部参照なし)_ |
+| `load_hw_definition` | 82 | api(1) |
+| `write_hw_template` | 96 | commands.hw(1), tests.test_gar_terminal_hw(1) |
 
 ## `core.tools_repository` (scripts/gar_lib/core/tools_repository.py)
 
@@ -442,7 +443,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Workspace` | 21 | api(9), artifacts.store(13), build.codespaces(3), build.environment(4), build.local(3), build.spec(2), commands.code(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), target.composition(1), tests.support.gar_cli_test_support(2), tests.test_gar_access_recovery(1), tests.test_gar_artifacts(2), tests.test_gar_build_variables(4), tests.test_gar_cli(1), tests.test_gar_code(1), tests.test_gar_code_cli(2), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(1), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(5), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(4), tests.test_gar_target_architecture(5), tests.test_gar_wokwi_environment(2), tests.test_gar_workspace(1) |
+| `Workspace` | 21 | api(9), artifacts.store(13), build.codespaces(3), build.environment(4), build.local(3), build.spec(2), commands.code(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), target.composition(1), tests.support.gar_cli_test_support(2), tests.test_gar_access_recovery(1), tests.test_gar_artifacts(2), tests.test_gar_build_variables(4), tests.test_gar_cli(1), tests.test_gar_code(1), tests.test_gar_code_cli(2), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(5), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(4), tests.test_gar_target_architecture(5), tests.test_gar_wokwi_environment(2), tests.test_gar_workspace(1) |
 
 ## `core.workspace_settings` (scripts/gar_lib/core/workspace_settings.py)
 
@@ -452,10 +453,10 @@
 | `WorkspaceConnection` | 39 | core.workspace(2), tests.test_gar_workspace(1) |
 | `SelectedEnvironments` | 60 | core.workspace(3), tests.test_gar_workspace(1) |
 | `Ec2Settings` | 79 | core.workspace(3), tests.test_gar_workspace(1) |
-| `DockerSettings` | 97 | core.workspace(3), simulation.composition(1), tests.test_gar_workspace(2) |
-| `TargetSettings` | 122 | core.workspace(3) |
-| `AdbSettings` | 138 | core.workspace(3) |
-| `Esp32Settings` | 152 | core.workspace(3) |
+| `DockerSettings` | 98 | core.workspace(3), simulation.composition(1), tests.test_gar_workspace(2) |
+| `TargetSettings` | 123 | core.workspace(3) |
+| `AdbSettings` | 139 | core.workspace(3) |
+| `Esp32Settings` | 153 | core.workspace(3) |
 
 ## `environments.discovery` (scripts/gar_lib/environments/discovery.py)
 
@@ -742,31 +743,33 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `SIM_DIAG_DEVICES` | 15 | _(外部参照なし)_ |
-| `GAR_ETC_DIR` | 16 | _(外部参照なし)_ |
-| `GAR_HARDWARE_DIR` | 17 | _(外部参照なし)_ |
-| `GAR_SBIN_DIR` | 18 | _(外部参照なし)_ |
-| `GAR_LIB_DIR` | 19 | _(外部参照なし)_ |
-| `GAR_RUN_DIR` | 20 | _(外部参照なし)_ |
-| `GAR_HW_SIM_SOCK` | 21 | _(外部参照なし)_ |
-| `GAR_BRIDGE_DIR` | 22 | _(外部参照なし)_ |
-| `GAR_BRIDGE_START` | 23 | _(外部参照なし)_ |
-| `GAR_GPIO_SIM_START` | 24 | _(外部参照なし)_ |
-| `GAR_GPIO_SIM_STOP` | 25 | _(外部参照なし)_ |
-| `GAR_CUSE_I2C` | 26 | _(外部参照なし)_ |
-| `GAR_CUSE_SPI` | 27 | _(外部参照なし)_ |
-| `PANEL_BASE_URL` | 28 | _(外部参照なし)_ |
-| `CURL_OPTIONS` | 29 | _(外部参照なし)_ |
-| `SIM_RUNTIME_PROCESS_PATTERN` | 30 | _(外部参照なし)_ |
-| `SIM_GPIO_SIM_CHECK_COMMAND` | 32 | _(外部参照なし)_ |
-| `gpio_sim_plan` | 218 | simulation.hardware.control(1), tests.test_gar_sim_io(1) |
-| `LinuxSystemdCommandBuilder` | 247 | simulation.composition(4), simulation.hardware.control(1), simulation.runtime.linux_systemd(1), tests.test_gar_linux_systemd_environment(1), tests.test_gar_sim_io(9) |
+| `SIM_DIAG_DEVICES` | 16 | _(外部参照なし)_ |
+| `GAR_ETC_DIR` | 17 | _(外部参照なし)_ |
+| `GAR_HARDWARE_DIR` | 18 | _(外部参照なし)_ |
+| `GAR_SBIN_DIR` | 19 | _(外部参照なし)_ |
+| `GAR_LIB_DIR` | 20 | _(外部参照なし)_ |
+| `GAR_RUN_DIR` | 21 | _(外部参照なし)_ |
+| `GAR_HW_SIM_SOCK` | 22 | _(外部参照なし)_ |
+| `GAR_BRIDGE_DIR` | 23 | _(外部参照なし)_ |
+| `GAR_BRIDGE_START` | 24 | _(外部参照なし)_ |
+| `GAR_GPIO_SIM_START` | 25 | _(外部参照なし)_ |
+| `GAR_GPIO_SIM_STOP` | 26 | _(外部参照なし)_ |
+| `GAR_CUSE_I2C` | 27 | _(外部参照なし)_ |
+| `GAR_CUSE_SPI` | 28 | _(外部参照なし)_ |
+| `GAR_V4L2_CAMERA_SERVICE` | 29 | _(外部参照なし)_ |
+| `GAR_SIM_APP_SERVICE` | 30 | _(外部参照なし)_ |
+| `PANEL_BASE_URL` | 31 | _(外部参照なし)_ |
+| `CURL_OPTIONS` | 32 | _(外部参照なし)_ |
+| `SIM_RUNTIME_PROCESS_PATTERN` | 33 | _(外部参照なし)_ |
+| `SIM_GPIO_SIM_CHECK_COMMAND` | 35 | _(外部参照なし)_ |
+| `gpio_sim_plan` | 237 | simulation.hardware.control(1), tests.test_gar_sim_io(1) |
+| `LinuxSystemdCommandBuilder` | 266 | simulation.composition(4), simulation.hardware.control(1), simulation.runtime.linux_systemd(1), tests.test_gar_linux_systemd_environment(1), tests.test_gar_sim_io(9) |
 
 ## `simulation.runtime.linux_systemd` (scripts/gar_lib/simulation/runtime/linux_systemd.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `LinuxSystemdSimulationEnvironment` | 17 | simulation.composition(2), tests.test_gar_docker_simulation_host(1), tests.test_gar_linux_systemd_environment(5) |
+| `LinuxSystemdSimulationEnvironment` | 17 | simulation.composition(2), tests.test_gar_docker_simulation_host(1), tests.test_gar_linux_systemd_environment(6) |
 
 ## `simulation.runtime.mujoco` (scripts/gar_lib/simulation/runtime/mujoco.py)
 
@@ -818,8 +821,8 @@
 | `start_sim_port_forward` | 14 | simulation.session.manager(1) |
 | `stop_sim_port_forward` | 18 | simulation.session.manager(1) |
 | `status_sim_port_forward` | 22 | simulation.session.manager(1) |
-| `write_sim_terminal_profile` | 33 | simulation.session.manager(1) |
-| `sim_terminal_script` | 60 | _(外部参照なし)_ |
+| `write_sim_terminal_profile` | 34 | simulation.session.manager(1) |
+| `sim_terminal_script` | 61 | _(外部参照なし)_ |
 
 ## `target.composition` (scripts/gar_lib/target/composition.py)
 
@@ -928,11 +931,11 @@
 | `access.ssh` | `SSH_CONNECTION_OPTIONS` | 11 |
 | `api` | `Simulation` | 32 |
 | `api` | `SimulationApp` | 43 |
-| `api` | `SimulationGpio` | 147 |
-| `api` | `SimulationHost` | 125 |
-| `api` | `SimulationIo` | 176 |
+| `api` | `SimulationGpio` | 148 |
+| `api` | `SimulationHost` | 126 |
+| `api` | `SimulationIo` | 177 |
 | `api` | `SimulationRuntime` | 61 |
-| `api` | `Target` | 201 |
+| `api` | `Target` | 202 |
 | `artifacts.manifest` | `ArtifactManifest` | 69 |
 | `artifacts.manifest` | `ArtifactManifestError` | 30 |
 | `artifacts.manifest` | `DEFAULT_CODESPACE_ARTIFACT_ROOT` | 27 |
@@ -976,33 +979,33 @@
 | `commands.completion` | `completion_bash_script` | 42 |
 | `commands.completion` | `parser_completion_words` | 56 |
 | `commands.hw` | `run_hw_command` | 53 |
-| `commands.infra` | `TERRAFORM_DIR` | 24 |
+| `commands.infra` | `TERRAFORM_DIR` | 26 |
 | `commands.recovery` | `RecoveryAction` | 16 |
-| `commands.setup.command` | `add_setup_parser` | 63 |
-| `commands.setup.command` | `clear_setup_screen` | 354 |
-| `commands.setup.command` | `ensure_gar_tools_for_setup` | 341 |
-| `commands.setup.command` | `print_terminal_bridge_status` | 360 |
-| `commands.setup.command` | `run_setup` | 96 |
-| `commands.setup.command` | `run_setup_cli` | 88 |
+| `commands.setup.command` | `add_setup_parser` | 64 |
+| `commands.setup.command` | `clear_setup_screen` | 384 |
+| `commands.setup.command` | `ensure_gar_tools_for_setup` | 371 |
+| `commands.setup.command` | `print_terminal_bridge_status` | 390 |
+| `commands.setup.command` | `run_setup` | 97 |
+| `commands.setup.command` | `run_setup_cli` | 89 |
 | `commands.setup.environment_setup` | `EnvironmentCategory` | 33 |
 | `commands.setup.environment_setup` | `EnvironmentSelection` | 53 |
-| `commands.setup.environment_setup` | `environment_by_id` | 423 |
-| `commands.setup.environment_setup` | `first_unconfigured_category_index` | 369 |
-| `commands.setup.environment_setup` | `grouped_environments` | 400 |
-| `commands.setup.target_setup` | `detect_esp32_serial_port_candidates` | 272 |
+| `commands.setup.environment_setup` | `environment_by_id` | 424 |
+| `commands.setup.environment_setup` | `first_unconfigured_category_index` | 370 |
+| `commands.setup.environment_setup` | `grouped_environments` | 401 |
+| `commands.setup.target_setup` | `detect_esp32_serial_port_candidates` | 273 |
 | `commands.setup.target_setup` | `ensure_selected_target_ready` | 56 |
 | `commands.setup.target_setup` | `managed_backend_categories` | 74 |
 | `commands.setup.target_setup` | `print_selected_target_summary` | 126 |
 | `commands.setup.target_setup` | `print_target_summary` | 113 |
 | `commands.setup.target_setup` | `prune_removed_target_backends` | 63 |
 | `commands.setup.target_setup` | `removable_target_backend_categories` | 70 |
-| `commands.setup.workspace_setup` | `default_workspace_name` | 188 |
-| `commands.setup.workspace_setup` | `default_workspace_product_name` | 199 |
-| `commands.setup.workspace_setup` | `print_codespace_candidates` | 324 |
-| `commands.setup.workspace_setup` | `print_workspace_entry` | 150 |
-| `commands.setup.workspace_setup` | `probe_git_workspace` | 339 |
-| `commands.setup.workspace_setup` | `prompt_workspace_entry` | 207 |
-| `commands.setup.workspace_setup` | `workspace_duplicate` | 166 |
+| `commands.setup.workspace_setup` | `default_workspace_name` | 190 |
+| `commands.setup.workspace_setup` | `default_workspace_product_name` | 201 |
+| `commands.setup.workspace_setup` | `print_codespace_candidates` | 327 |
+| `commands.setup.workspace_setup` | `print_workspace_entry` | 157 |
+| `commands.setup.workspace_setup` | `probe_git_workspace` | 342 |
+| `commands.setup.workspace_setup` | `prompt_workspace_entry` | 209 |
+| `commands.setup.workspace_setup` | `workspace_duplicate` | 168 |
 | `commands.sim` | `SIM_ACTIONS` | 28 |
 | `commands.target` | `TARGET_ACTIONS` | 17 |
 | `commands.usb` | `ANDROID_HINTS` | 32 |
@@ -1016,10 +1019,10 @@
 | `core.config` | `DEFAULT_EC2_INSTANCE_ID` | 22 |
 | `core.config` | `DEFAULT_EC2_REGION` | 23 |
 | `core.config` | `RUNTIME_HOST_PATTERN` | 24 |
-| `core.config` | `ec2_repo_dir` | 326 |
-| `core.hardware` | `DEFAULT_HW_TARGET` | 46 |
-| `core.hardware` | `HW_DIR` | 45 |
-| `core.hardware` | `TARGET_ID_PATTERN` | 47 |
+| `core.config` | `ec2_repo_dir` | 330 |
+| `core.hardware` | `DEFAULT_HW_TARGET` | 47 |
+| `core.hardware` | `HW_DIR` | 46 |
+| `core.hardware` | `TARGET_ID_PATTERN` | 48 |
 | `core.tools_repository` | `DEFAULT_GAR_TOOLS_REPO` | 11 |
 | `core.tools_repository` | `find_gar_tools_root` | 21 |
 | `core.tools_repository` | `gar_tools_root_candidates` | 28 |
@@ -1055,28 +1058,30 @@
 | `simulation.host.docker` | `SPEC_FINGERPRINT_LABEL` | 23 |
 | `simulation.host.docker_spec` | `DEFAULT_BRIDGE_PORT` | 13 |
 | `simulation.host.docker_spec` | `DEFAULT_PUBLISHED_HOST` | 14 |
-| `simulation.runtime.linux_commands` | `CURL_OPTIONS` | 29 |
-| `simulation.runtime.linux_commands` | `GAR_BRIDGE_DIR` | 22 |
-| `simulation.runtime.linux_commands` | `GAR_BRIDGE_START` | 23 |
-| `simulation.runtime.linux_commands` | `GAR_CUSE_I2C` | 26 |
-| `simulation.runtime.linux_commands` | `GAR_CUSE_SPI` | 27 |
-| `simulation.runtime.linux_commands` | `GAR_ETC_DIR` | 16 |
-| `simulation.runtime.linux_commands` | `GAR_GPIO_SIM_START` | 24 |
-| `simulation.runtime.linux_commands` | `GAR_GPIO_SIM_STOP` | 25 |
-| `simulation.runtime.linux_commands` | `GAR_HARDWARE_DIR` | 17 |
-| `simulation.runtime.linux_commands` | `GAR_HW_SIM_SOCK` | 21 |
-| `simulation.runtime.linux_commands` | `GAR_LIB_DIR` | 19 |
-| `simulation.runtime.linux_commands` | `GAR_RUN_DIR` | 20 |
-| `simulation.runtime.linux_commands` | `GAR_SBIN_DIR` | 18 |
-| `simulation.runtime.linux_commands` | `PANEL_BASE_URL` | 28 |
-| `simulation.runtime.linux_commands` | `SIM_DIAG_DEVICES` | 15 |
-| `simulation.runtime.linux_commands` | `SIM_GPIO_SIM_CHECK_COMMAND` | 32 |
-| `simulation.runtime.linux_commands` | `SIM_RUNTIME_PROCESS_PATTERN` | 30 |
+| `simulation.runtime.linux_commands` | `CURL_OPTIONS` | 32 |
+| `simulation.runtime.linux_commands` | `GAR_BRIDGE_DIR` | 23 |
+| `simulation.runtime.linux_commands` | `GAR_BRIDGE_START` | 24 |
+| `simulation.runtime.linux_commands` | `GAR_CUSE_I2C` | 27 |
+| `simulation.runtime.linux_commands` | `GAR_CUSE_SPI` | 28 |
+| `simulation.runtime.linux_commands` | `GAR_ETC_DIR` | 17 |
+| `simulation.runtime.linux_commands` | `GAR_GPIO_SIM_START` | 25 |
+| `simulation.runtime.linux_commands` | `GAR_GPIO_SIM_STOP` | 26 |
+| `simulation.runtime.linux_commands` | `GAR_HARDWARE_DIR` | 18 |
+| `simulation.runtime.linux_commands` | `GAR_HW_SIM_SOCK` | 22 |
+| `simulation.runtime.linux_commands` | `GAR_LIB_DIR` | 20 |
+| `simulation.runtime.linux_commands` | `GAR_RUN_DIR` | 21 |
+| `simulation.runtime.linux_commands` | `GAR_SBIN_DIR` | 19 |
+| `simulation.runtime.linux_commands` | `GAR_SIM_APP_SERVICE` | 30 |
+| `simulation.runtime.linux_commands` | `GAR_V4L2_CAMERA_SERVICE` | 29 |
+| `simulation.runtime.linux_commands` | `PANEL_BASE_URL` | 31 |
+| `simulation.runtime.linux_commands` | `SIM_DIAG_DEVICES` | 16 |
+| `simulation.runtime.linux_commands` | `SIM_GPIO_SIM_CHECK_COMMAND` | 35 |
+| `simulation.runtime.linux_commands` | `SIM_RUNTIME_PROCESS_PATTERN` | 33 |
 | `simulation.runtime.mujoco` | `DEFAULT_MODEL_PATH` | 25 |
 | `simulation.runtime.mujoco` | `DEFAULT_WORKSPACE_DIR` | 26 |
 | `simulation.runtime.wokwi` | `DEFAULT_TIMEOUT_MS` | 20 |
 | `simulation.session.manager` | `SimulationSessionManager` | 15 |
-| `simulation.session.remote` | `sim_terminal_script` | 60 |
+| `simulation.session.remote` | `sim_terminal_script` | 61 |
 | `target.esptool` | `ESPTOOL_VENV` | 20 |
 | `target.esptool` | `ensure_esptool_python` | 131 |
 | `target.esptool` | `esp32_serial_failure_hint` | 80 |
