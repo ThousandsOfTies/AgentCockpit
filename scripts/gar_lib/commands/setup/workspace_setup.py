@@ -127,7 +127,10 @@ def _edit_workspace(workspaces: list[dict]) -> str | None:
     if workspace_duplicate(entry, other_entries):
         print(f"  {style('既に登録済みです:', YELLOW)} {entry['name']}")
         return None
-    workspaces[index] = entry
+    # Workspace editing changes its identity/connection fields only.  Preserve
+    # the environment-specific settings already attached to this workspace
+    # (target, simulator, EC2 host, hardware settings, and so on).
+    workspaces[index] = {**previous, **entry}
     print(f"  {style('修正しました:', GREEN)} {entry['name']}")
     return entry["id"]
 

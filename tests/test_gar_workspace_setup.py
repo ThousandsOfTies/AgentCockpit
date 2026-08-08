@@ -48,6 +48,14 @@ class WorkspaceSetupTests(unittest.TestCase):
                         "name": "Local/GarStreamTx",
                         "connection": {"type": "local", "path": str(root)},
                         "branch": "GarStreamTx",
+                        "selected_target": "linux-device",
+                        "selected_environments": {
+                            "codespace": "local",
+                            "simulator": "ssh_remote",
+                            "target": "ssh_scp",
+                        },
+                        "ec2": {"host": "vibecode-graviton-tx"},
+                        "target": {"host": "garstream-tx-device"},
                     },
                 ],
             }
@@ -73,6 +81,11 @@ class WorkspaceSetupTests(unittest.TestCase):
 
         self.assertEqual("tx", selected)
         select_active.assert_not_called()
+        saved_tx = next(entry for entry in config["workspaces"] if entry["id"] == "tx")
+        self.assertEqual("linux-device", saved_tx["selected_target"])
+        self.assertEqual("ssh_remote", saved_tx["selected_environments"]["simulator"])
+        self.assertEqual("vibecode-graviton-tx", saved_tx["ec2"]["host"])
+        self.assertEqual("garstream-tx-device", saved_tx["target"]["host"])
 
 
 if __name__ == "__main__":
