@@ -89,7 +89,8 @@ def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
         return
 
     print(style("Simulation Runtime:", BOLD, BLUE))
-    print(f"  既定 host: {style(current_host or '(未設定)', BOLD)}")
+    print("  SSH config の Host 名で接続します（鍵なども同じ設定を使用します）。")
+    print(f"  現在の SSH Host: {style(current_host or '(未設定)', BOLD)}")
     if not sys.stdin.isatty():
         return
 
@@ -103,7 +104,7 @@ def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
 def _prompt_runtime_host(current_host: str | None) -> str:
     while True:
         answer = safe_input(
-            "gar sim の既定 runtime host を入力してください " f"[{current_host or '入力必須'}]: ",
+            f"  SSH Host 名 [{current_host or '入力必須'}]: ",
             default_on_eof=current_host or "",
         )
         selected_host = answer or current_host
