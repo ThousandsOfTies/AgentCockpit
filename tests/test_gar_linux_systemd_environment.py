@@ -52,6 +52,27 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
         self.assertIn("/usr/local/sbin/cuse_i2c", command)
         self.assertIn("trap 'rm -rf -- /tmp/cuse_i2c' EXIT", command)
 
+    def test_runtime_deploy_stops_running_services_before_replacing_binaries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "files" / "cuse_spi"
+            source.parent.mkdir()
+            source.write_text("binary", encoding="utf-8")
+            (root / "artifact.json").write_text(
+                json.dumps({"deploy": {"sim_env": {"files": [{"src": "files/cuse_spi", "dest": "~/cuse_spi"}]}}}),
+                encoding="utf-8",
+            )
+            workspace = Workspace("ws", "Local/App", "App", {"type": "local", "path": tmp})
+            artifact = Artifact(ArtifactKind.SIM_RUNTIME, workspace, root)
+            commands = mock.Mock()
+            commands.run.return_value = AccessResult(("channel",), 0)
+            files = mock.Mock()
+            files.push.return_value = AccessResult(("channel",), 0)
+
+            LinuxSystemdSimulationEnvironment(commands, files, mock.Mock()).deploy(artifact)
+
+        self.assertIn("systemctl stop gar-sim.target", commands.run.call_args_list[0].args[0])
+
     def test_lifecycle_uses_command_builder_and_injected_channel(self) -> None:
         commands = mock.Mock()
         commands.run.return_value = AccessResult(("channel",), 0, "running\n", "")

@@ -48,6 +48,17 @@ class LinuxSystemdSimulationEnvironment:
             raise GarDomainError(f"artifact manifestを読み込めません: {artifact.bundle_path}")
         bundle_root, files = loaded
 
+        if artifact.kind is ArtifactKind.SIM_RUNTIME:
+            # Linux refuses to replace an executing CUSE binary (ETXTBSY).
+            # Runtime deployment is intentionally followed by `gar sim runtime
+            # start`, so stop every managed service before replacing files.
+            stopped = self.command_channel.run(
+                "sudo systemctl stop gar-sim.target gar-bridge.service "
+                "'gar-cuse-i2c@*.service' 'gar-cuse-spi@*.service' || true"
+            )
+            if stopped.returncode != 0:
+                raise GarDomainError("runtime停止に失敗しました")
+
         for entry in files:
             source = resolve_artifact_src(bundle_root, entry["src"])
             if source is None:
@@ -66,7 +77,9 @@ class LinuxSystemdSimulationEnvironment:
             )
             installed = self.command_channel.run(command)
             if installed.returncode != 0:
-                raise GarDomainError(f"artifact配置に失敗しました (exit {installed.returncode})")
+                detail = (installed.stderr or installed.stdout).strip()
+                suffix = f": {detail}" if detail else ""
+                raise GarDomainError(f"artifact配置に失敗しました (exit {installed.returncode}){suffix}")
 
     def start(self, hardware: dict[str, list[dict[str, str]]]) -> int:
         return self._run(self.command_builder.build_sim_start(hardware))
