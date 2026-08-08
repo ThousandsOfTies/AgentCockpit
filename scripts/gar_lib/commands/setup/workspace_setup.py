@@ -262,6 +262,7 @@ def _prompt_local_connection(
             f"  local path{f' [{default_path}]' if default_path else ''}: ",
             default_on_eof=default_path,
         ).strip()
+        or default_path
     )
     if not answer:
         return None, None
