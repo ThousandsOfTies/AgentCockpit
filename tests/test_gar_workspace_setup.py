@@ -50,7 +50,6 @@ class WorkspaceSetupTests(unittest.TestCase):
                         "branch": "GarStreamTx",
                     },
                 ],
-                "workspace_id": "tx",
             }
             with (
                 mock.patch(
@@ -66,10 +65,14 @@ class WorkspaceSetupTests(unittest.TestCase):
                     return_value=True,
                 ),
                 mock.patch("scripts.gar_lib.commands.setup.workspace_setup.save_config"),
+                mock.patch(
+                    "scripts.gar_lib.commands.setup.workspace_setup._select_active_workspace"
+                ) as select_active,
             ):
                 selected = configure_workspace_root(config)
 
         self.assertEqual("tx", selected)
+        select_active.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -41,6 +41,7 @@ def configure_workspace_root(config: dict) -> str | None:
         return workspaces[0]["id"] if len(workspaces) == 1 else None
 
     changed = False
+    configured_workspace_id: str | None = None
     while True:
         if workspaces:
             print(f"  {style('設定済み:', GREEN)}")
@@ -66,7 +67,8 @@ def configure_workspace_root(config: dict) -> str | None:
             changed |= _delete_workspace(workspaces)
             continue
         if action in {"e", "edit", "modify", "修正"}:
-            if _edit_workspace(workspaces):
+            configured_workspace_id = _edit_workspace(workspaces)
+            if configured_workspace_id is not None:
                 changed = True
                 break
             continue
@@ -76,7 +78,7 @@ def configure_workspace_root(config: dict) -> str | None:
         set_saved_workspaces(config, workspaces)
         save_config(config)
 
-    return _select_active_workspace(config, workspaces)
+    return configured_workspace_id or _select_active_workspace(config, workspaces)
 
 
 def _add_workspace(workspaces: list[dict]) -> bool:
@@ -106,28 +108,28 @@ def _delete_workspace(workspaces: list[dict]) -> bool:
     return True
 
 
-def _edit_workspace(workspaces: list[dict]) -> bool:
+def _edit_workspace(workspaces: list[dict]) -> str | None:
     if not workspaces:
         print(f"  {style('修正できる workspace がありません。', YELLOW)}")
-        return False
+        return None
     answer = safe_input("  修正する番号: ", default_on_eof="").strip()
     try:
         index = int(answer) - 1
         previous = workspaces[index]
     except (ValueError, IndexError):
         print(f"  {style('番号が正しくありません。', RED)}")
-        return False
+        return None
 
     entry = prompt_workspace_entry(existing=previous)
     if entry is None:
-        return False
+        return None
     other_entries = [candidate for candidate in workspaces if candidate["id"] != previous["id"]]
     if workspace_duplicate(entry, other_entries):
         print(f"  {style('既に登録済みです:', YELLOW)} {entry['name']}")
-        return False
+        return None
     workspaces[index] = entry
     print(f"  {style('修正しました:', GREEN)} {entry['name']}")
-    return True
+    return entry["id"]
 
 
 def _select_active_workspace(config: dict, workspaces: list[dict]) -> str | None:
