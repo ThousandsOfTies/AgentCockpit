@@ -234,7 +234,8 @@ def generate(*, check: bool = False) -> int:
     # --- file_level_dsm.csv ---
     csv_path = REPO / "GAR_LIB_DSM_file_level.csv"
     csv_buffer = io.StringIO(newline="")
-    csv_writer = csv.writer(csv_buffer)
+    # Keep the generated artifact stable on every platform and after checkout.
+    csv_writer = csv.writer(csv_buffer, lineterminator="\n")
     header = [short_name(m) for m in gar_lib_modules]
     csv_writer.writerow(["consumer \\ provider"] + header)
     for consumer in gar_lib_modules:
