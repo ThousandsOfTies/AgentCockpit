@@ -33,7 +33,7 @@ def configure_workspace_root(config: dict) -> str | None:
     print(style("Product Workspaces:", BOLD, BLUE))
     if not sys.stdin.isatty():
         if workspaces:
-            print(f"  {style('設定済み', GREEN)}")
+            print(f"  {style('登録済み', GREEN)}")
             for entry in workspaces:
                 print_workspace_entry(entry, indent="    - ")
         else:
@@ -44,7 +44,7 @@ def configure_workspace_root(config: dict) -> str | None:
     configured_workspace_id: str | None = None
     while True:
         if workspaces:
-            print(f"  {style('設定済み:', GREEN)}")
+            print(f"  {style('登録済み:', GREEN)}")
             for index, entry in enumerate(workspaces, start=1):
                 print_workspace_entry(entry, indent=f"    {index}. ")
         else:
@@ -156,17 +156,12 @@ def _select_active_workspace(config: dict, workspaces: list[dict]) -> str | None
 
 def print_workspace_entry(entry: dict, *, indent: str) -> None:
     connection = entry["connection"]
-    type_label = {
-        "local": "local",
-        "codespaces": "Codespaces",
-        "network": "network",
-    }[connection["type"]]
     location = connection["path"]
     if connection["type"] == "codespaces":
         location = f"{connection['codespace']}:{location}"
     elif connection["type"] == "network":
         location = f"{connection['host']}:{location}"
-    print(f"{indent}{style(entry['name'], BOLD)} ({type_label} · {entry['branch']})")
+    print(f"{indent}{style(entry['name'], BOLD)}")
     print(f"       {style(location, DIM)}")
 
 
