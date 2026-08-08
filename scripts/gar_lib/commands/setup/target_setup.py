@@ -234,17 +234,18 @@ def configure_target_connection(config: dict) -> None:
 
 def _configure_ssh_target(config: dict) -> None:
     current = saved_target_setting(config, "host")
+    print("  SSH config の Host 名で接続します（鍵なども同じ設定を使用します）。")
     if current:
-        print(f"  SSH host: {style(current, BOLD, GREEN)}")
+        print(f"  現在の SSH Host: {style(current, BOLD, GREEN)}")
     else:
-        print(f"  SSH host: {style('未設定', YELLOW)}")
+        print(f"  現在の SSH Host: {style('未設定', YELLOW)}")
     if not sys.stdin.isatty():
         if not current:
             print(f"     {style('対話terminalでgar setupを実行して実機のSSH hostを保存してください。', DIM)}")
         return
 
     answer = safe_input(
-        "実機の SSH config host を入力してください" f"{f' [{current}]' if current else ''}: ",
+        f"  SSH Host 名 [{current or '入力必須'}]: ",
         default_on_eof=current or "",
     ).strip()
     selected = answer or current
