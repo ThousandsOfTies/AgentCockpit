@@ -220,11 +220,11 @@ def prompt_workspace_entry(
     connection = existing.get("connection", {}) if existing else {}
     selected_type = connection_type or connection.get("type")
     if selected_type is None:
-        print("  接続種別を選択してください:")
-        print("    1. Codespaces")
-        print("    2. Local")
-        print("    3. Network (SSH)")
-        selected = safe_input("  番号 [2]: ", default_on_eof="").strip() or "2"
+        print("  プロダクトのソースがある場所を選択してください:")
+        print("    1. GitHub Codespaces")
+        print("    2. このPC / WSL")
+        print("    3. 別のPC・サーバー (SSH)")
+        selected = safe_input("  ソースの場所 [2]: ", default_on_eof="").strip() or "2"
         selected_type = {"1": "codespaces", "2": "local", "3": "network"}.get(selected)
         if selected_type is None:
             print(f"  {style('番号が正しくありません。', RED)}")
