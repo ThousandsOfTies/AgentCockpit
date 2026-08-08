@@ -110,10 +110,10 @@ def _prompt_runtime_host(current_host: str | None) -> str:
         selected_host = answer or current_host
         if selected_host is not None and is_valid_runtime_host(selected_host):
             return selected_host
-        print(
-            f"  {style('host には制御文字や空白を含められません。'
-            'SSH config の host 名または IP address を入力してください。', RED)}"
+        invalid_host_message = (
+            "host には制御文字や空白を含められません。" "SSH config の host 名または IP address を入力してください。"
         )
+        print(f"  {style(invalid_host_message, RED)}")
 
 
 def ensure_environment_dependencies(

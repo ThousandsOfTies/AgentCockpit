@@ -273,15 +273,15 @@
 | `removable_target_backend_categories` | 70 | _(外部参照なし)_ |
 | `managed_backend_categories` | 74 | _(外部参照なし)_ |
 | `prepare_target_backend` | 85 | commands.setup.command(1) |
-| `select_target` | 97 | commands.setup.command(1) |
-| `print_target_summary` | 113 | _(外部参照なし)_ |
-| `print_selected_target_summary` | 126 | _(外部参照なし)_ |
-| `selected_target_manifest` | 138 | commands.setup.command(3) |
-| `optional_setup_categories` | 146 | commands.setup.command(2) |
-| `configure_esp32_serial_port` | 175 | commands.setup.command(1) |
-| `configure_target_connection` | 223 | commands.setup.command(2) |
-| `detect_esp32_serial_port_candidates` | 273 | _(外部参照なし)_ |
-| `print_target_next_steps` | 283 | commands.setup.command(1) |
+| `select_target` | 98 | commands.setup.command(1) |
+| `print_target_summary` | 114 | _(外部参照なし)_ |
+| `print_selected_target_summary` | 127 | _(外部参照なし)_ |
+| `selected_target_manifest` | 139 | commands.setup.command(3) |
+| `optional_setup_categories` | 147 | commands.setup.command(2) |
+| `configure_esp32_serial_port` | 176 | commands.setup.command(1) |
+| `configure_target_connection` | 222 | commands.setup.command(2) |
+| `detect_esp32_serial_port_candidates` | 272 | _(外部参照なし)_ |
+| `print_target_next_steps` | 282 | commands.setup.command(1) |
 
 ## `commands.setup.workspace_setup` (scripts/gar_lib/commands/setup/workspace_setup.py)
 
@@ -992,11 +992,11 @@
 | `commands.setup.environment_setup` | `environment_by_id` | 424 |
 | `commands.setup.environment_setup` | `first_unconfigured_category_index` | 370 |
 | `commands.setup.environment_setup` | `grouped_environments` | 401 |
-| `commands.setup.target_setup` | `detect_esp32_serial_port_candidates` | 273 |
+| `commands.setup.target_setup` | `detect_esp32_serial_port_candidates` | 272 |
 | `commands.setup.target_setup` | `ensure_selected_target_ready` | 56 |
 | `commands.setup.target_setup` | `managed_backend_categories` | 74 |
-| `commands.setup.target_setup` | `print_selected_target_summary` | 126 |
-| `commands.setup.target_setup` | `print_target_summary` | 113 |
+| `commands.setup.target_setup` | `print_selected_target_summary` | 127 |
+| `commands.setup.target_setup` | `print_target_summary` | 114 |
 | `commands.setup.target_setup` | `prune_removed_target_backends` | 63 |
 | `commands.setup.target_setup` | `removable_target_backend_categories` | 70 |
 | `commands.setup.workspace_setup` | `default_workspace_name` | 190 |

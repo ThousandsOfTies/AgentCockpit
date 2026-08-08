@@ -88,10 +88,11 @@ def prepare_target_backend(target: TargetManifest) -> None:
 
     print()
     print(style("Wokwi build:", BOLD, BLUE))
-    print(
-        f"  {style('製品 workspace の scripts/product-sim-build.sh が '
-        'gar sim app build 実行時にfirmwareとartifactを生成します。', DIM)}"
+    build_hook_message = (
+        "製品 workspace の scripts/product-sim-build.sh が "
+        "gar sim app build 実行時にfirmwareとartifactを生成します。"
     )
+    print(f"  {style(build_hook_message, DIM)}")
 
 
 def select_target(targets: Sequence[TargetManifest]) -> TargetManifest | None:
@@ -195,10 +196,8 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
         print(f"  {style('候補', YELLOW)} {style(default_port, BOLD)}")
     else:
         print(f"  {style('未設定', YELLOW)}")
-        print(
-            f"     {style('gar target deploy が使う serial port を'
-            'workspace設定へ保存できます。', DIM)}"
-        )
+        serial_port_message = "gar target deploy が使う serial port をworkspace設定へ保存できます。"
+        print(f"     {style(serial_port_message, DIM)}")
 
     if candidates:
         print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")
@@ -288,10 +287,10 @@ def print_target_next_steps(config: dict) -> None:
     print(style("次の操作フェーズ:", BOLD, BLUE))
     print(f"  {style('1. 製品の Wokwi firmware をビルド:', BOLD)}")
     print("    scripts/gar sim app build")
-    print(
-        f"     {style('製品 workspace の product-sim-build hook が firmware をビルドし、'
-        '実行用 artifact を作成します。', DIM)}"
+    firmware_build_message = (
+        "製品 workspace の product-sim-build hook が firmware をビルドし、実行用 artifact を作成します。"
     )
+    print(f"     {style(firmware_build_message, DIM)}")
     print(f"  {style('2. Wokwi project を配置:', BOLD)}")
     print("    scripts/gar sim app deploy")
     print(f"     {style('artifact を選択中の runtime workspace に展開します。', DIM)}")
@@ -301,7 +300,5 @@ def print_target_next_steps(config: dict) -> None:
     print("    scripts/gar sim runtime diag --json  # project_dir を確認")
     print("    code /path/from/project_dir")
     print(f"     {style('VS Codeで diagram.json を開き、Wokwi の再生ボタンで確認します。', DIM)}")
-    print(
-        f"     {style('AIはこのフェーズ表を見て、未定義のgarコマンドではなく'
-        '現在の実装済み入口を選びます。', DIM)}"
-    )
+    phase_guidance_message = "AIはこのフェーズ表を見て、未定義のgarコマンドではなく現在の実装済み入口を選びます。"
+    print(f"     {style(phase_guidance_message, DIM)}")
