@@ -127,7 +127,11 @@ devcontainer は「全員に必須の魔法の箱」ではなく、Linux 前提�
 
 **制御・操作は WSL2 上の `gar` に集約済み**です。simulation VM 起動・停止（`gar sim host start` / `gar sim host stop`）も実機デプロイ（`gar target deploy`）も WSL2 から実行でき、Windows ネイティブは原則不要です。
 
-USB-C 実機への adb も、`usbipd-win` を WSL2 から呼び出す `gar usb attach` で WSL2 に通せます。busid は自動検出・記憶されるので、初回の `usbipd bind`（管理者・一度だけ）以降は `gar usb attach` だけで実機が WSL2 に現れます。ネットワーク経由のSSH/scp environmentは、`gar setup`で実機hostをworkspaceへ保存して`gar target deploy`から利用できます。
+Raspberry Pi 5 / Raspberry Pi OS実機はSSH/scpを標準とし、`gar setup`でSSH configの
+Host名をworkspaceへ保存します。初回は`gar target prepare`でTarget所有のOS recipeを
+適用し、以後は`gar target deploy`が限定sudo installerを介してapplicationを更新します。
+USB-C/ADBが必要な別Targetでは、`usbipd-win`をWSL2から呼び出す`gar usb attach`も
+利用できます。
 
 ### ESP32 / USB serial の build と flash
 

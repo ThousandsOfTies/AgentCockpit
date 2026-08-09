@@ -54,9 +54,10 @@ scripts/create-product-devspace.sh GarVibeRemote \
 ```
 
 この script は `gar-build-env` を clone し、product名と同名のbranch、アプリと
-`gar-tools` の submodule、`product-sim-build.sh` の template を作成します。
-product 固有の simulation command を編集した後に、作成先を指定して `gar setup` を
-実行してください。リモート branch まで公開する場合だけ `--push` を付けます。
+`gar-tools` の submodule、`product-sim-build.sh`と`product-target-build.sh`の
+templateを作成します。product固有のsimulation/target build commandを編集した後に、
+作成先を指定して`gar setup`を実行してください。リモートbranchまで公開する場合だけ
+`--push`を付けます。
 
 target appのソースは`GaplessAgentRuntime/app`ではなく、product workspaceの
 `sources/gar-adhoc-app/app`や`sources/gar-vibe-ui/vibe-remote/m5stickc-client`などの
@@ -65,6 +66,25 @@ submoduleに置きます。Runtimeはそれらの成果物を
 
 開発者が `gar-tools` も編集する場合は、`GaplessAgentRuntime` と同じ親ディレクトリに
 並べるか、`GAR_TOOLS_ROOT` で明示してください。
+
+## 実機Targetの標準deploy contract
+
+OS管理領域の準備はRuntime本体へdistribution別に直書きせず、選択Targetの
+`target.json`が指定するrecipeへ分離します。Raspberry Pi 5 / Raspberry Pi OSの
+標準経路は次の通りです。
+
+```bash
+gar target prepare --workspace Local/Product  # 初回・recipe更新時
+gar target build --workspace Local/Product
+gar target deploy --workspace Local/Product
+```
+
+`prepare`はreference runtime package、非rootの`gar`service account、device group、
+限定sudo installer、共通`gar-app@.service`を導入します。product artifactは
+`/opt/gar/apps/<app>/run`をentry pointとして提供し、root管理のservice unitは持ちません。
+永続設定は`/etc/gar/<app>.env`へ分離され、通常のapplication再deployでは
+上書きされません。実機ではreal `/dev/*`を使用し、simulation dummy deviceやWeb Panelを
+導入しません。
 
 シミュレーションの操作は、人間の手動確認と AI / CI の再現確認で入口を分けます。
 Linux / RasPi-compatible では Web UI、Wokwi では VS Code Wokwi Simulator / Diagram UI を
@@ -80,7 +100,7 @@ AIエージェント向けの運用指示は[AGENT.md](AGENT.md)が正本です�
 |---|---|---|
 | **このプロジェクトを初めて知る** | [02 アーキテクチャ](docs/02_ARCHITECTURE.md)、[info/01 業界動向](info/01_INDUSTRY_TRENDS.md) | [99 PoC 成果](docs/99_RESULTS.md) |
 | **実際に動かしたい開発者** | [00 チュートリアル](docs/00_ZERO_TO_TARGET_TUTORIAL.md) | [01 コマンドリファレンス](docs/01_COMMAND_REFERENCE.md)、[06 シミュレーション環境](docs/06_SIMULATION.md) |
-| **実機で組みたい** | [05 ハードウェア配線](docs/05_HARDWARE_WIRING.md) | [99 PoC 成果](docs/99_RESULTS.md) |
+| **実機で組みたい** | [00 チュートリアル](docs/00_ZERO_TO_TARGET_TUTORIAL.md)、[05 ハードウェア配線](docs/05_HARDWARE_WIRING.md) | [01 コマンドリファレンス](docs/01_COMMAND_REFERENCE.md)、[02 アーキテクチャ](docs/02_ARCHITECTURE.md) |
 
 ## ドキュメント一覧
 

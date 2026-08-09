@@ -23,9 +23,30 @@ class TargetManifest:
     default_backends: dict[str, str]
     backend_notes: dict[str, str]
     simulation: dict[str, dict[str, Any]] = field(default_factory=dict)
+    provisioning: dict[str, dict[str, str]] = field(default_factory=dict)
+    source_path: Path | None = None
 
     def simulation_settings(self, backend_id: str) -> dict[str, Any]:
         return self.simulation.get(backend_id, {})
+
+    def provisioning_settings(self, backend_id: str) -> dict[str, str]:
+        return self.provisioning.get(backend_id, {})
+
+    def provisioning_recipe_path(self, backend_id: str) -> Path | None:
+        settings = self.provisioning_settings(backend_id)
+        relative_path = settings.get("path")
+        if relative_path is None:
+            return None
+        if self.source_path is None:
+            raise GarDomainError(f"target provisioning recipeの場所を解決できません: {self.id}")
+        repository_root = self.source_path.parent.parent.parent.resolve()
+        tools_root = (repository_root / self.tools_root).resolve()
+        recipe = (tools_root / relative_path).resolve()
+        if not recipe.is_relative_to(tools_root):
+            raise GarDomainError(f"target provisioning recipeがtoolsRoot外を参照しています: {self.id}")
+        if not recipe.is_dir():
+            raise GarDomainError(f"target provisioning recipeが見つかりません: {recipe}")
+        return recipe
 
 
 @dataclass(frozen=True)
@@ -125,6 +146,7 @@ def _load_target_manifest(
     default_backends = _validate_default_backends(data, path, backend_ids, issues)
     backend_notes = _validate_string_mapping(data, "backendNotes", path, issues)
     simulation = _validate_simulation_settings(data, path, issues)
+    provisioning = _validate_provisioning_settings(data, path, backend_ids.get("target", set()), issues)
 
     if len(issues) != issue_count_before:
         return None
@@ -136,6 +158,8 @@ def _load_target_manifest(
         default_backends=default_backends,
         backend_notes=backend_notes,
         simulation=simulation,
+        provisioning=provisioning,
+        source_path=path,
     )
 
 
@@ -307,4 +331,46 @@ def _validate_simulation_settings(
             )
             continue
         validated[backend_id] = dict(settings)
+    return validated
+
+
+def _validate_provisioning_settings(
+    data: Mapping[str, Any],
+    path: Path,
+    target_backend_ids: set[str],
+    issues: list[TargetManifestValidationIssue],
+) -> dict[str, dict[str, str]]:
+    value = data.get("provisioning", {})
+    if not isinstance(value, dict):
+        issues.append(TargetManifestValidationIssue(path, "provisioning", "field must be an object"))
+        return {}
+
+    validated: dict[str, dict[str, str]] = {}
+    for backend_id, settings in value.items():
+        field = f"provisioning.{backend_id}"
+        if not isinstance(backend_id, str) or backend_id not in target_backend_ids:
+            issues.append(
+                TargetManifestValidationIssue(
+                    path,
+                    field,
+                    "key must be a registered target backend id",
+                    tuple(sorted(target_backend_ids)),
+                )
+            )
+            continue
+        if not isinstance(settings, dict):
+            issues.append(TargetManifestValidationIssue(path, field, "settings must be an object"))
+            continue
+        recipe_type = settings.get("type")
+        recipe_path = settings.get("path")
+        if recipe_type != "ssh-script":
+            issues.append(TargetManifestValidationIssue(path, f"{field}.type", "must be 'ssh-script'"))
+            continue
+        if not isinstance(recipe_path, str) or not recipe_path or Path(recipe_path).is_absolute():
+            issues.append(TargetManifestValidationIssue(path, f"{field}.path", "must be a relative path"))
+            continue
+        if ".." in Path(recipe_path).parts:
+            issues.append(TargetManifestValidationIssue(path, f"{field}.path", "must not escape toolsRoot"))
+            continue
+        validated[backend_id] = {"type": recipe_type, "path": recipe_path}
     return validated

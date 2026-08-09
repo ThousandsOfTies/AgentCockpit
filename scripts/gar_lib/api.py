@@ -208,6 +208,9 @@ class Target:
         build = build_environment_for(self.workspace, self.artifacts)
         return build.build(ArtifactKind.TARGET_APP, self.workspace)
 
+    def prepare(self) -> None:
+        target_environment_for(self.workspace).prepare()
+
     def deploy(self) -> Artifact:
         artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
         target_environment_for(self.workspace).deploy(artifact)

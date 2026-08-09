@@ -3,7 +3,7 @@
 毎日の「今日なにやろうかな」用のメモ。気軽に書き換えてOK。
 詳細な設計は [docs/](docs/) 各ファイルに、ここは「次の一手」を思い出すための入口。
 
-最終更新: 2026-07-31
+最終更新: 2026-08-09
 
 ---
 
@@ -41,6 +41,7 @@
 
 ## ✅ 最近やったこと（Done）
 
+- [x] **Physical Target provisioningをTarget/OS recipe化** — `gar target prepare`を共通入口にし、Raspberry Pi 5 / Raspberry Pi OS recipeがruntime package、`gar`account、device group、限定sudo installer、`gar-app@.service`を導入。productは`/opt/gar/apps/<app>/run`、永続設定は`/etc/gar/<app>.env`へ分離。旧`NOPASSWD: ALL`を削除し、GarStreamTxでprepare/build/deployを実機確認 — 2026-08-09
 - [x] **SIM machine 構築を Terraform でレシピ化し `gar sim infra` に接続** — `infra/terraform/main.tf`（EC2/SG/volume/key）と `user_data.sh`（linux-modules-extra / gpiod / strace）を作成。`gar sim infra setup/apply/destroy` が Terraform を実行し、`setup` は現在値と作成計画を表示、`apply` 後は `instance_id` / `public_ip` を `.gar/config.json` と SSH config へ反映 — 2026-06-09 / 2026-07-03 更新
 - [x] **既存テストのほころびを解消** — `make check`でRuff、全unittest、DSM同期、shell構文、VS Code拡張Node testをまとめて検証。テスト件数は追加で変わるため固定値を正本にしない — 2026-07-31更新
 - [x] **rtk（トークン削減）の導入済み確認** — Codex/AGENT 指示で `rtk` を使う運用になっており、未完了バックログから除外。使い方は AGENT.md「オプション: rtk」セクションを参照 — 2026-07-03

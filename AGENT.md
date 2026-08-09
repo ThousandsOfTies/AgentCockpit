@@ -183,7 +183,7 @@ find .gar -maxdepth 3 -type f | sort
 
 - **SSH 設定**: `gar sim host start` / `gar sim infra apply` が `~/.ssh/config` の HostName を更新する
 - **Codespaces 名**: `gh codespace list` で確認
-- **RasPi5**: `gar setup`で保存先を確認し、ADBなら`adb devices`、SSHなら`ssh <host> true`で疎通を確認
+- **RasPi5 / Raspberry Pi OS**: 標準はSSH/scp。`gar setup`で保存先を確認し、`ssh <host> true`で疎通を確認。ADBは選択Targetが明示的に採用する場合だけ使う
 
 ---
 
@@ -197,10 +197,11 @@ find .gar -maxdepth 3 -type f | sort
 |---|---|---|---|
 | **Codespaces** | remote BuildEnvironment | cross-compile、成果物生成 | 実行targetとしての運用 |
 | **WSL** | control plane / local BuildEnvironment | `gar` 発信、成果物中継、deploy、setupでlocalを選んだproduct hook | EC2/RasPi5上の場当たり的なビルド |
-| **EC2 / RasPi5** | 実行（ターゲット） | 配布されたバイナリの起動・実行 | **ツールチェーン導入・`make`・コンパイル・ビルド環境構築** |
+| **EC2 / RasPi5** | 実行（ターゲット） | 配布済みapplicationの起動、Target recipeによるOS準備 | **手作業のツールチェーン導入・`make`・コンパイル・場当たり的なsystem設定** |
 
-- **ビルドはsetupで選択したBuildEnvironment（local / Codespaces）で行う**。EC2/RasPi5 上で
-  `make` / `gcc` / `apt install build-*` 等を実行しない。
+- **ビルドはsetupで選択したBuildEnvironment（local / Codespaces）で行う**。EC2/RasPi5上で
+  `make` / `gcc` / `apt install build-*` 等を手作業で実行しない。実行時package、service
+  account、boot統合は`gar target prepare`が選択TargetのOS recipeから冪等に導入する。
 - ARM 向け成果物の標準経路は **Codespacesでcross-build → WSL artifact store → EC2/実機へdeploy**。
 - EC2 にビルド環境を生やそうとしている自分に気づいたら、それは役割違反。手を止めて `gar setup` で選んだ local / Codespaces の `BuildEnvironment` に戻す。
 
@@ -241,15 +242,25 @@ gar sim runtime deploy
 
 ### 「実機にデプロイして」と言われたら
 
-1. 選択したBuildEnvironmentでビルドし、artifactをWSL側へ用意:
+1. 選択Targetにprovisioning recipeがある場合、初回またはrecipe更新時に準備:
+   ```bash
+   gar target prepare
+   ```
+   sudo passwordが必要ならvisible terminalへhandoffし、password自体は要求しない。
+2. 選択したBuildEnvironmentでビルドし、artifactをWSL側へ用意:
    ```bash
    gar target build
    ```
-2. WSL hub から実機へ転送:
+3. WSL hub から実機へ転送:
    ```bash
    gar target deploy
    ```
    経路: local/Codespaces build → WSL artifact store → adb/scp/esptool → 実機
+
+Raspberry Pi OS/systemd Targetではproduct artifactを
+`/opt/gar/apps/<app>/run`へ配置する。product側からroot管理のservice unitを配布せず、
+Target recipeの`gar-app@.service`を共有する。`/etc/gar/<app>.env`は永続設定であり、
+通常deployで上書き・削除しない。実機へsimulation stubやWeb Panelを配置しない。
 
 ---
 
@@ -290,15 +301,21 @@ gar sim runtime stop
 
 ### RasPi5 で実機実行
 
-実機接続は adb を既定としている（社内環境で複数 NIC が使えない構成に合わせるため）。ネットワーク越しに到達できる環境では、`gar setup` の実機環境カテゴリで `SSH / scp` を選び、workspaceへhostを保存して `gar target deploy --workspace <name>` で転送できる（詳細: [docs/01_COMMAND_REFERENCE.md](docs/01_COMMAND_REFERENCE.md)）。
+Raspberry Pi 5 / Raspberry Pi OSはSSH/scpとsystemd recipeを標準とする。`gar setup`で
+Targetに`raspberry-pi-5`、実機環境に`ssh_scp`、接続先にSSH configのHost名を保存する。
+applicationはboot時に共通serviceから起動する。
 
-```powershell
-adb shell
-```
 ```bash
-# adb shell 内
-~/sensor_demo
+gar target prepare --workspace Local/Product  # 初回・recipe更新時
+gar target build --workspace Local/Product
+gar target deploy --workspace Local/Product
+ssh raspi5 'systemctl status gar-app@APP.service --no-pager'
 ```
+
+上の`APP`はproductのapp名（例: `gar-stream-tx`）へ置き換える。
+serviceが起動しない場合はjournalとproduct READMEを確認する。envは任意であり、
+必要なproductだけ同梱exampleから`/etc/gar/APP.env`を作る。偽の接続先を推測して
+設定しない。
 
 ---
 

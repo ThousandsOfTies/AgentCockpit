@@ -1,6 +1,6 @@
 # GaplessAgentRuntime 実装レビュー引き継ぎ
 
-最終更新: 2026-07-31
+最終更新: 2026-08-09
 
 この文書は、全体レビュー後の実装状態と、今後判断が必要な項目を短く引き継ぐためのものです。
 操作手順は`docs/`、設計境界は`GAR_LIB_STRUCTURE.md`を正本とします。
@@ -65,6 +65,20 @@ tuple indexによる状態表現を避けています。
 - repeated startはidempotentで、stale PIDから無関係processをkillしない。
 - MuJoCo app deployはmanifest記載のassetを`.gar/mujoco/`へ安全にmaterializeし、modelを検証する。
 - `HardwareControlResult`とdiagnostic modelをCLI側でrenderする。
+
+### Physical Target provisioning
+
+- `gar target prepare`を共通CLIとして追加し、OS依存処理はRuntime本体ではなく
+  `gar-tools/targets/<id>/target.json`の`provisioning` recipeから解決する。
+- Raspberry Pi 5 / Raspberry Pi OS recipeはreference runtime package、`gar`service
+  account、device group、限定sudo installer、共通`gar-app@.service`を冪等に導入する。
+- product artifactの標準entry pointは`/opt/gar/apps/<app>/run`。root所有service unitは
+  productから配布しない。
+- 永続設定は任意の`/etc/gar/<app>.env`へ分離し、通常deployでは上書きしない。
+  共通serviceはenvがある場合だけ読み込み、deploy後にenable/restartする。
+- Raspberry Pi実機へsimulation dummy device、CUSE、gpio-sim、Web Panelを導入しない。
+- 旧`/etc/sudoers.d/90-gar-deploy`の`NOPASSWD: ALL`はrecipeで限定ruleへ移行済み。
+- GarStreamTxで実機prepare/build/deploy、非rootでのapplication importまで確認済み。
 
 ### ローカル補助ツール
 

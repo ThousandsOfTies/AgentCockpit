@@ -58,7 +58,10 @@ class ProductBuildSpecResolver:
         script = self._SCRIPTS.get(kind)
         if script is None:
             raise GarDomainError(f"この artifact 種別の product build は未対応です: {kind.value}")
-        variables = (
-            simulation_build_variables(workspace) if kind in self._SIMULATION_KINDS else {}
-        )
+        if kind in self._SIMULATION_KINDS:
+            variables = simulation_build_variables(workspace)
+        elif kind is ArtifactKind.TARGET_APP and workspace.selected_target is not None:
+            variables = {"GAR_TARGET": workspace.selected_target}
+        else:
+            variables = {}
         return BuildSpec(script=script, variables=variables)

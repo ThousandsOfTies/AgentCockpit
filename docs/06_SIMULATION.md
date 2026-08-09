@@ -67,6 +67,10 @@ infra/terraform/
   user_data.sh   — 初回起動時の bootstrap（linux-modules-extra / gpiod / strace の install）
 ```
 
+標準Security Groupは、default VPC内のシミュレーションhost間に限り
+GarStreamのRTP/UDP 5600とSource discovery/要求用UDP 5601を許可する。
+TXはRXのaddressを設定せず、RXが検出したSourceへ送信要求を返す。
+
 ### インスタンスの作成・再作成
 
 ```bash

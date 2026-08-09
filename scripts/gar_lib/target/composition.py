@@ -13,6 +13,7 @@ from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.target.environment import TargetEnvironment
 from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
+from scripts.gar_lib.target.manifest import discover_target_manifests, target_by_id
 
 
 def target_environment_for(workspace: Workspace) -> TargetEnvironment:
@@ -45,10 +46,18 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
             host = workspace.connection.host
         if host is None:
             raise GarDomainError(f"実機のSSH hostが未設定です: {workspace.name}。gar setupで設定してください。")
+        recipe = None
+        if workspace.selected_target is not None:
+            manifest = target_by_id(discover_target_manifests(), workspace.selected_target)
+            if manifest is None:
+                raise GarDomainError(f"選択したTarget定義が見つかりません: {workspace.selected_target}")
+            recipe = manifest.provisioning_recipe_path(backend)
         return FileTransferTargetEnvironment(
             SshCommandChannel(host),
             ScpFileChannel(host),
             base_destination=base_destination,
+            privileged_install=recipe is not None,
+            prepare_recipe=recipe,
         )
 
     if backend == "esp32_esptool":

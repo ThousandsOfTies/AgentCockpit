@@ -37,7 +37,7 @@ Gapless Agent Runtime で構築した「AI エージェントが操作しやす�
 本PoCが採用した CUSE / gpio-sim によるアプローチは、アプリケーション層（`sensor_demo.c`）の**実機互換性を保ちながら、システムエミュレータのような重さを排除した実用的な構成**です。
 ただし、このプロジェクトの本当の焦点は「CUSE や gpio-sim を使うこと」自体ではありません。人手では採算が合いにくく、実機検証が始まると腐りやすい `/dev/*` 互換 runtime を、AI がプロジェクト専用に作り切り、保守し続けることです。
 
-SPIやI2Cの複雑な `ioctl` リクエストを正確にパースして処理し、GPIO では `gpio-sim` の sysfs と Web Bridge を同期させる点は、AI エージェントが得意な「地味で構造化された互換実装」を活かす好例です。アプリ起動からシミュレーション固有の指定を外し、EC2 でも RasPi5 でも `~/sensor_demo` で起動できるところまで到達しました。
+SPIやI2Cの複雑な `ioctl` リクエストを正確にパースして処理し、GPIO では `gpio-sim` の sysfs と Web Bridge を同期させる点は、AI エージェントが得意な「地味で構造化された互換実装」を活かす好例です。PoCではアプリ起動からシミュレーション固有の指定を外し、EC2とRasPi5で同じ`~/sensor_demo`を起動できることを確認しました。現在の実機deploy標準はさらに進め、Target/OS recipeでboot統合を準備し、product artifactの`/opt/gar/apps/<app>/run`を非root serviceから起動するcontractへ整理しています。
 
 ---
 

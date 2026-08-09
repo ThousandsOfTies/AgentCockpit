@@ -8,7 +8,7 @@
 | 2. ビルド環境 | Local / GitHub Codespaces | product hookをローカルまたはクラウドで実行。CodespacesはARM64クロスビルド等に利用 |
 | 3. シミュレーション環境 | AWS EC2 Graviton | 実機と同一 ARM64 バイナリを動かす仮想 H/W 実行環境 |
 | 4. デバイス互換 Runtime | CUSE / gpio-sim + bridge | `/dev/i2c-*` `/dev/spidev*` `/dev/gpiochip*` を OS レベルで再現しアプリを無改造で動かす |
-| 5. 実機接続環境 | RasPi5（adb / SSH） | 同一バイナリを実機で検証。接続経路は config で切り替え |
+| 5. 実機接続環境 | RasPi5（SSH/systemd recipe） | 同じapplication成果物をreal `/dev/*`で実行。OS準備とboot統合はTarget recipeが担当 |
 
 ビルド成果物は、選択したBuildEnvironment（local / Codespaces）→ WSL側artifact store → simulation/実機の一方向で流れる。EC2や実機上ではビルドしない。ESP32を含む全targetで同じBuildEnvironmentを使い、target固有のbuild手順はproduct hookに置く。
 
@@ -38,6 +38,10 @@ target.deploy
   depends on target.artifact
   depends on target.access
 
+target.prepare
+  applies target.provisioning recipe through target.access
+  owns OS packages, service account and boot integration
+
 target.artifact
   depends on target.build
   depends on target.config
@@ -50,7 +54,8 @@ target.build
 なら `target.access` は USB serial 接続先、`target.build` はproduct workspaceの
 `product-target-build.sh`をlocalまたはCodespacesで実行する処理、
 `target.deploy` は最新 firmware artifact の flash になる。RasPi/Linux device なら
-`target.deploy` は adb または SSH/scp での配置になる。
+`target.prepare`はTarget manifestのOS recipe適用、`target.deploy`はADBまたは
+SSH/scpでの配置になる。
 
 ---
 
@@ -157,8 +162,24 @@ PID再利用で無関係なprocessを停止しない。MuJoCoのproduct assetは
 
 ## 5. 実機接続環境
 
-Gapless Agent Runtime では、AI が実機へ到達するための接続経路として **adb（既定）** と **SSH/scp（オプション）** を想定します。どちらか一方を選択して使う方針で、両方を同時に使うことは想定しません。
+Gapless Agent Runtimeでは、AIが実機へ到達する接続経路をTargetごとに選びます。
+Raspberry Pi 5 / Raspberry Pi OSの標準は**SSH/scp**であり、`gar target prepare`による
+OS recipe適用と、限定sudo installerによるsystem領域deployを利用します。
 
-既定は USB-C を用いた adb です。社内ネットワークなどで作業 PC が複数の NIC を自由に使えない環境でも、USB ケーブル一本で実機にアクセスできるためです（[scripts/gar_lib/environments/registry/target/adb_usb.py](../scripts/gar_lib/environments/registry/target/adb_usb.py)）。
+ADBはUSBだけで到達したいLinux Target、esptoolはESP32のflashなど、別Target/backendの
+選択肢として残します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、
+AIも人間も同じ設定で動作します。複数経路を同時に混在させず、選択中backendを正本にします。
 
-ネットワーク越しに実機へ到達できる環境では、SSH/scp 経路も選択できます。`gar setup` の実機環境カテゴリで `SSH / scp` を選び、SSH configのhostをworkspaceへ保存すると、`gar target deploy` が `ScpFileChannel` と `SshCommandChannel` を組み合わせてartifactを転送します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、AIも人間も同じ設定で動作します。
+### Target/OS provisioningの境界
+
+SSH実機のroot管理領域、package manager、service account、init systemはOSごとに異なる。
+そのため`gar target prepare`は共通の操作入口だけを提供し、実処理は
+`gar-tools/targets/<id>/target.json`の`provisioning`からTarget所有recipeを解決する。
+Runtime本体はdistribution名で分岐しない。
+
+Raspberry Pi OS/systemdのreference contractでは、recipeが限定sudo installerと
+root所有の`gar-app@.service`を導入する。product artifactは
+`/opt/gar/apps/<app>/run`を提供し、serviceは非rootの`gar`accountで動く。
+永続設定`/etc/gar/<app>.env`、SSH host key、userのauthorized_keysはapplication
+artifactの責務外であり、通常deployでは上書きしない。read-only rootfsやBuildroot、
+image flashingを使うTargetは同じCLIへ別recipe/backendを追加する。

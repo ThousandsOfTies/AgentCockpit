@@ -102,10 +102,11 @@ scripts/gar_lib/
 │  └─ session/                    VS Code terminal profileとport forward
 │
 ├─ target/
-│  ├─ manifest.py                 target.json探索・検証
-│  ├─ composition.py              Workspaceからtarget environmentを構成
+│  ├─ manifest.py                 target.json探索・provisioning recipe検証
+│  ├─ composition.py              Workspaceからtarget environment/recipeを構成
 │  ├─ environment.py              TargetEnvironment protocol
-│  ├─ file_transfer.py            ADB/SSH file transfer adapter
+│  ├─ file_transfer.py            ADB/SSH transferと限定sudo app install
+│  ├─ ssh_prepare.py              Target所有recipeの転送・対話実行
 │  ├─ esp32.py                    ESP32 TargetEnvironment
 │  ├─ esp32_firmware.py           flash artifact layout
 │  └─ esptool.py                  artifact検証とserial flash
@@ -121,6 +122,12 @@ ESP32専用のbuild moduleは廃止済みです。ESP32もLinux targetも、選�
 `LocalBuildEnvironment`または`CodespacesBuildEnvironment`が同じ
 `scripts/product-target-build.sh`を実行します。PlatformIO等のproduct固有処理は
 product hookが担当し、GARのtarget層はartifactの検証とdeploy/flashを担当します。
+
+SSH実機のOS管理領域は`gar target prepare`から、Target manifestが指定する
+gar-tools側provisioning recipeへ委譲します。Runtimeの`target/ssh_prepare.py`はrecipeの
+転送と実行だけを担当し、distribution/package manager/init systemでは分岐しません。
+Raspberry Pi OS/systemdの標準contractは`/opt/gar/apps/<app>/run`、
+`/etc/gar/<app>.env`、Target所有の`gar-app@.service`です。
 
 ## CLIとprogrammatic API
 

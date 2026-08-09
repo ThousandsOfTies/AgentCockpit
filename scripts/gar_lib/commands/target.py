@@ -15,6 +15,7 @@ from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 
 TARGET_ACTIONS = {
+    "prepare": "SSH実機の限定sudoデプロイ権限を初回だけ設定します",
     "build": "setup 済み target の実機用 artifact をビルドします",
     "deploy": "target runtime へ成果物を配置します",
     "fetch": "build environment から artifact bundle を WSL hub へ取得します",
@@ -78,6 +79,10 @@ def run_target_command(
             raise GarDomainError(f"未対応の target action: {command.action}")
         target_api = Gar(workspace).target
         match command.action:
+            case "prepare":
+                target_api.prepare()
+                print("Target preparation completed.")
+                return 0
             case "build":
                 artifact = target_api.build()
             case "deploy":

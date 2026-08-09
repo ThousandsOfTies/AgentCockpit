@@ -1,6 +1,6 @@
 # 引き継ぎ資料
 
-最終更新: 2026-07-31
+最終更新: 2026-08-09
 
 この資料は、Gapless Agent Runtime 周辺作業を別セッション・別エージェントへ
 引き継ぐための作業メモである。運用規約の正本は
@@ -24,14 +24,15 @@
 | パス | 役割 |
 |---|---|
 | `/home/user/Yurufuwa/GAR/GaplessAgentRuntime` | GAR の操作規約、アーキテクチャ、`gar` CLI 正本 |
-| `/home/user/Yurufuwa/GAR/gar-tools` | CUSE stubs、ESP32/M5Stack firmware runner、Renode/QEMU 足場 |
+| `/home/user/Yurufuwa/GAR/gar-tools` | simulation runtimeとTarget manifest。Raspberry Pi OS provisioning recipeの正本 |
 | `/home/user/Yurufuwa/GAR/gar-build-env` | Codespaces/devcontainer build hub |
 | `/home/user/Yurufuwa/GarVibeRemote` | `gar-build-env`のVibe Remote product workspace |
 | `/home/user/Yurufuwa/GarVibeRemote/sources/gar-vibe-ui/vibe-remote` | VS Code extension、M5Stack Vibe Remote、Local bridgeの正本submodule |
 | `/home/user/Yurufuwa/GAR/gar-adhoc-app` | ARM64 target app |
 | `/home/user/Yurufuwa/GarAdhocApp` | `gar-build-env`の`GarAdhocApp` product workspace。`sources/gar-adhoc-app`と`sources/gar-tools`をsubmoduleとして保持 |
+| `/home/user/Yurufuwa/GarStreamTx` | Raspberry Pi 5実機用GarStreamTx product workspace。標準`/opt/gar/apps/<app>/run` contractのreference |
 
-## GAR coreの現在地（2026-07-31）
+## GAR coreの現在地（2026-08-09）
 
 - `cli.py`はcommand moduleのparser合成とtop-level runner選択だけを担当する。
   setup/code/terminal/completion/sim/target/usb/hwの各moduleがparserとCLI adapterを所有する。
@@ -45,6 +46,11 @@
   workspace・kind別artifact snapshotを使い、build/fetchを暗黙には実行しない。
 - Linux/systemd、Wokwi、MuJoCo runtimeは実装済み。Renode、ESP32 QEMU、AWS SSMは
   setup IDからerror-only runtimeへ接続済みで、実際のruntime操作は未実装。
+- physical Targetは`gar target prepare`を共通入口とし、Target manifestのOS別recipeへ
+  provisioningを委譲する。Raspberry Pi OS referenceは限定sudo installerと
+  `gar-app@.service`を導入し、productを非rootでboot起動する。
+- product artifactは`/opt/gar/apps/<app>/run`、永続設定は`/etc/gar/<app>.env`を標準とする。
+  通常deployはSSH鍵・env・管理者設定を上書きしない。
 - 現在の回帰確認は`make check`（Ruff、unittest、DSM同期、shell構文、VS Code拡張Node test）を正本とする。件数はテスト追加で変動するため固定しない。
 
 ## 現在の作業テーマ

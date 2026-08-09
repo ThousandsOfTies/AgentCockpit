@@ -15,6 +15,9 @@ class Esp32TargetEnvironment:
     def __init__(self, port: str):
         self.port = port
 
+    def prepare(self) -> None:
+        raise GarDomainError("ESP32 esptool接続には target prepare は不要です")
+
     def deploy(self, artifact: Artifact) -> None:
         if artifact.kind is not ArtifactKind.TARGET_APP:
             raise GarDomainError(f"ESP32 targetへ配置できないartifactです: {artifact.kind.value}")

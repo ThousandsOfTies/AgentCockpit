@@ -8,4 +8,6 @@ from scripts.gar_lib.core.artifact import Artifact
 
 
 class TargetEnvironment(Protocol):
+    def prepare(self) -> None: ...
+
     def deploy(self, artifact: Artifact) -> None: ...

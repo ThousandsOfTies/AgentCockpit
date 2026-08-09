@@ -276,8 +276,9 @@ gar sim host stop
 
 | コマンド | 内容 |
 |---|---|
-| `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。PlatformIO等のtarget固有処理はproduct hookが担当 |
-| `gar target deploy [--workspace NAME]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置 |
+| `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeをSSH経由で初回適用。対話的sudo認証でservice account、限定installer、boot serviceなどを導入 |
+| `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。hookには選択Target IDを`GAR_TARGET`で渡す |
+| `gar target deploy [--workspace NAME]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置。Target recipeがあるSSH実機では先に`target prepare`が必要 |
 
 低レベルコマンド:
 
@@ -292,6 +293,18 @@ ADB接続に失敗した場合は、Terminal Bridgeを通じて`gar usb list` / 
 ```bash
 gar target deploy
 ```
+
+systemd型Targetの標準contractでは、product artifactは
+`/opt/gar/apps/<app>/run`をentry pointとして提供します。root管理のunitはproductが
+配布せずTarget recipeの`gar-app@.service`を共有し、永続設定は
+`/etc/gar/<app>.env`へ分離します。env fileは任意で、存在するときだけ読み込みます。
+deploy後はserviceをenableしてrestartし、PnPやdefault設定で動くproductは初回deployから
+そのままboot運用へ移れます。
+
+Raspberry Pi OS recipeはreal device用のreference runtime packageと`gar`accountを
+準備しますが、gpio-sim/CUSE/Web Panelは導入しません。また旧GAR試作版が作った
+`/etc/sudoers.d/90-gar-deploy`（`NOPASSWD: ALL`）だけを削除し、限定installer用ruleへ
+移行します。
 
 ESP32 / USB serial の低レベル確認やトラブルシュートは
 [03_DEVELOPMENT_ENVIRONMENT.md](03_DEVELOPMENT_ENVIRONMENT.md) を参照。

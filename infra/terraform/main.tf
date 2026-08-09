@@ -83,6 +83,14 @@ resource "aws_security_group" "gar_sim" {
     cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 
+  ingress {
+    description = "GarStream source discovery within the default VPC"
+    from_port   = 5601
+    to_port     = 5601
+    protocol    = "udp"
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

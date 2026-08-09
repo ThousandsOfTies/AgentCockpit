@@ -954,6 +954,37 @@ class GarSetupConfigTest(unittest.TestCase):
         self.assertEqual(1, len(targets))
         self.assertEqual("linux-device", targets[0].id)
 
+    def test_target_manifest_resolves_target_owned_provisioning_recipe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "gar-tools"
+            target_dir = root / "targets" / "raspberry-pi-5"
+            recipe = target_dir / "provisioning" / "raspberry-pi-os-systemd"
+            recipe.mkdir(parents=True)
+            (target_dir / "target.json").write_text(
+                json.dumps(
+                    {
+                        "id": "raspberry-pi-5",
+                        "displayName": "Raspberry Pi 5",
+                        "description": "test target",
+                        "toolsRoot": "targets/raspberry-pi-5",
+                        "defaultBackends": {"target": "ssh_scp"},
+                        "provisioning": {
+                            "ssh_scp": {
+                                "type": "ssh-script",
+                                "path": "provisioning/raspberry-pi-os-systemd",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(root)}):
+                target = discover_target_manifests()[0]
+                resolved = target.provisioning_recipe_path("ssh_scp")
+
+        self.assertEqual(recipe.resolve(), resolved)
+
     def test_ensure_gar_tools_available_clones_into_gar_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "GaplessAgentRuntime"

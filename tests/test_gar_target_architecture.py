@@ -20,6 +20,7 @@ from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.target.composition import target_environment_for
 from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
+from scripts.gar_lib.target.manifest import TargetManifest
 
 
 def workspace(root: Path, *, target: str = "adb_usb") -> Workspace:
@@ -176,6 +177,40 @@ class GarTargetArchitectureTest(unittest.TestCase):
             command_channel.run.call_args_list,
         )
 
+    def test_ssh_file_target_stages_and_uses_limited_installer_for_system_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "files" / "app"
+            source.parent.mkdir()
+            source.write_text("app", encoding="utf-8")
+            (root / "artifact.json").write_text(
+                json.dumps(
+                    {"deploy": {"app": {"files": [{"src": "files/app", "dest": "/opt/gar/apps/demo", "mode": "0755"}]}}}
+                ),
+                encoding="utf-8",
+            )
+            artifact = Artifact(ArtifactKind.TARGET_APP, workspace(root), root)
+            command_channel = mock.Mock(host="raspi5")
+            command_channel.run.return_value.returncode = 0
+            command_channel.run.return_value.stderr = ""
+            file_channel = mock.Mock()
+            file_channel.push.return_value.returncode = 0
+            file_channel.push.return_value.stderr = ""
+            environment = FileTransferTargetEnvironment(
+                command_channel,
+                file_channel,
+                privileged_install=True,
+            )
+
+            environment.deploy(artifact)
+
+        self.assertEqual(source, file_channel.push.call_args.args[0])
+        self.assertIn("/tmp/gar-stage-", file_channel.push.call_args.args[1])
+        commands = [call.args[0] for call in command_channel.run.call_args_list]
+        self.assertTrue(any("gar-target-install install" in command for command in commands))
+        self.assertTrue(any("gar-target-install enable-app demo" in command for command in commands))
+        self.assertFalse(any(command.startswith("sudo -n cp") for command in commands))
+
     def test_target_resolver_composes_adb_channels(self) -> None:
         selected_workspace = Workspace(
             id="ws",
@@ -221,6 +256,46 @@ class GarTargetArchitectureTest(unittest.TestCase):
         self.assertEqual("raspi", environment.command_channel.host)
         self.assertEqual("raspi", environment.file_channel.host)
         self.assertEqual("/opt/product", environment.base_destination)
+
+    def test_target_resolver_uses_selected_target_provisioning_recipe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target_dir = Path(tmp) / "targets" / "raspberry-pi-5"
+            recipe = target_dir / "provisioning" / "raspberry-pi-os-systemd"
+            recipe.mkdir(parents=True)
+            manifest_path = target_dir / "target.json"
+            manifest_path.write_text("{}\n", encoding="utf-8")
+            manifest = TargetManifest(
+                id="raspberry-pi-5",
+                display_name="Raspberry Pi 5",
+                description="test",
+                tools_root="targets/raspberry-pi-5",
+                default_backends={"target": "ssh_scp"},
+                backend_notes={},
+                provisioning={
+                    "ssh_scp": {
+                        "type": "ssh-script",
+                        "path": "provisioning/raspberry-pi-os-systemd",
+                    }
+                },
+                source_path=manifest_path,
+            )
+            selected_workspace = Workspace(
+                id="ws",
+                name="Local/Product",
+                branch="Product",
+                connection={"type": "local", "path": "/tmp/product"},
+                selected_target="raspberry-pi-5",
+                selected_environments={"target": "ssh_scp"},
+                target={"host": "raspi5"},
+            )
+            with mock.patch(
+                "scripts.gar_lib.target.composition.discover_target_manifests",
+                return_value=[manifest],
+            ):
+                environment = target_environment_for(selected_workspace)
+
+        self.assertTrue(environment.privileged_install)
+        self.assertEqual(recipe.resolve(), environment.prepare_recipe)
 
     def test_target_backend_builds_esp32_environment(self) -> None:
         selected_workspace = Workspace(

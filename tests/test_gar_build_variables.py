@@ -24,6 +24,13 @@ class BuildSpecVariablesTest(unittest.TestCase):
     def setUp(self) -> None:
         self.specs = ProductBuildSpecResolver()
 
+    def test_target_build_receives_selected_target(self) -> None:
+        selected_workspace = workspace_with("ssh_remote", selected_target="raspberry-pi-5")
+
+        spec = self.specs.for_artifact(ArtifactKind.TARGET_APP, selected_workspace)
+
+        self.assertEqual({"GAR_TARGET": "raspberry-pi-5"}, spec.variables)
+
     def test_local_docker_builds_for_the_host_architecture(self) -> None:
         spec = self.specs.for_artifact(ArtifactKind.SIM_RUNTIME, workspace_with("local_docker"))
 

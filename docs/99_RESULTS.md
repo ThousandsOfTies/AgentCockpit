@@ -62,7 +62,9 @@ OLED にリアルタイムで状態が描画され、`Tap Card` ボタン押下�
 
 ### 開発インフラ
 - 旧 Windows PowerShell EC2 helper → **`gar sim host start/stop/status`** に移植。WSL2 の AWS CLI で EC2 起動・停止・SSH config 自動更新
-- 旧 Windows PowerShell RasPi helper → **`gar target build/fetch/deploy`** に統合。buildまたはfetchでWSL側artifact storeへ用意し、deployでRasPi5へADB push / SSH配送
+- 旧 Windows PowerShell RasPi helper → **`gar target prepare/build/fetch/deploy`** に統合。OS準備はTarget recipe、build/fetchはWSL側artifact store、deployは選択backendへ分離
+- Raspberry Pi OS reference recipe → reference runtime package、`gar`account、device group、限定sudo installer、共通`gar-app@.service`を導入
+- product contract → `/opt/gar/apps/<app>/run`を非rootでboot起動し、永続設定を`/etc/gar/<app>.env`へ分離。実機へsimulation stubを配置しない
 - 各種 Makefile — ARM ビルド / デプロイ
 
 ---
@@ -86,8 +88,9 @@ OLED にリアルタイムで状態が描画され、`Tap Card` ボタン押下�
                    ├─ SSH/scp → [EC2 arm64 Graviton]
                    │              sensor_demo + CUSE/gpio-sim + bridge
                    │
-                   └─ ADB/SSH → [Raspberry Pi 5 arm64]
-                                sensor_demo + real I2C/SPI/GPIO
+                   └─ SSH + Target recipe → [Raspberry Pi 5 arm64]
+                                            /opt/gar/apps/<app>/run
+                                            + real I2C/SPI/GPIO/video
 
 VS Code terminal profile / port forward → Virtual Hardware Panel
 ```
@@ -104,7 +107,8 @@ VS Code terminal profile / port forward → Virtual Hardware Panel
 
 4. **RasPi5 の API 互換性** — Python の `RPi.GPIO` は RasPi5 非対応（RP1 チップが BCM2712 になり、旧ライブラリが動かない）。`rpi-lgpio` や `lgpio` への移行が必要。
 
-5. **adbd は Ubuntu 標準パッケージにない**が、Raspberry Pi OS（Debian Bookworm）には `adbd` パッケージが存在し、`systemd` で自動起動。EC2 (Ubuntu 24.04) では adbd は使えず SSH/scp のままが現実的。
+5. **実機接続backendはTargetごとに選ぶ**。Raspberry Pi 5 / Raspberry Pi OSでは
+   SSH/scpを標準とし、ADBはUSBのみで到達する別Target向けの選択肢として残す。
 
 6. **シーケンス図 + Mermaid** によりワークフロー全体を可視化。ドキュメントが共有可能で、Claude Code に「EC2 にデプロイして」「実機にデプロイして」と頼むだけで実行できる仕組みも構築。
 
@@ -117,6 +121,7 @@ VS Code terminal profile / port forward → Virtual Hardware Panel
 - [x] OLED モジュール到着後、`sensor_demo` を RasPi5 実機で完全動作確認
 - [ ] LCD HAT (ST7789) の対応（追加するなら）
 - [x] systemd サービス化による simulation runtime 起動 — 2026-06-05。EC2 で `gar-sim.target`、`gar-gpio-sim.service`、`gar-bridge.service`、`gar-cuse-i2c@i2c-1.service`、`gar-cuse-spi@spidev0.0.service` の active を確認
+- [x] Raspberry Pi OS実機のTarget recipe化 — 2026-08-09。限定sudo、共通`gar-app@.service`、GarStreamTx deployを実機確認
 - [x] SPI/GPIO の fake device runtime への移行
 - [ ] `gar sim run <target>` / `gar target run <target>` の共通 manifest 化
 - [ ] 無停止デプロイ機構の実装 (Capistranoスタイル)

@@ -156,8 +156,11 @@ scripts/gar_lib/
     diagnostics/          # diagnostic modelとoutput parser
     session/              # session managerとremote session処理
   target/
-    manifest.py           # gar-tools target manifest discovery
-    composition.py        # target environment composition
+    manifest.py           # target manifest discoveryとprovisioning recipe解決
+    composition.py        # target environment・OS recipeのcomposition
+    environment.py        # prepare/deploy protocol
+    file_transfer.py      # ADB/SSH file deployと限定sudo application install
+    ssh_prepare.py        # Target所有recipeの一時転送・対話実行
     esp32.py              # ESP32 artifact installer
     esp32_firmware.py     # ESP32 flash artifact layout
     esptool.py            # ESP32 serial flashing
@@ -180,10 +183,11 @@ scripts/gar_lib/
 | 内部API | `api.py` | Workspace・artifact・simulation/target domainの協調。構造化結果を返し、表示しない |
 | 共有基盤 | `core/` | `.gar/config.json`、typed Workspace settings、Artifact、domain error、hardware、gar-tools探索 |
 | 初期設定 | `commands/setup/` | workspace、target、environmentのphaseをファイルごとに分離 |
-| target 定義 | `target/manifest.py`, `core/tools_repository.py` | `gar-tools/targets/*/target.json` の探索と auto clone |
+| target 定義 | `target/manifest.py`, `core/tools_repository.py` | `gar-tools/targets/*/target.json` の探索、provisioning recipe解決、auto clone |
 | code 環境 | `commands/code.py` | Local / Codespaces の開発環境操作。setupで保存した選択を読み、対応する操作を実行する |
 | simulator 環境 | `api.py` + `simulation/*` + `access/*` | VM / Wokwi / MuJoCo 等の simulation runtime 操作 |
-| target 環境 | `api.py` + `target/*` + `access/*` | 実機へのartifact配置とADB/SSH/esptool等の接続方式差し替え |
+| target 環境 | `api.py` + `target/*` + `access/*` | 実機へのartifact配置、ADB/SSH/esptool差し替え、Target/OS recipeによるprepare |
+| SSH/systemd Target | `target/file_transfer.py`, `target/ssh_prepare.py` | `/opt/gar/apps/<app>/run`の限定sudo配置と共通boot service有効化。OS依存script本体はgar-tools側 |
 | target 固有処理 | `target/esp32.py`, `target/esp32_firmware.py`, `target/esptool.py` | ESP32 artifact layoutの検証とesptoolによる実機書き込み。buildはproduct hook |
 | インフラ | `commands/infra.py`, `simulation/host/aws_ec2.py`, `access/aws.py` | Terraform実行、EC2 instance lifecycle、AWS CLIアクセス |
 | ローカル補助 | `commands/terminal.py`, `commands/usb.py`, `vscode/profile_manage.py`, `vscode/terminal_bridge.py`, `vscode/terminal_ui.py` | VS Code terminal bridge、settings、USB、表示 |
