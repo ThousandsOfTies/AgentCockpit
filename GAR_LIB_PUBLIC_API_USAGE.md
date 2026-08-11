@@ -287,14 +287,14 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `configure_workspace_root` | 29 | commands.setup.command(1), tests.test_gar_workspace_setup(1) |
-| `print_workspace_entry` | 157 | _(外部参照なし)_ |
-| `workspace_duplicate` | 168 | _(外部参照なし)_ |
-| `default_workspace_name` | 190 | _(外部参照なし)_ |
-| `default_workspace_product_name` | 201 | _(外部参照なし)_ |
-| `prompt_workspace_entry` | 209 | _(外部参照なし)_ |
-| `print_codespace_candidates` | 327 | _(外部参照なし)_ |
-| `probe_git_workspace` | 342 | _(外部参照なし)_ |
+| `configure_workspace_root` | 29 | commands.setup.command(1), tests.test_gar_workspace_setup(2) |
+| `print_workspace_entry` | 166 | _(外部参照なし)_ |
+| `workspace_duplicate` | 177 | _(外部参照なし)_ |
+| `default_workspace_name` | 199 | _(外部参照なし)_ |
+| `default_workspace_product_name` | 210 | _(外部参照なし)_ |
+| `prompt_workspace_entry` | 218 | _(外部参照なし)_ |
+| `print_codespace_candidates` | 336 | _(外部参照なし)_ |
+| `probe_git_workspace` | 351 | _(外部参照なし)_ |
 
 ## `commands.sim` (scripts/gar_lib/commands/sim.py)
 
@@ -352,8 +352,8 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactKind` | 12 | api(8), artifacts.store(16), build.codespaces(3), build.environment(3), build.local(3), build.spec(7), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(5), tests.test_gar_build_variables(9), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(8), tests.test_gar_wokwi_environment(5) |
-| `Artifact` | 19 | api(7), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(3), tests.test_gar_wokwi_environment(5) |
+| `ArtifactKind` | 12 | api(8), artifacts.store(16), build.codespaces(3), build.environment(3), build.local(3), build.spec(7), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(5), tests.test_gar_build_variables(9), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(9), tests.test_gar_wokwi_environment(5) |
+| `Artifact` | 19 | api(7), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(4), tests.test_gar_wokwi_environment(5) |
 
 ## `core.command` (scripts/gar_lib/core/command.py)
 
@@ -866,7 +866,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `FileTransferTargetEnvironment` | 22 | target.composition(3), tests.test_gar_target_architecture(2) |
+| `FileTransferTargetEnvironment` | 22 | target.composition(3), tests.test_gar_target_architecture(3) |
 
 ## `target.manifest` (scripts/gar_lib/target/manifest.py)
 
@@ -1004,13 +1004,13 @@
 | `commands.setup.target_setup` | `print_target_summary` | 114 |
 | `commands.setup.target_setup` | `prune_removed_target_backends` | 63 |
 | `commands.setup.target_setup` | `removable_target_backend_categories` | 70 |
-| `commands.setup.workspace_setup` | `default_workspace_name` | 190 |
-| `commands.setup.workspace_setup` | `default_workspace_product_name` | 201 |
-| `commands.setup.workspace_setup` | `print_codespace_candidates` | 327 |
-| `commands.setup.workspace_setup` | `print_workspace_entry` | 157 |
-| `commands.setup.workspace_setup` | `probe_git_workspace` | 342 |
-| `commands.setup.workspace_setup` | `prompt_workspace_entry` | 209 |
-| `commands.setup.workspace_setup` | `workspace_duplicate` | 168 |
+| `commands.setup.workspace_setup` | `default_workspace_name` | 199 |
+| `commands.setup.workspace_setup` | `default_workspace_product_name` | 210 |
+| `commands.setup.workspace_setup` | `print_codespace_candidates` | 336 |
+| `commands.setup.workspace_setup` | `print_workspace_entry` | 166 |
+| `commands.setup.workspace_setup` | `probe_git_workspace` | 351 |
+| `commands.setup.workspace_setup` | `prompt_workspace_entry` | 218 |
+| `commands.setup.workspace_setup` | `workspace_duplicate` | 177 |
 | `commands.sim` | `SIM_ACTIONS` | 28 |
 | `commands.target` | `TARGET_ACTIONS` | 17 |
 | `commands.usb` | `ANDROID_HINTS` | 32 |
