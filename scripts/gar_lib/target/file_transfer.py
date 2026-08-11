@@ -34,6 +34,7 @@ class FileTransferTargetEnvironment(TargetEnvironment):
         self.base_destination = base_destination
         self.privileged_install = privileged_install
         self.prepare_recipe = prepare_recipe
+        self._installer_prefix: str | None = None
 
     def deploy(self, artifact: Artifact) -> None:
         if artifact.kind is not ArtifactKind.TARGET_APP:
@@ -101,11 +102,12 @@ class FileTransferTargetEnvironment(TargetEnvironment):
             self._require_success(transferred, "target artifactの一時転送に失敗しました")
 
             normalized_mode = mode if isinstance(mode, str) else "0755"
+            installer = self._installer_command()
             installed = self.command_channel.run(
-                "sudo -n /usr/local/lib/gar/gar-target-install install "
+                f"{installer} install "
                 f"{shlex.quote(staged_source)} {shlex.quote(destination)} {shlex.quote(normalized_mode)}"
             )
-            self._require_success(installed, "target artifactをsudoで配置できません")
+            self._require_success(installed, "target artifactを限定installerで配置できません")
         finally:
             self.command_channel.run(f"rm -rf -- {shlex.quote(stage)}")
 
@@ -118,11 +120,26 @@ class FileTransferTargetEnvironment(TargetEnvironment):
         ]
         if not apps:
             return
+        installer = self._installer_command()
         for app in apps:
-            result = self.command_channel.run(
-                "sudo -n /usr/local/lib/gar/gar-target-install enable-app " + shlex.quote(app)
-            )
+            result = self.command_channel.run(f"{installer} enable-app " + shlex.quote(app))
             self._require_success(result, "target application serviceを有効化できません")
+
+    def _installer_command(self) -> str:
+        """Use the constrained installer directly for root SSH targets.
+
+        Raspberry Pi OS normally connects as an unprivileged user and needs
+        ``sudo -n``.  Small Buildroot boards commonly expose only a root SSH
+        account and do not ship sudo at all.  Both still use the same
+        Target-owned installer contract.
+        """
+
+        if self._installer_prefix is None:
+            result = self.command_channel.run("id -u")
+            stdout = getattr(result, "stdout", "")
+            is_root = getattr(result, "returncode", 1) == 0 and isinstance(stdout, str) and stdout.strip() == "0"
+            self._installer_prefix = "" if is_root else "sudo -n "
+        return f"{self._installer_prefix}/usr/local/lib/gar/gar-target-install"
 
     def _staging_path(self) -> str:
         return f"/tmp/gar-stage-{uuid4().hex}"

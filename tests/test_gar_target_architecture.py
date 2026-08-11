@@ -211,6 +211,43 @@ class GarTargetArchitectureTest(unittest.TestCase):
         self.assertTrue(any("gar-target-install enable-app demo" in command for command in commands))
         self.assertFalse(any(command.startswith("sudo -n cp") for command in commands))
 
+    def test_root_ssh_target_invokes_limited_installer_without_sudo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "files" / "app"
+            source.parent.mkdir()
+            source.write_text("app", encoding="utf-8")
+            (root / "artifact.json").write_text(
+                json.dumps({"deploy": {"app": {"files": [{"src": "files/app", "dest": "/opt/gar/apps/demo"}]}}}),
+                encoding="utf-8",
+            )
+            artifact = Artifact(ArtifactKind.TARGET_APP, workspace(root), root)
+            command_channel = mock.Mock(host="luckfox-lyra")
+
+            def run(command: str):
+                if command == "id -u":
+                    return subprocess.CompletedProcess([], 0, "0\n", "")
+                return subprocess.CompletedProcess([], 0, "", "")
+
+            command_channel.run.side_effect = run
+            file_channel = mock.Mock()
+            file_channel.push.return_value = subprocess.CompletedProcess([], 0, "", "")
+            environment = FileTransferTargetEnvironment(
+                command_channel,
+                file_channel,
+                privileged_install=True,
+            )
+
+            environment.deploy(artifact)
+
+        commands = [call.args[0] for call in command_channel.run.call_args_list]
+        installer_commands = [command for command in commands if "gar-target-install" in command]
+        self.assertEqual(2, len(installer_commands))
+        self.assertTrue(
+            all(command.startswith("/usr/local/lib/gar/gar-target-install") for command in installer_commands)
+        )
+        self.assertFalse(any("sudo" in command for command in installer_commands))
+
     def test_target_resolver_composes_adb_channels(self) -> None:
         selected_workspace = Workspace(
             id="ws",
