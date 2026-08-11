@@ -277,6 +277,7 @@ gar sim host stop
 | コマンド | 内容 |
 |---|---|
 | `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeをSSH経由で初回適用。対話的sudo認証でservice account、限定installer、boot serviceなどを導入 |
+| `gar target configure --workspace NAME --app NAME --file PATH [--json]` | recipe-backed SSH Targetへ明示指定した既存の通常ファイルを`/etc/gar/<app>.env`として原子的に配置。artifactは不要 |
 | `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。hookには選択Target IDを`GAR_TARGET`で渡す |
 | `gar target deploy [--workspace NAME] [--json]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置。lifecycle対応Targetではreload、health、稼働build ID一致まで確認 |
 | `gar target status [--workspace NAME] [--app NAME] [--json]` | Target recipeのlifecycle capability経由でapplicationの稼働状態を取得 |
@@ -301,6 +302,9 @@ systemd型Targetの標準contractでは、product artifactは
 `/opt/gar/apps/<app>/run`をentry pointとして提供します。root管理のunitはproductが
 配布せずTarget recipeの`gar-app@.service`を共有し、永続設定は
 `/etc/gar/<app>.env`へ分離します。env fileは任意で、存在するときだけ読み込みます。
+設定の書込みは`gar target configure --workspace NAME --app NAME --file PATH`だけが行い、通常のdeployは
+このファイルを削除・上書きしません。`configure --json`はworkspace、target、app、source、destination、
+SHA-256 hash、configured、okを単一のstdout JSONで返します。
 deploy後はserviceをenableしてrestartし、PnPやdefault設定で動くproductは初回deployから
 そのままboot運用へ移れます。
 

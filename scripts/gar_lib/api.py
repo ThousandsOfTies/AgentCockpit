@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from scripts.gar_lib.artifacts.store import BuildArtifactStore, LocalArtifactStore
 from scripts.gar_lib.build.environment import build_environment_for
@@ -25,6 +26,7 @@ from scripts.gar_lib.simulation.session.manager import VsCodeSimulationSessionMa
 from scripts.gar_lib.target.application import target_application_from_artifact
 from scripts.gar_lib.target.composition import target_environment_for, target_lifecycle_for
 from scripts.gar_lib.target.environment import TargetPlacementError
+from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment, TargetConfigurationReport
 from scripts.gar_lib.target.lifecycle import (
     TargetApplication,
     TargetDeploymentConvergenceError,
@@ -229,6 +231,18 @@ class Target:
 
     def prepare(self) -> None:
         target_environment_for(self.workspace).prepare()
+
+    def configure(self, *, app: str, file: str | Path) -> TargetConfigurationReport:
+        """Install persistent target configuration without an artifact dependency."""
+
+        application = TargetApplication(app)
+        source = Path(file)
+        if source.is_symlink() or not source.is_file():
+            raise GarDomainError(f"設定ファイルは既存の通常ファイルである必要があります: {source}")
+        environment = target_environment_for(self.workspace)
+        if not isinstance(environment, FileTransferTargetEnvironment):
+            raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
+        return environment.configure(application.name, source)
 
     def deploy(self) -> Artifact:
         return self.deploy_report().artifact

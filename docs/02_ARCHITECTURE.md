@@ -194,5 +194,6 @@ Raspberry Pi OS/systemdのreference contractでは、recipeが限定sudo install
 root所有の`gar-app@.service`を導入する。product artifactは
 `/opt/gar/apps/<app>/run`を提供し、serviceは非rootの`gar`accountで動く。
 永続設定`/etc/gar/<app>.env`、SSH host key、userのauthorized_keysはapplication
-artifactの責務外であり、通常deployでは上書きしない。read-only rootfsやBuildroot、
+artifactの責務外である。`gar target configure`だけがrecipe-backed SSH Targetの限定installerを
+通じてenv fileを原子的に更新し、通常deployでは削除・上書きしない。read-only rootfsやBuildroot、
 image flashingを使うTargetは同じCLIへ別recipe/backendを追加する。

@@ -35,6 +35,160 @@ def workspace(root: Path, *, target: str = "adb_usb") -> Workspace:
 
 
 class GarTargetArchitectureTest(unittest.TestCase):
+    def test_target_configure_has_no_artifact_dependency_and_reports_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "demo.env"
+            source.write_text("PORT=5000\n", encoding="utf-8")
+            selected_workspace = workspace(Path(tmp), target="ssh_scp")
+            selected_workspace = Workspace(
+                id=selected_workspace.id,
+                name=selected_workspace.name,
+                branch=selected_workspace.branch,
+                connection=selected_workspace.connection,
+                selected_environments=selected_workspace.selected_environments,
+                selected_target="raspberry-pi-5",
+            )
+            environment = FileTransferTargetEnvironment(
+                mock.Mock(host="raspi5"), mock.Mock(), privileged_install=True, prepare_recipe=Path("/recipe")
+            )
+            report_output = io.StringIO()
+            diagnostics = io.StringIO()
+            with (
+                mock.patch("scripts.gar_lib.commands.target.resolve_workspace", return_value=selected_workspace),
+                mock.patch("scripts.gar_lib.api.target_environment_for", return_value=environment),
+                mock.patch.object(environment, "_install_privileged") as install,
+                contextlib.redirect_stdout(report_output),
+                contextlib.redirect_stderr(diagnostics),
+            ):
+                result = main(
+                    [
+                        "target",
+                        "configure",
+                        "--workspace",
+                        "Local/Product",
+                        "--app",
+                        "demo",
+                        "--file",
+                        str(source),
+                        "--json",
+                    ]
+                )
+
+        payload = json.loads(report_output.getvalue())
+        self.assertEqual(0, result)
+        self.assertTrue(payload["ok"])
+        self.assertEqual("demo", payload["app"])
+        self.assertEqual("/etc/gar/demo.env", payload["destination"])
+        self.assertTrue(payload["configured"])
+        self.assertEqual("", diagnostics.getvalue())
+        install.assert_called_once_with(source, "/etc/gar/demo.env", "0644")
+
+    def test_target_configure_rejects_missing_or_symlink_source_before_target_access(self) -> None:
+        selected_workspace = workspace(Path("/tmp/product"), target="ssh_scp")
+        with (
+            mock.patch("scripts.gar_lib.commands.target.resolve_workspace", return_value=selected_workspace),
+            mock.patch("scripts.gar_lib.api.target_environment_for") as environment_for,
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            result = main(
+                ["target", "configure", "--workspace", "Local/Product", "--app", "demo", "--file", "/missing/demo.env"]
+            )
+
+        self.assertEqual(1, result)
+        environment_for.assert_not_called()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.env"
+            source.write_text("PORT=5000\n", encoding="utf-8")
+            link = Path(tmp) / "linked.env"
+            link.symlink_to(source)
+            with (
+                mock.patch("scripts.gar_lib.commands.target.resolve_workspace", return_value=selected_workspace),
+                mock.patch("scripts.gar_lib.api.target_environment_for") as environment_for,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = main(
+                    ["target", "configure", "--workspace", "Local/Product", "--app", "demo", "--file", str(link)]
+                )
+
+        self.assertEqual(1, result)
+        environment_for.assert_not_called()
+
+    def test_target_configure_rejects_non_recipe_target_as_machine_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "demo.env"
+            source.write_text("PORT=5000\n", encoding="utf-8")
+            selected_workspace = workspace(Path(tmp), target="esp32_esptool")
+            output = io.StringIO()
+            diagnostics = io.StringIO()
+            with (
+                mock.patch("scripts.gar_lib.commands.target.resolve_workspace", return_value=selected_workspace),
+                mock.patch("scripts.gar_lib.api.target_environment_for", return_value=Esp32TargetEnvironment("COM4")),
+                contextlib.redirect_stdout(output),
+                contextlib.redirect_stderr(diagnostics),
+            ):
+                result = main(
+                    [
+                        "target",
+                        "configure",
+                        "--workspace",
+                        "Local/Product",
+                        "--app",
+                        "demo",
+                        "--file",
+                        str(source),
+                        "--json",
+                    ]
+                )
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(1, result)
+        self.assertFalse(payload["ok"])
+        self.assertEqual("demo", payload["app"])
+        self.assertFalse(payload["configured"])
+        self.assertEqual("", diagnostics.getvalue())
+
+    def test_file_target_configure_uses_sudo_installer_or_root_installer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "demo.env"
+            source.write_text("PORT=5000\n", encoding="utf-8")
+            channel = mock.Mock(host="raspi5")
+            channel.run.return_value = subprocess.CompletedProcess([], 0, "1000\n", "")
+            files = mock.Mock()
+            files.push.return_value = subprocess.CompletedProcess([], 0, "", "")
+            environment = FileTransferTargetEnvironment(
+                channel, files, privileged_install=True, prepare_recipe=Path("/recipe")
+            )
+            environment.configure("demo", source)
+
+        commands = [call.args[0] for call in channel.run.call_args_list]
+        self.assertTrue(
+            any(command.startswith("sudo -n /usr/local/lib/gar/gar-target-install install") for command in commands)
+        )
+        self.assertTrue(any(" 0644" in command for command in commands))
+
+        root_channel = mock.Mock(host="luckfox")
+        root_channel.run.side_effect = lambda command: subprocess.CompletedProcess(
+            [], 0, "0\n" if command == "id -u" else "", ""
+        )
+        root_files = mock.Mock()
+        root_files.push.return_value = subprocess.CompletedProcess([], 0, "", "")
+        root_environment = FileTransferTargetEnvironment(
+            root_channel, root_files, privileged_install=True, prepare_recipe=Path("/recipe")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root_source = Path(tmp) / "demo.env"
+            root_source.write_text("PORT=5000\n", encoding="utf-8")
+            root_environment.configure("demo", root_source)
+
+        root_commands = [call.args[0] for call in root_channel.run.call_args_list]
+        self.assertTrue(
+            any(command.startswith("/usr/local/lib/gar/gar-target-install install") for command in root_commands)
+        )
+        self.assertFalse(any(command.startswith("sudo -n ") for command in root_commands))
+
     def test_setup_saves_ssh_target_host_per_workspace(self) -> None:
         config = {"selected_environments": {"target": "ssh_scp"}}
         with (

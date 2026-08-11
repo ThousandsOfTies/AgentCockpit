@@ -16,6 +16,7 @@ from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
+from scripts.gar_lib.target.file_transfer import TargetConfigurationReport
 from scripts.gar_lib.target.lifecycle import (
     TargetDeploymentConvergenceError,
     TargetDeploymentReport,
@@ -24,6 +25,7 @@ from scripts.gar_lib.target.lifecycle import (
 )
 
 TARGET_ACTIONS = {
+    "configure": "applicationの永続設定ファイルを明示的に配置します",
     "prepare": "SSH実機の限定sudoデプロイ権限を初回だけ設定します",
     "build": "setup 済み target の実機用 artifact をビルドします",
     "deploy": "target runtime へ成果物を配置します",
@@ -59,13 +61,16 @@ def add_target_parser(
             parents=[workspace_option],
         )
         action_parser.set_defaults(gar_command=GarCommand("target", None, action))
-        if action in {"deploy", "status", "log", "diag"}:
+        if action in {"configure", "deploy", "status", "log", "diag"}:
             action_parser.add_argument(
                 "--json",
                 dest="json_output",
                 action="store_true",
                 help="結果を機械可読な JSON で出力します（AI / CI 向け）",
             )
+        if action == "configure":
+            action_parser.add_argument("--app", required=True, metavar="NAME", help="設定するapplication名")
+            action_parser.add_argument("--file", required=True, metavar="PATH", help="配置するenv形式の設定ファイル")
         if action in {"status", "log", "diag"}:
             action_parser.add_argument(
                 "--app",
@@ -96,7 +101,7 @@ def run_target_command(
         bool(getattr(args, "json_output", False))
         and isinstance(command, GarCommand)
         and command.group == "target"
-        and command.action in {"deploy", "status", "log", "diag"}
+        and command.action in {"configure", "deploy", "status", "log", "diag"}
     )
     if not json_action:
         return _run_target_command(args, subcommand_parsers=subcommand_parsers)
@@ -157,13 +162,15 @@ def _run_target_command(
     try:
         workspace = resolve_workspace(workspace_selector)
     except GarDomainError as error:
-        if json_output and command.action in {"deploy", "status", "log", "diag"}:
+        if json_output and command.action in {"configure", "deploy", "status", "log", "diag"}:
             _render_error(
                 command.action,
                 str(error),
                 workspace=workspace_selector,
                 target_id=None,
                 details={},
+                app=getattr(args, "app", None),
+                source=getattr(args, "file", None),
             )
         else:
             print(f"gar: {error}", file=sys.stderr)
@@ -175,6 +182,15 @@ def _run_target_command(
             raise GarDomainError(f"未対応の target action: {command.action}")
         target_api = Gar(workspace).target
         match command.action:
+            case "configure":
+                report = target_api.configure(app=args.app, file=args.file)
+                _render_configuration(
+                    report,
+                    workspace=workspace.name,
+                    target_id=workspace.selected_target,
+                    json_output=json_output,
+                )
+                return 0
             case "prepare":
                 target_api.prepare()
                 print("Target preparation completed.")
@@ -241,6 +257,8 @@ def _run_target_command(
                     "reason": error.reason,
                     "exit_code": error.returncode,
                 },
+                app=getattr(args, "app", None),
+                source=getattr(args, "file", None),
             )
             return 1
         return report_access_failure(
@@ -283,6 +301,8 @@ def _run_target_command(
                 workspace=workspace.name,
                 target_id=workspace.selected_target,
                 details=details,
+                app=getattr(args, "app", None),
+                source=getattr(args, "file", None),
             )
         else:
             print(f"gar: {error}", file=sys.stderr)
@@ -308,6 +328,35 @@ def _render_lifecycle_result(
         print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
     if not result.stdout and not result.stderr:
         print(f"{result.application}: {'ok' if result.ok else 'failed'}")
+
+
+def _render_configuration(
+    report: TargetConfigurationReport,
+    *,
+    workspace: str,
+    target_id: str | None,
+    json_output: bool,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "command": "target.configure",
+        "workspace": workspace,
+        "target_id": target_id,
+        "app": report.application,
+        "source": str(report.source),
+        "destination": report.destination,
+        "hash": report.sha256,
+        "configured": report.configured,
+        "ok": report.ok,
+    }
+    if json_output:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    print(f"Application: {report.application}")
+    print(f"Source: {report.source}")
+    print(f"Destination: {report.destination}")
+    print(f"SHA-256: {report.sha256}")
+    print("Configuration: OK")
 
 
 def _render_diagnostic(
@@ -360,6 +409,8 @@ def _render_error(
     workspace: str | None,
     target_id: str | None,
     details: Mapping[str, object],
+    app: str | None = None,
+    source: str | None = None,
 ) -> None:
     payload: dict[str, object] = {
         "schema_version": 1,
@@ -377,6 +428,16 @@ def _render_error(
                 "placed_destinations": [],
                 "running": False,
                 "rollback": {"available": False, "attempted": False},
+            }
+        )
+    if action == "configure":
+        payload.update(
+            {
+                "app": app,
+                "source": source,
+                "destination": f"/etc/gar/{app}.env" if app else None,
+                "hash": None,
+                "configured": False,
             }
         )
     payload.update(details)

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import shlex
 import shutil
 import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from posixpath import dirname
 from uuid import uuid4
@@ -34,6 +36,21 @@ from scripts.gar_lib.target.compatibility import (
 )
 from scripts.gar_lib.target.environment import TargetEnvironment, TargetPlacementError
 from scripts.gar_lib.target.ssh_prepare import prepare_ssh_target
+
+
+@dataclass(frozen=True)
+class TargetConfigurationReport:
+    """Result of explicitly installing one persistent application config."""
+
+    application: str
+    source: Path
+    destination: str
+    sha256: str
+    configured: bool = True
+
+    @property
+    def ok(self) -> bool:
+        return self.configured
 
 
 class FileTransferTargetEnvironment(TargetEnvironment):
@@ -72,6 +89,9 @@ class FileTransferTargetEnvironment(TargetEnvironment):
             suffix = f": {detail}" if detail else ""
             raise GarDomainError(f"target artifact manifestを読み込めません: {artifact.bundle_path}{suffix}")
         bundle_root, files = loaded
+        # Persistent application configuration is intentionally outside the
+        # artifact contract. Only ``gar target configure`` may write it.
+        files = [entry for entry in files if not self._is_persistent_config_destination(entry["dest"])]
         metadata_source = artifact.bundle_path / METADATA_FILENAME if isinstance(artifact.bundle_path, Path) else None
         marker_parent = self._deployment_marker_parent(artifact, metadata_source)
         if marker_parent is not None and not self._has_application_directory(files, bundle_root, marker_parent):
@@ -157,6 +177,23 @@ class FileTransferTargetEnvironment(TargetEnvironment):
             include_lifecycle=self.prepare_lifecycle,
         )
 
+    def configure(self, application: str, source: Path) -> TargetConfigurationReport:
+        """Atomically install an explicitly selected application env file."""
+
+        if not self.privileged_install or self.prepare_recipe is None:
+            raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
+        if source.is_symlink() or not source.is_file():
+            raise GarDomainError(f"設定ファイルは既存の通常ファイルである必要があります: {source}")
+        destination = f"/etc/gar/{application}.env"
+        digest = _sha256_file(source)
+        self._install_privileged(source, destination, "0644")
+        return TargetConfigurationReport(
+            application=application,
+            source=source,
+            destination=destination,
+            sha256=digest,
+        )
+
     def _install_source(self, source: Path, destination: str, mode: object) -> None:
         if self._requires_privilege(destination):
             self._install_privileged(source, destination, mode)
@@ -237,6 +274,10 @@ class FileTransferTargetEnvironment(TargetEnvironment):
     def _requires_privilege(self, destination: str) -> bool:
         return self.privileged_install and not destination.startswith("/home/")
 
+    @staticmethod
+    def _is_persistent_config_destination(destination: str) -> bool:
+        return destination.startswith("/etc/gar/") and destination.endswith(".env")
+
     def _deployment_marker_parent(self, artifact: Artifact, metadata_source: Path | None) -> str | None:
         if metadata_source is None or not metadata_source.is_file():
             return None
@@ -300,3 +341,11 @@ class FileTransferTargetEnvironment(TargetEnvironment):
         if destination.startswith("~/"):
             return f"{self.base_destination.rstrip('/')}/{destination[2:]}"
         return target_dest_path(destination, self.base_destination)
+
+
+def _sha256_file(source: Path) -> str:
+    digest = hashlib.sha256()
+    with source.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()

@@ -319,7 +319,7 @@ class CommandTargetLifecycleTests(unittest.TestCase):
 
         self.assertEqual("target_prepare_required", caught.exception.reason)
 
-    def test_file_transfer_reports_destinations_placed_before_a_later_failure(self) -> None:
+    def test_normal_deploy_ignores_persistent_configuration_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             app = root / "files" / "demo"
@@ -349,11 +349,46 @@ class CommandTargetLifecycleTests(unittest.TestCase):
                 app_install_action=None,
             )
 
+            with mock.patch.object(environment, "_install_source") as install:
+                environment.deploy(artifact)
+
+        install.assert_called_once_with(app, "/opt/gar/apps/demo", None)
+
+    def test_file_transfer_reports_destinations_placed_before_a_later_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = root / "files" / "demo"
+            app.mkdir(parents=True)
+            (app / "run").write_text("#!/bin/sh\n", encoding="utf-8")
+            settings_file = root / "files" / "demo.conf"
+            settings_file.write_text("PORT=5000\n", encoding="utf-8")
+            (root / "artifact.json").write_text(
+                json.dumps(
+                    {
+                        "deploy": {
+                            "app": {
+                                "files": [
+                                    {"src": "files/demo", "dest": "/opt/gar/apps/demo"},
+                                    {"src": "files/demo.conf", "dest": "/etc/gar/demo.conf"},
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            artifact = Artifact(ArtifactKind.TARGET_APP, mock.Mock(), root)
+            environment = FileTransferTargetEnvironment(
+                mock.Mock(),
+                mock.Mock(),
+                app_install_action=None,
+            )
+
             with (
                 mock.patch.object(
                     environment,
                     "_install_source",
-                    side_effect=(None, GarDomainError("env install failed")),
+                    side_effect=(None, GarDomainError("settings install failed")),
                 ),
                 self.assertRaises(TargetPlacementError) as caught,
             ):
