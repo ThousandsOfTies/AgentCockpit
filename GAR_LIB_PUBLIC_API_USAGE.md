@@ -381,8 +381,8 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactKind` | 12 | api(9), artifacts.store(19), build.codespaces(3), build.environment(3), build.local(3), build.spec(7), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.application(1), target.compatibility(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(16), tests.test_gar_build_variables(9), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(9), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(7), tests.test_gar_wokwi_environment(5) |
-| `Artifact` | 19 | api(8), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.application(2), target.compatibility(1), target.environment(2), target.esp32(3), target.file_transfer(3), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(4), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(6), tests.test_gar_wokwi_environment(5) |
+| `ArtifactKind` | 12 | api(9), artifacts.store(19), build.codespaces(3), build.environment(3), build.local(3), build.spec(7), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.application(1), target.compatibility(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(16), tests.test_gar_build_variables(9), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(9), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(8), tests.test_gar_wokwi_environment(5) |
+| `Artifact` | 19 | api(8), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.application(2), target.compatibility(1), target.environment(2), target.esp32(3), target.file_transfer(3), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(4), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(7), tests.test_gar_wokwi_environment(5) |
 
 ## `core.command` (scripts/gar_lib/core/command.py)
 
@@ -444,7 +444,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarDomainError` | 4 | access.aws(1), access.docker(1), api(3), artifacts.store(13), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(6), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), target.application(7), target.compatibility(1), target.composition(6), target.environment(1), target.esp32(5), target.file_transfer(13), target.lifecycle(7), target.manifest(4), target.ssh_prepare(9), tests.test_gar_artifacts(6), tests.test_gar_docker_simulation_host(5), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(3), tests.test_gar_target_lifecycle(2), tests.test_gar_target_prepare(1), tests.test_gar_wokwi_environment(4) |
+| `GarDomainError` | 4 | access.aws(1), access.docker(1), api(3), artifacts.store(13), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(6), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), target.application(7), target.compatibility(1), target.composition(6), target.environment(1), target.esp32(5), target.file_transfer(13), target.lifecycle(7), target.manifest(4), target.ssh_prepare(9), tests.test_gar_artifacts(6), tests.test_gar_docker_simulation_host(5), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(3), tests.test_gar_target_lifecycle(3), tests.test_gar_target_prepare(1), tests.test_gar_wokwi_environment(4) |
 | `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(3), target.file_transfer(1), target.lifecycle(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1), tests.test_gar_target_lifecycle(5) |
 
 ## `core.hardware` (scripts/gar_lib/core/hardware.py)
@@ -883,7 +883,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `TargetPlacementError` | 11 | api(1), target.file_transfer(1), tests.test_gar_target_lifecycle(2) |
+| `TargetPlacementError` | 11 | api(1), target.file_transfer(1), tests.test_gar_target_lifecycle(3) |
 | `TargetEnvironment` | 32 | target.composition(1), target.file_transfer(1) |
 
 ## `target.esp32` (scripts/gar_lib/target/esp32.py)
@@ -917,7 +917,7 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `TargetConfigurationReport` | 42 | api(1), commands.target(1) |
-| `FileTransferTargetEnvironment` | 56 | api(1), target.composition(3), tests.test_gar_target_architecture(6), tests.test_gar_target_compatibility(7), tests.test_gar_target_lifecycle(3) |
+| `FileTransferTargetEnvironment` | 56 | api(1), target.composition(3), tests.test_gar_target_architecture(6), tests.test_gar_target_compatibility(7), tests.test_gar_target_lifecycle(4) |
 
 ## `target.lifecycle` (scripts/gar_lib/target/lifecycle.py)
 
