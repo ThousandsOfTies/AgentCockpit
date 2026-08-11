@@ -8,12 +8,14 @@ from pathlib import Path
 
 from scripts.gar_lib.access.adb import AdbFileChannel, AdbShellChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
+from scripts.gar_lib.artifacts.provenance import collect_target_tools_provenance
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.target.environment import TargetEnvironment
 from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
-from scripts.gar_lib.target.manifest import discover_target_manifests, target_by_id
+from scripts.gar_lib.target.lifecycle import CommandTargetLifecycle, TargetLifecycle
+from scripts.gar_lib.target.manifest import TargetManifest, discover_target_manifests, target_by_id
 
 
 def target_environment_for(workspace: Workspace) -> TargetEnvironment:
@@ -41,23 +43,31 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
         )
 
     if backend == "ssh_scp":
-        host = workspace.target.host
-        if host is None and workspace.connection_type == "network":
-            host = workspace.connection.host
-        if host is None:
-            raise GarDomainError(f"実機のSSH hostが未設定です: {workspace.name}。gar setupで設定してください。")
+        host = _ssh_host(workspace)
         recipe = None
-        if workspace.selected_target is not None:
-            manifest = target_by_id(discover_target_manifests(), workspace.selected_target)
-            if manifest is None:
-                raise GarDomainError(f"選択したTarget定義が見つかりません: {workspace.selected_target}")
+        lifecycle = None
+        active_tools_provenance = None
+        manifest = _selected_target_manifest(workspace)
+        if manifest is not None:
             recipe = manifest.provisioning_recipe_path(backend)
+            lifecycle = manifest.lifecycle_capability(backend)
+            if manifest.source_path is None:
+                raise GarDomainError(f"Target定義のgar-tools provenanceを解決できません: {manifest.id}")
+            active_tools_provenance = collect_target_tools_provenance(
+                manifest.source_path,
+                backend,
+                target_id=manifest.id,
+            )
         return FileTransferTargetEnvironment(
             SshCommandChannel(host),
             ScpFileChannel(host),
             base_destination=base_destination,
             privileged_install=recipe is not None,
             prepare_recipe=recipe,
+            prepare_lifecycle=lifecycle is not None,
+            app_install_action="register-app" if lifecycle is not None else "enable-app",
+            active_tools_provenance=active_tools_provenance,
+            require_active_tools_provenance=True,
         )
 
     if backend == "esp32_esptool":
@@ -67,6 +77,39 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
         return Esp32TargetEnvironment(port)
 
     raise GarDomainError(f"target environmentはまだ未対応です: {backend or '(未設定)'}")
+
+
+def target_lifecycle_for(workspace: Workspace) -> TargetLifecycle | None:
+    """Compose the lifecycle capability declared by the selected Target recipe."""
+
+    backend = workspace.selected_environments.target
+    if backend != "ssh_scp":
+        return None
+    manifest = _selected_target_manifest(workspace)
+    if manifest is None:
+        return None
+    capability = manifest.lifecycle_capability(backend)
+    if capability is None:
+        return None
+    return CommandTargetLifecycle(SshCommandChannel(_ssh_host(workspace)), capability.command)
+
+
+def _selected_target_manifest(workspace: Workspace) -> TargetManifest | None:
+    if workspace.selected_target is None:
+        return None
+    manifest = target_by_id(discover_target_manifests(), workspace.selected_target)
+    if manifest is None:
+        raise GarDomainError(f"選択したTarget定義が見つかりません: {workspace.selected_target}")
+    return manifest
+
+
+def _ssh_host(workspace: Workspace) -> str:
+    host = workspace.target.host
+    if host is None and workspace.connection_type == "network":
+        host = workspace.connection.host
+    if host is None:
+        raise GarDomainError(f"実機のSSH hostが未設定です: {workspace.name}。gar setupで設定してください。")
+    return host
 
 
 def _windows_path(path: Path) -> str:

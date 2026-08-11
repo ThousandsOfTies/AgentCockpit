@@ -18,6 +18,11 @@ class Esp32TargetEnvironment:
     def prepare(self) -> None:
         raise GarDomainError("ESP32 esptool接続には target prepare は不要です")
 
+    def validate_deployment(self, artifact: Artifact) -> None:
+        """ESP32 flash layout validation remains part of the esptool adapter."""
+
+        del artifact
+
     def deploy(self, artifact: Artifact) -> None:
         if artifact.kind is not ArtifactKind.TARGET_APP:
             raise GarDomainError(f"ESP32 targetへ配置できないartifactです: {artifact.kind.value}")

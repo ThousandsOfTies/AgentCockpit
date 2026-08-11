@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
+import json
 import sys
 from argparse import Namespace
 from collections.abc import Mapping
@@ -13,12 +16,21 @@ from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.command import GarCommand
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
+from scripts.gar_lib.target.lifecycle import (
+    TargetDeploymentConvergenceError,
+    TargetDeploymentReport,
+    TargetDiagnosticReport,
+    TargetLifecycleResult,
+)
 
 TARGET_ACTIONS = {
     "prepare": "SSH実機の限定sudoデプロイ権限を初回だけ設定します",
     "build": "setup 済み target の実機用 artifact をビルドします",
     "deploy": "target runtime へ成果物を配置します",
     "fetch": "build environment から artifact bundle を WSL hub へ取得します",
+    "status": "Target recipe経由でapplicationの稼働状態を取得します",
+    "log": "Target recipe経由でapplication logを取得します",
+    "diag": "Target recipe経由でhealthと稼働build IDを診断します",
 }
 
 
@@ -47,10 +59,84 @@ def add_target_parser(
             parents=[workspace_option],
         )
         action_parser.set_defaults(gar_command=GarCommand("target", None, action))
+        if action in {"deploy", "status", "log", "diag"}:
+            action_parser.add_argument(
+                "--json",
+                dest="json_output",
+                action="store_true",
+                help="結果を機械可読な JSON で出力します（AI / CI 向け）",
+            )
+        if action in {"status", "log", "diag"}:
+            action_parser.add_argument(
+                "--app",
+                default=None,
+                metavar="NAME",
+                help="観測するapplication名。省略時は最新artifactのentrypointから解決します",
+            )
+        if action == "log":
+            action_parser.add_argument(
+                "--lines",
+                type=int,
+                default=200,
+                metavar="N",
+                help="取得する末尾log行数（既定: 200）",
+            )
     return {"target": target_parser}
 
 
 def run_target_command(
+    args: Namespace,
+    *,
+    subcommand_parsers: Mapping[str, argparse.ArgumentParser] | None = None,
+) -> int:
+    """Run a target command, enforcing the stdout-only JSON boundary."""
+
+    command = getattr(args, "gar_command", None)
+    json_action = (
+        bool(getattr(args, "json_output", False))
+        and isinstance(command, GarCommand)
+        and command.group == "target"
+        and command.action in {"deploy", "status", "log", "diag"}
+    )
+    if not json_action:
+        return _run_target_command(args, subcommand_parsers=subcommand_parsers)
+
+    output = io.StringIO()
+    diagnostics = io.StringIO()
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(diagnostics):
+        exit_code = _run_target_command(args, subcommand_parsers=subcommand_parsers)
+
+    rendered = output.getvalue()
+    diagnostic_text = diagnostics.getvalue().strip()
+    if not diagnostic_text:
+        print(rendered, end="")
+        return exit_code
+
+    try:
+        payload = json.loads(rendered)
+    except json.JSONDecodeError:
+        payload = {
+            "schema_version": 1,
+            "command": f"target.{command.action}",
+            "workspace": getattr(args, "workspace", None),
+            "target_id": None,
+            "ok": False,
+            "error": f"machine-readable target outputを生成できません: {diagnostic_text}",
+        }
+        exit_code = 1
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, str) and error:
+            payload["error"] = f"{error}: {diagnostic_text}"
+        else:
+            payload["diagnostics"] = diagnostic_text
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(rendered, end="")
+    return exit_code
+
+
+def _run_target_command(
     args: Namespace,
     *,
     subcommand_parsers: Mapping[str, argparse.ArgumentParser] | None = None,
@@ -67,10 +153,20 @@ def run_target_command(
         raise GarDomainError(f"target command ではありません: {group}")
 
     workspace_selector = getattr(args, "workspace", None)
+    json_output = bool(getattr(args, "json_output", False))
     try:
         workspace = resolve_workspace(workspace_selector)
     except GarDomainError as error:
-        print(f"gar: {error}", file=sys.stderr)
+        if json_output and command.action in {"deploy", "status", "log", "diag"}:
+            _render_error(
+                command.action,
+                str(error),
+                workspace=workspace_selector,
+                target_id=None,
+                details={},
+            )
+        else:
+            print(f"gar: {error}", file=sys.stderr)
         return 1
     try:
         if command.subject is not None:
@@ -86,14 +182,67 @@ def run_target_command(
             case "build":
                 artifact = target_api.build()
             case "deploy":
+                if getattr(args, "json_output", False):
+                    deployment = target_api.deploy_report()
+                    _render_deployment(
+                        deployment.report,
+                        workspace=workspace.name,
+                        target_id=workspace.selected_target,
+                        json_output=True,
+                    )
+                    return deployment.report.exit_code
                 artifact = target_api.deploy()
             case "fetch":
                 artifact = target_api.fetch()
+            case "status":
+                result = target_api.status(app=getattr(args, "app", None))
+                _render_lifecycle_result(
+                    result,
+                    workspace=workspace.name,
+                    target_id=workspace.selected_target,
+                    json_output=getattr(args, "json_output", False),
+                )
+                return result.exit_code
+            case "log":
+                result = target_api.log(
+                    app=getattr(args, "app", None),
+                    lines=getattr(args, "lines", 200),
+                )
+                _render_lifecycle_result(
+                    result,
+                    workspace=workspace.name,
+                    target_id=workspace.selected_target,
+                    json_output=getattr(args, "json_output", False),
+                )
+                return result.exit_code
+            case "diag":
+                report = target_api.diag(app=getattr(args, "app", None))
+                _render_diagnostic(
+                    report,
+                    workspace=workspace.name,
+                    target_id=workspace.selected_target,
+                    json_output=getattr(args, "json_output", False),
+                )
+                return report.exit_code
             case _:
                 raise GarDomainError(f"未対応の target action: {command.action}")
         print(f"Artifact: {artifact.bundle_path}")
         return 0
     except AccessConnectionError as error:
+        if json_output:
+            _render_error(
+                command.action,
+                str(error),
+                workspace=workspace.name,
+                target_id=workspace.selected_target,
+                details={
+                    "channel": error.channel,
+                    "endpoint": error.endpoint,
+                    "reason": error.reason,
+                    "exit_code": error.returncode,
+                },
+            )
+            return 1
         return report_access_failure(
             error,
             workspace=workspace,
@@ -103,6 +252,145 @@ def run_target_command(
             purpose="target",
             run_terminal=run_terminal_run_command,
         )
+    except TargetDeploymentConvergenceError as error:
+        _render_deployment(
+            error.report,
+            workspace=workspace.name,
+            target_id=workspace.selected_target,
+            json_output=json_output,
+        )
+        if not json_output:
+            print(f"gar: {error}", file=sys.stderr)
+            access_error = _caused_by_access_failure(error)
+            if access_error is not None:
+                return report_access_failure(
+                    access_error,
+                    workspace=workspace,
+                    retry_command=command.to_cli(workspace=workspace_selector),
+                    purpose="target",
+                    run_terminal=run_terminal_run_command,
+                )
+        return error.report.exit_code
     except GarDomainError as error:
-        print(f"gar: {error}", file=sys.stderr)
+        if getattr(args, "json_output", False):
+            details: dict[str, object] = {}
+            report = getattr(error, "report", None)
+            if report is not None and callable(getattr(report, "as_dict", None)):
+                details["compatibility"] = report.as_dict()
+            _render_error(
+                command.action,
+                str(error),
+                workspace=workspace.name,
+                target_id=workspace.selected_target,
+                details=details,
+            )
+        else:
+            print(f"gar: {error}", file=sys.stderr)
         return 1
+
+
+def _render_lifecycle_result(
+    result: TargetLifecycleResult,
+    *,
+    workspace: str,
+    target_id: str | None,
+    json_output: bool,
+) -> None:
+    if json_output:
+        payload = result.to_payload()
+        payload["workspace"] = workspace
+        payload["target_id"] = target_id
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    if result.stderr:
+        print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+    if not result.stdout and not result.stderr:
+        print(f"{result.application}: {'ok' if result.ok else 'failed'}")
+
+
+def _render_diagnostic(
+    report: TargetDiagnosticReport,
+    *,
+    workspace: str,
+    target_id: str | None,
+    json_output: bool,
+) -> None:
+    payload = report.to_payload(workspace=workspace, target_id=target_id)
+    if json_output:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    print(f"application      : {report.application.name}")
+    print(f"status           : {'running' if report.status.ok else 'not running'}")
+    print(f"health           : {'healthy' if report.health.ok else 'unhealthy'}")
+    print(f"expected build ID: {report.application.expected_build_id or '(unknown)'}")
+    print(f"running build ID : {report.running_build_id or '(none)'}")
+    print(f"result           : {'OK' if report.ok else 'FAIL'}")
+
+
+def _render_deployment(
+    report: TargetDeploymentReport,
+    *,
+    workspace: str,
+    target_id: str | None,
+    json_output: bool,
+) -> None:
+    payload = report.to_payload(workspace=workspace, target_id=target_id)
+    if json_output:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    print(f"Artifact: {report.artifact_path}")
+    placement = "partial" if report.partial else "complete" if report.placed else "not placed"
+    print(f"Placement: {placement}")
+    if report.placed_destinations:
+        print(f"Placed destinations: {', '.join(report.placed_destinations)}")
+    if report.diagnostic is None:
+        print("Target lifecycle verification: unavailable")
+        return
+    print(f"Application: {report.application.name if report.application is not None else '(unknown)'}")
+    print(f"Running build ID: {report.diagnostic.running_build_id or '(none)'}")
+    print(f"Health: {'OK' if report.diagnostic.ok else 'FAIL'}")
+
+
+def _render_error(
+    action: str,
+    message: str,
+    *,
+    workspace: str | None,
+    target_id: str | None,
+    details: Mapping[str, object],
+) -> None:
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "command": f"target.{action}",
+        "workspace": workspace,
+        "target_id": target_id,
+        "ok": False,
+        "error": message,
+    }
+    if action == "deploy":
+        payload.update(
+            {
+                "placed": False,
+                "partial": False,
+                "placed_destinations": [],
+                "running": False,
+                "rollback": {"available": False, "attempted": False},
+            }
+        )
+    payload.update(details)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def _caused_by_access_failure(error: BaseException) -> AccessConnectionError | None:
+    """Find a transport failure preserved below a post-placement report."""
+
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if isinstance(current, AccessConnectionError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from scripts.gar_lib.artifacts.store import BuildArtifactStore, LocalArtifactStore
 from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
+from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.hardware import HardwareDefinition, load_hw_definition
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.composition import (
@@ -19,7 +22,23 @@ from scripts.gar_lib.simulation.host.contract import (
     SimulationHostState,
 )
 from scripts.gar_lib.simulation.session.manager import VsCodeSimulationSessionManager
-from scripts.gar_lib.target.composition import target_environment_for
+from scripts.gar_lib.target.application import target_application_from_artifact
+from scripts.gar_lib.target.composition import target_environment_for, target_lifecycle_for
+from scripts.gar_lib.target.environment import TargetPlacementError
+from scripts.gar_lib.target.lifecycle import (
+    TargetApplication,
+    TargetDeploymentConvergenceError,
+    TargetDeploymentReport,
+    TargetDiagnosticReport,
+    TargetLifecycle,
+    TargetLifecycleResult,
+)
+
+
+@dataclass(frozen=True)
+class TargetDeploymentResult:
+    artifact: Artifact
+    report: TargetDeploymentReport
 
 
 class Gar:
@@ -212,12 +231,95 @@ class Target:
         target_environment_for(self.workspace).prepare()
 
     def deploy(self) -> Artifact:
+        return self.deploy_report().artifact
+
+    def deploy_report(self) -> TargetDeploymentResult:
         artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
-        target_environment_for(self.workspace).deploy(artifact)
-        return artifact
+        environment = target_environment_for(self.workspace)
+        environment.validate_deployment(artifact)
+        lifecycle = target_lifecycle_for(self.workspace)
+        application = (
+            target_application_from_artifact(artifact, require_build_id=True) if lifecycle is not None else None
+        )
+        verification = "lifecycle-v1" if lifecycle is not None else "unavailable"
+        try:
+            environment.deploy(artifact)
+        except TargetPlacementError as error:
+            report = TargetDeploymentReport(
+                application=application,
+                artifact_path=str(artifact.bundle_path),
+                placed=True,
+                verification=verification,
+                partial=error.partial,
+                placed_destinations=error.placed_destinations,
+                failure=str(error),
+            )
+            raise TargetDeploymentConvergenceError(report) from error
+
+        if lifecycle is None:
+            return TargetDeploymentResult(
+                artifact=artifact,
+                report=TargetDeploymentReport(
+                    application=None,
+                    artifact_path=str(artifact.bundle_path),
+                    placed=True,
+                    verification="unavailable",
+                ),
+            )
+
+        assert application is not None
+        reload_result = None
+        try:
+            reload_result = lifecycle.reload(application)
+            diagnostic = lifecycle.diag(application)
+        except Exception as error:
+            report = TargetDeploymentReport(
+                application=application,
+                artifact_path=str(artifact.bundle_path),
+                placed=True,
+                reload=reload_result,
+                verification=verification,
+                failure=str(error),
+            )
+            raise TargetDeploymentConvergenceError(report) from error
+        report = TargetDeploymentReport(
+            application=application,
+            artifact_path=str(artifact.bundle_path),
+            placed=True,
+            reload=reload_result,
+            diagnostic=diagnostic,
+            verification=verification,
+        )
+        if not reload_result.ok or not report.ok:
+            raise TargetDeploymentConvergenceError(report)
+        return TargetDeploymentResult(artifact=artifact, report=report)
+
+    def status(self, *, app: str | None = None) -> TargetLifecycleResult:
+        lifecycle, application = self._lifecycle_application(app)
+        return lifecycle.status(application)
+
+    def log(self, *, app: str | None = None, lines: int = 200) -> TargetLifecycleResult:
+        lifecycle, application = self._lifecycle_application(app)
+        return lifecycle.log(application, lines=lines)
+
+    def diag(self, *, app: str | None = None) -> TargetDiagnosticReport:
+        lifecycle, application = self._lifecycle_application(app)
+        return lifecycle.diag(application)
 
     def fetch(self) -> Artifact:
         return build_environment_for(self.workspace, self.artifacts).fetch(
             ArtifactKind.TARGET_APP,
             self.workspace,
         )
+
+    def _lifecycle_application(self, app: str | None) -> tuple[TargetLifecycle, TargetApplication]:
+        lifecycle = target_lifecycle_for(self.workspace)
+        if lifecycle is None:
+            raise GarDomainError(
+                "選択したTargetはapplication lifecycle capabilityを提供していません。"
+                "Target recipeを更新してgar target prepareを実行してください"
+            )
+        if app is not None:
+            return lifecycle, TargetApplication(app)
+        artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
+        return lifecycle, target_application_from_artifact(artifact)

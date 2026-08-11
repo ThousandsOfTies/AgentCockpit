@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,13 +13,56 @@ from scripts.gar_lib.access.ssh import SSH_CONNECTION_OPTIONS
 from scripts.gar_lib.core.errors import GarDomainError
 
 
-def prepare_ssh_target(host: str, recipe: Path, *, config_path: Path | None = None) -> None:
+def prepare_ssh_target(
+    host: str,
+    recipe: Path,
+    *,
+    target_id: str,
+    recipe_version: str,
+    gar_tools_commit: str,
+    config_path: Path | None = None,
+    include_lifecycle: bool = False,
+) -> None:
     """Stage and run a validated Target recipe, asking for sudo when it needs it."""
+
+    identity_payload = _recipe_identity_payload(
+        target_id=target_id,
+        recipe_version=recipe_version,
+        gar_tools_commit=gar_tools_commit,
+    )
+    with tempfile.TemporaryDirectory(prefix="gar-target-recipe-") as temporary:
+        identity_source = Path(temporary) / "recipe-version"
+        identity_source.write_text(identity_payload, encoding="utf-8")
+        identity_source.chmod(0o600)
+        _prepare_ssh_target(
+            host,
+            recipe,
+            identity_source,
+            config_path=config_path,
+            include_lifecycle=include_lifecycle,
+        )
+
+
+def _prepare_ssh_target(
+    host: str,
+    recipe: Path,
+    identity_source: Path,
+    *,
+    config_path: Path | None,
+    include_lifecycle: bool,
+) -> None:
     config = config_path or Path.home() / ".ssh" / "config"
     prepare_script = recipe / "prepare.sh"
     installer = recipe / "gar-target-install"
     service_template = recipe / "gar-app@.service"
-    payloads = (prepare_script, installer, service_template)
+    lifecycle = recipe / "gar-target-lifecycle"
+    payloads = (
+        prepare_script,
+        installer,
+        service_template,
+        *((lifecycle,) if include_lifecycle else ()),
+        identity_source,
+    )
     for payload in payloads:
         if payload.is_symlink() or not payload.is_file():
             raise GarDomainError(f"target prepare recipeの必須fileがありません: {payload}")
@@ -81,6 +126,9 @@ def prepare_ssh_target(host: str, recipe: Path, *, config_path: Path | None = No
             f"{shlex.quote(remote_user)} {shlex.quote(stage + '/gar-target-install')} "
             f"{shlex.quote(stage + '/gar-app@.service')}"
         )
+        if include_lifecycle:
+            remote += f" {shlex.quote(stage + '/gar-target-lifecycle')}"
+        remote += f" {shlex.quote(stage + '/recipe-version')}"
         result = subprocess.run(
             (
                 "ssh",
@@ -113,3 +161,18 @@ def prepare_ssh_target(host: str, recipe: Path, *, config_path: Path | None = No
             capture_output=True,
             text=True,
         )
+
+
+def _recipe_identity_payload(
+    *,
+    target_id: str,
+    recipe_version: str,
+    gar_tools_commit: str,
+) -> str:
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", target_id) is None:
+        raise GarDomainError("target prepare: recipe identityのtarget IDが不正です")
+    if re.fullmatch(r"[1-9][0-9]*", recipe_version) is None:
+        raise GarDomainError("target prepare: recipe identityのversionが不正です")
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})", gar_tools_commit) is None:
+        raise GarDomainError("target prepare: recipe identityのgar-tools commitが不正です")
+    return f"target_id={target_id}\n" f"recipe_version={recipe_version}\n" f"gar_tools_commit={gar_tools_commit}\n"

@@ -13,6 +13,16 @@ from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.tools_repository import gar_tools_root
 from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
+TARGET_LIFECYCLE_CONTRACT = "gar-app-lifecycle-v1"
+
+
+@dataclass(frozen=True)
+class TargetLifecycleCapability:
+    """Target-owned application lifecycle command exposed through a backend."""
+
+    type: str
+    command: str
+
 
 @dataclass(frozen=True)
 class TargetManifest:
@@ -23,14 +33,29 @@ class TargetManifest:
     default_backends: dict[str, str]
     backend_notes: dict[str, str]
     simulation: dict[str, dict[str, Any]] = field(default_factory=dict)
-    provisioning: dict[str, dict[str, str]] = field(default_factory=dict)
+    provisioning: dict[str, dict[str, Any]] = field(default_factory=dict)
+    compatibility: dict[str, str] = field(default_factory=dict)
     source_path: Path | None = None
 
     def simulation_settings(self, backend_id: str) -> dict[str, Any]:
         return self.simulation.get(backend_id, {})
 
-    def provisioning_settings(self, backend_id: str) -> dict[str, str]:
+    def provisioning_settings(self, backend_id: str) -> dict[str, Any]:
         return self.provisioning.get(backend_id, {})
+
+    def lifecycle_capability(self, backend_id: str) -> TargetLifecycleCapability | None:
+        raw = self.provisioning_settings(backend_id).get("lifecycle")
+        if not isinstance(raw, dict):
+            return None
+        lifecycle_type = raw.get("type")
+        command = raw.get("command")
+        if not isinstance(lifecycle_type, str) or not isinstance(command, str):
+            return None
+        return TargetLifecycleCapability(type=lifecycle_type, command=command)
+
+    def recipe_version(self, backend_id: str) -> int | None:
+        value = self.provisioning_settings(backend_id).get("recipeVersion")
+        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
     def provisioning_recipe_path(self, backend_id: str) -> Path | None:
         settings = self.provisioning_settings(backend_id)
@@ -147,6 +172,7 @@ def _load_target_manifest(
     backend_notes = _validate_string_mapping(data, "backendNotes", path, issues)
     simulation = _validate_simulation_settings(data, path, issues)
     provisioning = _validate_provisioning_settings(data, path, backend_ids.get("target", set()), issues)
+    compatibility = _validate_compatibility_settings(data, path, issues)
 
     if len(issues) != issue_count_before:
         return None
@@ -159,6 +185,7 @@ def _load_target_manifest(
         backend_notes=backend_notes,
         simulation=simulation,
         provisioning=provisioning,
+        compatibility=compatibility,
         source_path=path,
     )
 
@@ -339,13 +366,13 @@ def _validate_provisioning_settings(
     path: Path,
     target_backend_ids: set[str],
     issues: list[TargetManifestValidationIssue],
-) -> dict[str, dict[str, str]]:
+) -> dict[str, dict[str, Any]]:
     value = data.get("provisioning", {})
     if not isinstance(value, dict):
         issues.append(TargetManifestValidationIssue(path, "provisioning", "field must be an object"))
         return {}
 
-    validated: dict[str, dict[str, str]] = {}
+    validated: dict[str, dict[str, Any]] = {}
     for backend_id, settings in value.items():
         field = f"provisioning.{backend_id}"
         if not isinstance(backend_id, str) or backend_id not in target_backend_ids:
@@ -372,5 +399,86 @@ def _validate_provisioning_settings(
         if ".." in Path(recipe_path).parts:
             issues.append(TargetManifestValidationIssue(path, f"{field}.path", "must not escape toolsRoot"))
             continue
-        validated[backend_id] = {"type": recipe_type, "path": recipe_path}
+        validated_settings: dict[str, Any] = {"type": recipe_type, "path": recipe_path}
+        if "recipeVersion" in settings:
+            recipe_version = settings["recipeVersion"]
+            if not isinstance(recipe_version, int) or isinstance(recipe_version, bool) or recipe_version < 1:
+                issues.append(
+                    TargetManifestValidationIssue(
+                        path,
+                        f"{field}.recipeVersion",
+                        "must be a positive integer",
+                    )
+                )
+                continue
+            validated_settings["recipeVersion"] = recipe_version
+        if "lifecycle" in settings:
+            lifecycle = _validate_lifecycle_capability(settings["lifecycle"], path, field, issues)
+            if lifecycle is None:
+                continue
+            validated_settings["lifecycle"] = lifecycle
+        validated[backend_id] = validated_settings
+    return validated
+
+
+def _validate_lifecycle_capability(
+    value: object,
+    path: Path,
+    provisioning_field: str,
+    issues: list[TargetManifestValidationIssue],
+) -> dict[str, str] | None:
+    field = f"{provisioning_field}.lifecycle"
+    if not isinstance(value, dict):
+        issues.append(TargetManifestValidationIssue(path, field, "must be an object"))
+        return None
+
+    lifecycle_type = value.get("type")
+    if lifecycle_type != TARGET_LIFECYCLE_CONTRACT:
+        issues.append(
+            TargetManifestValidationIssue(
+                path,
+                f"{field}.type",
+                f"must be {TARGET_LIFECYCLE_CONTRACT!r}",
+            )
+        )
+        return None
+
+    command = value.get("command")
+    if not isinstance(command, str) or not command or not Path(command).is_absolute():
+        issues.append(TargetManifestValidationIssue(path, f"{field}.command", "must be an absolute path"))
+        return None
+    if any(character in command for character in ("\x00", "\n", "\r")) or ".." in Path(command).parts:
+        issues.append(TargetManifestValidationIssue(path, f"{field}.command", "must be a safe normalized path"))
+        return None
+    return {"type": lifecycle_type, "command": command}
+
+
+def _validate_compatibility_settings(
+    data: Mapping[str, Any],
+    path: Path,
+    issues: list[TargetManifestValidationIssue],
+) -> dict[str, str]:
+    value = data.get("compatibility", {})
+    if not isinstance(value, dict):
+        issues.append(TargetManifestValidationIssue(path, "compatibility", "field must be an object"))
+        return {}
+
+    allowed = {"architecture", "abi", "libc", "toolchainTriple"}
+    validated: dict[str, str] = {}
+    for key, item in value.items():
+        field = f"compatibility.{key}"
+        if key not in allowed:
+            issues.append(
+                TargetManifestValidationIssue(
+                    path,
+                    field,
+                    "unknown compatibility field",
+                    tuple(sorted(allowed)),
+                )
+            )
+            continue
+        if not isinstance(item, str) or not item.strip():
+            issues.append(TargetManifestValidationIssue(path, field, "must be a non-empty string"))
+            continue
+        validated[key] = item
     return validated

@@ -71,6 +71,8 @@ class ArtifactManifest:
 
     name: str | None
     deploy: Mapping[str, DeploySection]
+    target: str | None = None
+    entrypoint: str | None = None
 
     def section(self, name: str) -> DeploySection:
         try:
@@ -99,6 +101,14 @@ def parse_artifact_manifest(payload: object) -> ArtifactManifest:
     raw_name = payload.get("name")
     if raw_name is not None and not isinstance(raw_name, str):
         raise ArtifactManifestError("invalid artifact manifest: name must be a string")
+
+    raw_target = payload.get("target")
+    if raw_target is not None and not (isinstance(raw_target, str) and raw_target):
+        raise ArtifactManifestError("invalid artifact manifest: target must be a non-empty string or null")
+
+    raw_entrypoint = payload.get("entrypoint")
+    if raw_entrypoint is not None and not (isinstance(raw_entrypoint, str) and raw_entrypoint):
+        raise ArtifactManifestError("invalid artifact manifest: entrypoint must be a non-empty string or null")
 
     raw_deploy = payload.get("deploy")
     if not isinstance(raw_deploy, dict):
@@ -145,7 +155,12 @@ def parse_artifact_manifest(payload: object) -> ArtifactManifest:
             artifact=raw_artifact,
         )
 
-    return ArtifactManifest(name=raw_name, deploy=deploy)
+    return ArtifactManifest(
+        name=raw_name,
+        deploy=deploy,
+        target=raw_target,
+        entrypoint=raw_entrypoint,
+    )
 
 
 def default_artifacts_dir() -> Path:

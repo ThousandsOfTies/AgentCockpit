@@ -8,10 +8,29 @@ import shutil
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from posixpath import join as posix_join
 from typing import Protocol
 from uuid import uuid4
 
-from scripts.gar_lib.artifacts.manifest import fetch_codespace_artifacts, load_deploy_files
+from scripts.gar_lib.artifacts.manifest import (
+    ArtifactManifest,
+    fetch_codespace_artifacts,
+    load_artifact_manifest,
+    load_deploy_files,
+    resolve_artifact_src,
+)
+from scripts.gar_lib.artifacts.metadata import (
+    CURRENT_SCHEMA_VERSION,
+    DEPLOYED_METADATA_FILENAME,
+    ArtifactMetadata,
+    ArtifactMetadataError,
+    discover_kernel_dependency,
+    load_artifact_metadata,
+    sha256_checksums,
+    verify_artifact_checksums,
+    write_artifact_metadata,
+)
+from scripts.gar_lib.artifacts.provenance import CaptureProvenance, collect_capture_provenance
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
@@ -25,9 +44,19 @@ class ArtifactStore(Protocol):
 class BuildArtifactStore(ArtifactStore, Protocol):
     """Artifact storage operations needed by build environments."""
 
-    def capture(self, kind: ArtifactKind, workspace: Workspace) -> Artifact: ...
+    def capture(
+        self,
+        kind: ArtifactKind,
+        workspace: Workspace,
+        provenance: CaptureProvenance | None = None,
+    ) -> Artifact: ...
 
-    def sync_from_codespaces(self, kind: ArtifactKind, workspace: Workspace) -> Artifact: ...
+    def sync_from_codespaces(
+        self,
+        kind: ArtifactKind,
+        workspace: Workspace,
+        provenance: CaptureProvenance | None = None,
+    ) -> Artifact: ...
 
     def remove(self, kind: ArtifactKind, workspace: Workspace) -> None: ...
 
@@ -66,20 +95,38 @@ class LocalArtifactStore:
         self._validate_snapshot_metadata(bundle_path, kind, workspace)
         return Artifact(kind=kind, workspace=workspace, bundle_path=bundle_path)
 
-    def capture(self, kind: ArtifactKind, workspace: Workspace) -> Artifact:
+    def capture(
+        self,
+        kind: ArtifactKind,
+        workspace: Workspace,
+        provenance: CaptureProvenance | None = None,
+    ) -> Artifact:
         """Copy the product build output into an immutable kind-specific snapshot."""
 
-        return self._capture_directory(kind, workspace, self.bundle_path(workspace))
+        return self._capture_directory(
+            kind,
+            workspace,
+            self.bundle_path(workspace),
+            provenance=provenance,
+        )
 
     def _capture_directory(
         self,
         kind: ArtifactKind,
         workspace: Workspace,
         source: Path,
+        *,
+        provenance: CaptureProvenance | None = None,
     ) -> Artifact:
         self._validate_capture_source(source)
-        if not self._contains_kind(source, kind):
+        loaded_manifest = load_artifact_manifest(source)
+        if loaded_manifest is None or not self._contains_kind(source, kind):
             raise GarDomainError(f"{kind.value} build hook が期待するartifactを生成しませんでした: {source}")
+        _, source_manifest = loaded_manifest
+        target_id = self._target_id(kind, source_manifest, workspace)
+        provenance = provenance or collect_capture_provenance(workspace, target_id)
+        if provenance.target.id != target_id:
+            raise GarDomainError("artifact provenanceのTarget IDがbuild manifestと一致しません")
 
         captured_at = datetime.now(UTC)
         build_id = f"{captured_at:%Y%m%dT%H%M%S%fZ}-{uuid4().hex[:8]}"
@@ -90,17 +137,28 @@ class LocalArtifactStore:
         with tempfile.TemporaryDirectory(prefix=".capture-", dir=kind_root) as temporary:
             temporary_bundle = Path(temporary) / "bundle"
             shutil.copytree(source, temporary_bundle)
-            metadata = {
-                "schema_version": 1,
-                "kind": kind.value,
-                "workspace_id": workspace.id,
-                "build_id": build_id,
-                "captured_at": captured_at.isoformat(),
-            }
-            (temporary_bundle / self._METADATA_FILE).write_text(
-                json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
+            copied_manifest = load_artifact_manifest(temporary_bundle)
+            if copied_manifest is None:
+                raise GarDomainError(f"captured artifact manifestを読み込めません: {temporary_bundle}")
+            copied_root, manifest = copied_manifest
+            metadata = ArtifactMetadata(
+                schema_version=CURRENT_SCHEMA_VERSION,
+                kind=kind.value,
+                product=manifest.name or workspace.name,
+                workspace_id=workspace.id,
+                workspace_name=workspace.name,
+                workspace_branch=workspace.branch,
+                target=provenance.target,
+                entrypoint=self._entrypoint(kind, copied_root, manifest),
+                source_commit=provenance.source_commit,
+                gar_tools_commit=provenance.gar_tools_commit,
+                target_recipe_version=provenance.target_recipe_version,
+                checksums=sha256_checksums(temporary_bundle),
+                build_id=build_id,
+                build_timestamp=captured_at.isoformat(),
+                kernel=discover_kernel_dependency(temporary_bundle),
             )
+            write_artifact_metadata(temporary_bundle, metadata)
             os.replace(temporary_bundle, destination)
 
         self._write_latest_pointer(kind_root, build_id)
@@ -113,8 +171,16 @@ class LocalArtifactStore:
         symlink = next((path for path in sorted(source.rglob("*")) if path.is_symlink()), None)
         if symlink is not None:
             raise GarDomainError(f"artifact staging directoryにsymlinkは置けません: {symlink}")
+        reserved_marker = next(iter(sorted(source.rglob(DEPLOYED_METADATA_FILENAME))), None)
+        if reserved_marker is not None:
+            raise GarDomainError("artifact staging directoryに予約済みdeploy markerは置けません: " f"{reserved_marker}")
 
-    def sync_from_codespaces(self, kind: ArtifactKind, workspace: Workspace) -> Artifact:
+    def sync_from_codespaces(
+        self,
+        kind: ArtifactKind,
+        workspace: Workspace,
+        provenance: CaptureProvenance | None = None,
+    ) -> Artifact:
         """Fetch the remote staging bundle, then capture the requested kind."""
 
         with tempfile.TemporaryDirectory(prefix="gar-codespace-artifact-") as temporary:
@@ -126,7 +192,12 @@ class LocalArtifactStore:
             )
             if result != 0:
                 raise GarDomainError(f"Codespaces artifact の取得に失敗しました (exit {result})")
-            return self._capture_directory(kind, workspace, staging)
+            return self._capture_directory(
+                kind,
+                workspace,
+                staging,
+                provenance=provenance,
+            )
 
     def remove(self, kind: ArtifactKind, workspace: Workspace) -> None:
         kind_root = self._kind_root(kind, workspace)
@@ -179,15 +250,54 @@ class LocalArtifactStore:
         kind: ArtifactKind,
         workspace: Workspace,
     ) -> None:
-        metadata_path = bundle_path / self._METADATA_FILE
         try:
-            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            raise GarDomainError(f"artifact metadataを読めません: {metadata_path}: {error}") from error
-        if not isinstance(payload, dict):
-            raise GarDomainError(f"artifact metadataが不正です: {metadata_path}")
-        if payload.get("kind") != kind.value or payload.get("workspace_id") != workspace.id:
-            raise GarDomainError(f"artifactの種別またはworkspaceが一致しません: {metadata_path}")
+            metadata = load_artifact_metadata(bundle_path)
+            if metadata is None:
+                raise ArtifactMetadataError(f"missing {self._METADATA_FILE}")
+            if metadata.kind != kind.value or metadata.workspace_id != workspace.id:
+                raise ArtifactMetadataError("artifactの種別またはworkspaceが一致しません")
+            verify_artifact_checksums(bundle_path, metadata)
+        except ArtifactMetadataError as error:
+            raise GarDomainError(
+                f"artifact metadataが不正です: {bundle_path / self._METADATA_FILE}: {error}"
+            ) from error
+
+    @classmethod
+    def _entrypoint(
+        cls,
+        kind: ArtifactKind,
+        bundle_root: Path,
+        manifest: ArtifactManifest,
+    ) -> str | None:
+        if manifest.entrypoint is not None:
+            return manifest.entrypoint
+        section = manifest.deploy.get(cls._MANIFEST_SECTIONS[kind])
+        if section is None:
+            return None
+        fallback: str | None = None
+        for entry in section.files:
+            source = resolve_artifact_src(bundle_root, entry.src)
+            if source is None:
+                continue
+            if source.is_dir() and (source / "run").is_file():
+                return posix_join(entry.dest.rstrip("/"), "run")
+            if source.is_file() and fallback is None:
+                fallback = entry.dest
+        return fallback
+
+    @staticmethod
+    def _target_id(
+        kind: ArtifactKind,
+        manifest: ArtifactManifest,
+        workspace: Workspace,
+    ) -> str | None:
+        if kind is ArtifactKind.TARGET_APP and manifest.target is not None and workspace.selected_target is not None:
+            if manifest.target != workspace.selected_target:
+                raise GarDomainError(
+                    "artifact manifestのTarget IDが選択中Targetと一致しません: "
+                    f"{manifest.target} != {workspace.selected_target}"
+                )
+        return manifest.target or workspace.selected_target
 
     def bundle_path(self, workspace: Workspace) -> Path:
         """Return the product hook's mutable staging directory."""

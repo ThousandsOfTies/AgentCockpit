@@ -71,6 +71,15 @@ def plan_access_recovery(
         )
 
     if error.channel in {"ssh", "scp"}:
+        if error.reason == "target_prepare_required":
+            return RecoveryAction(
+                title="GAR: Target lifecycle権限の準備",
+                terminal_command=("gar", "target", "prepare", "--workspace", workspace.name),
+                instructions=(
+                    "表示されたterminalでTarget recipeのsudo認証を完了してください。",
+                    f"準備完了後に再実行: {retry_command}",
+                ),
+            )
         if error.reason == "host_key_verification":
             return RecoveryAction(
                 title="GAR: SSH host keyの確認",

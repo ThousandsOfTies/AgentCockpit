@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.gar_lib.api import Gar
+from scripts.gar_lib.artifacts.provenance import TargetToolsProvenance
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.cli import main
@@ -325,14 +326,32 @@ class GarTargetArchitectureTest(unittest.TestCase):
                 selected_environments={"target": "ssh_scp"},
                 target={"host": "raspi5"},
             )
-            with mock.patch(
-                "scripts.gar_lib.target.composition.discover_target_manifests",
-                return_value=[manifest],
+            active_tools = TargetToolsProvenance(
+                target_id="raspberry-pi-5",
+                gar_tools_commit="c" * 40,
+                target_recipe_version="1",
+            )
+            with (
+                mock.patch(
+                    "scripts.gar_lib.target.composition.discover_target_manifests",
+                    return_value=[manifest],
+                ),
+                mock.patch(
+                    "scripts.gar_lib.target.composition.collect_target_tools_provenance",
+                    return_value=active_tools,
+                ) as collect_provenance,
             ):
                 environment = target_environment_for(selected_workspace)
 
         self.assertTrue(environment.privileged_install)
         self.assertEqual(recipe.resolve(), environment.prepare_recipe)
+        self.assertIs(active_tools, environment.active_tools_provenance)
+        self.assertTrue(environment.require_active_tools_provenance)
+        collect_provenance.assert_called_once_with(
+            manifest_path,
+            "ssh_scp",
+            target_id="raspberry-pi-5",
+        )
 
     def test_target_backend_builds_esp32_environment(self) -> None:
         selected_workspace = Workspace(
