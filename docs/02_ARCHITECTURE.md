@@ -177,6 +177,19 @@ SSH実機のroot管理領域、package manager、service account、init system�
 `gar-tools/targets/<id>/target.json`の`provisioning`からTarget所有recipeを解決する。
 Runtime本体はdistribution名で分岐しない。
 
+applicationの観測とdeploy後収束も同じ境界に従う。Target manifestが
+`gar-app-lifecycle-v1` capabilityを宣言し、recipeが導入するhelperへ
+`status / log / health / reload / running-build-id`を委譲する。GAR coreはこの共通語彙と
+exit codeだけを扱い、systemdやBusyBox init、product固有health hookの実装を持たない。
+
+実機artifactのschema v2はsource/gar-tools commit、Target recipe version、architecture、
+ABI/libc、entrypoint、build ID、file checksumをsnapshotへ固定する。`gar target prepare`は
+適用したTarget ID、recipe version、gar-tools commitをroot所有の
+`/etc/gar/recipe-version`へ記録する。deploy時はworkspaceでbuildに使ったidentity、現在の
+gar-tools copy、実機へ適用済みidentity、実測architecture/ABI/kernelを転送前に比較する。
+dirtyなsource/tools、legacyまたはchecksum不一致の実機artifact、いずれかのidentity driftは
+再build/prepareが済むまで安全側で拒否する。legacy simulation artifactの読込み互換は維持する。
+
 Raspberry Pi OS/systemdのreference contractでは、recipeが限定sudo installerと
 root所有の`gar-app@.service`を導入する。product artifactは
 `/opt/gar/apps/<app>/run`を提供し、serviceは非rootの`gar`accountで動く。

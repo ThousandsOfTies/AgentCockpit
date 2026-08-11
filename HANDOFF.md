@@ -2,6 +2,10 @@
 
 最終更新: 2026-08-09
 
+> **2026-08-11:** GarStreamTx/Rx から得られた P0/P1 の実行作業は
+> [`HANDOVER_GARSTREAM_P0_P1.md`](HANDOVER_GARSTREAM_P0_P1.md) を最初に読むこと。
+> 同文書に現在のdirty worktree、commit順、Golden Referenceの完了条件を記録している。
+
 この文書は、全体レビュー後の実装状態と、今後判断が必要な項目を短く引き継ぐためのものです。
 操作手順は`docs/`、設計境界は`GAR_LIB_STRUCTURE.md`を正本とします。
 

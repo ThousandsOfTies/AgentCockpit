@@ -278,7 +278,10 @@ gar sim host stop
 |---|---|
 | `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeをSSH経由で初回適用。対話的sudo認証でservice account、限定installer、boot serviceなどを導入 |
 | `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。hookには選択Target IDを`GAR_TARGET`で渡す |
-| `gar target deploy [--workspace NAME]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置。Target recipeがあるSSH実機では先に`target prepare`が必要 |
+| `gar target deploy [--workspace NAME] [--json]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置。lifecycle対応Targetではreload、health、稼働build ID一致まで確認 |
+| `gar target status [--workspace NAME] [--app NAME] [--json]` | Target recipeのlifecycle capability経由でapplicationの稼働状態を取得 |
+| `gar target log [--workspace NAME] [--app NAME] [--lines N] [--json]` | Target recipe経由で末尾logを取得（既定200行） |
+| `gar target diag [--workspace NAME] [--app NAME] [--json]` | status、health、期待/稼働build IDをまとめて診断 |
 
 低レベルコマンド:
 
@@ -300,6 +303,12 @@ systemd型Targetの標準contractでは、product artifactは
 `/etc/gar/<app>.env`へ分離します。env fileは任意で、存在するときだけ読み込みます。
 deploy後はserviceをenableしてrestartし、PnPやdefault設定で動くproductは初回deployから
 そのままboot運用へ移れます。
+
+`gar-app-lifecycle-v1`を宣言するTargetでは、GARはTarget所有helperの共通actionだけを
+呼び出します。systemd / BusyBox initの差はrecipe側に閉じ込められ、GAR自身はproductの
+process managerになりません。`deploy --json`は起動またはhealth収束に失敗した場合、
+`placed: true`、`running: false`、rollbackが利用不可であることをJSONで返して非0終了します。
+`status` / `log` / `diag`は`--app`を指定すればローカルartifactなしでも観測できます。
 
 Raspberry Pi OS recipeはreal device用のreference runtime packageと`gar`accountを
 準備しますが、gpio-sim/CUSE/Web Panelは導入しません。また旧GAR試作版が作った
