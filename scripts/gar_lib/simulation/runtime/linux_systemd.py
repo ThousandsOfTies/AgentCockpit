@@ -142,7 +142,11 @@ class LinuxSystemdSimulationEnvironment:
                 ]
             )
         else:
-            commands.append(f"{sudo}cp {staging_expr} {destination_expr}")
-        if mode:
+            temporary_expr = shlex.quote(f"{destination}.gar-new")
+            commands.append(f"{sudo}cp {staging_expr} {temporary_expr}")
+            if mode:
+                commands.append(f"{sudo}chmod {shlex.quote(mode)} {temporary_expr}")
+            commands.append(f"{sudo}mv -f {temporary_expr} {destination_expr}")
+        if mode and source_is_dir:
             commands.append(f"{sudo}chmod {shlex.quote(mode)} {destination_expr}")
         return "\n".join(commands)

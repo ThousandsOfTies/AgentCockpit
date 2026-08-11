@@ -39,6 +39,7 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
         self.assertIn('mkdir -p $(dirname "${HOME}"/', install)
         self.assertNotIn("sudo", install)
         self.assertIn("chmod 0755", install)
+        self.assertIn("mv -f", install)
 
     def test_runtime_artifact_maps_system_destinations(self) -> None:
         command = LinuxSystemdSimulationEnvironment._install_command(
@@ -50,6 +51,8 @@ class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
 
         self.assertIn("sudo cp", command)
         self.assertIn("/usr/local/sbin/cuse_i2c", command)
+        self.assertIn("/usr/local/sbin/cuse_i2c.gar-new", command)
+        self.assertIn("sudo mv -f", command)
         self.assertIn("trap 'rm -rf -- /tmp/cuse_i2c' EXIT", command)
 
     def test_runtime_deploy_stops_running_services_before_replacing_binaries(self) -> None:
