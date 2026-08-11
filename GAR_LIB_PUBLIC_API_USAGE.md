@@ -22,9 +22,9 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `AccessResult` | 13 | access.adb(4), access.aws(2), access.docker(6), access.ssh(4), simulation.diagnostics.model(1), simulation.hardware.control(1), simulation.host.aws_ec2(1), tests.test_gar_docker_simulation_host(23), tests.test_gar_hardware_control(4), tests.test_gar_linux_systemd_environment(7), tests.test_gar_simulation_host(10) |
+| `AccessResult` | 13 | access.adb(4), access.aws(2), access.docker(6), access.ssh(4), simulation.diagnostics.model(1), simulation.hardware.control(1), simulation.host.aws_ec2(1), target.lifecycle(2), tests.test_gar_docker_simulation_host(23), tests.test_gar_hardware_control(4), tests.test_gar_linux_systemd_environment(7), tests.test_gar_simulation_host(10), tests.test_gar_target_compatibility(6), tests.test_gar_target_lifecycle(3) |
 | `ConsoleSession` | 23 | access.serial(2) |
-| `CommandChannel` | 27 | simulation.hardware.control(1), simulation.host.aws_ec2(1), simulation.host.docker(1), simulation.runtime.linux_systemd(1), target.file_transfer(1) |
+| `CommandChannel` | 27 | simulation.hardware.control(1), simulation.host.aws_ec2(1), simulation.host.docker(1), simulation.runtime.linux_systemd(1), target.compatibility(2), target.file_transfer(1), target.lifecycle(1) |
 | `FileChannel` | 31 | simulation.runtime.linux_systemd(1), target.file_transfer(1) |
 | `ConsoleChannel` | 37 | _(外部参照なし)_ |
 | `run_cli` | 44 | access.adb(2), access.aws(1), access.docker(3), access.ssh(2) |
@@ -60,21 +60,22 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `SSH_CONNECTION_OPTIONS` | 11 | target.ssh_prepare(5) |
-| `SshCommandChannel` | 38 | simulation.composition(3), target.composition(1), tests.test_gar_access_channels(3) |
+| `SshCommandChannel` | 38 | simulation.composition(3), target.composition(2), tests.test_gar_access_channels(3) |
 | `ScpFileChannel` | 65 | simulation.composition(1), target.composition(1), tests.test_gar_access_channels(1) |
 
 ## `api` (scripts/gar_lib/api.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Gar` | 25 | commands.sim(7), commands.target(1), tests.test_gar_sim_architecture(4), tests.test_gar_sim_lifecycle(7), tests.test_gar_target_architecture(2) |
-| `Simulation` | 32 | _(外部参照なし)_ |
-| `SimulationApp` | 43 | _(外部参照なし)_ |
-| `SimulationRuntime` | 61 | _(外部参照なし)_ |
-| `SimulationHost` | 126 | _(外部参照なし)_ |
-| `SimulationGpio` | 148 | _(外部参照なし)_ |
-| `SimulationIo` | 177 | _(外部参照なし)_ |
-| `Target` | 202 | _(外部参照なし)_ |
+| `TargetDeploymentResult` | 39 | _(外部参照なし)_ |
+| `Gar` | 44 | commands.sim(7), commands.target(1), tests.test_gar_sim_architecture(4), tests.test_gar_sim_lifecycle(7), tests.test_gar_target_architecture(2), tests.test_gar_target_compatibility(2), tests.test_gar_target_lifecycle(5) |
+| `Simulation` | 51 | _(外部参照なし)_ |
+| `SimulationApp` | 62 | _(外部参照なし)_ |
+| `SimulationRuntime` | 80 | _(外部参照なし)_ |
+| `SimulationHost` | 145 | _(外部参照なし)_ |
+| `SimulationGpio` | 167 | _(外部参照なし)_ |
+| `SimulationIo` | 196 | _(外部参照なし)_ |
+| `Target` | 221 | _(外部参照なし)_ |
 
 ## `artifacts.manifest` (scripts/gar_lib/artifacts/manifest.py)
 
@@ -84,29 +85,57 @@
 | `ArtifactManifestError` | 30 | _(外部参照なし)_ |
 | `DeployFile` | 35 | _(外部参照なし)_ |
 | `DeploySection` | 50 | _(外部参照なし)_ |
-| `ArtifactManifest` | 69 | _(外部参照なし)_ |
-| `parse_artifact_manifest` | 93 | tests.test_gar_artifacts(1) |
-| `default_artifacts_dir` | 151 | _(外部参照なし)_ |
-| `default_codespace_artifact_root` | 155 | _(外部参照なし)_ |
-| `select_codespace` | 159 | _(外部参照なし)_ |
-| `gh_env` | 181 | _(外部参照なし)_ |
-| `artifact_manifest_deploy_sources` | 187 | _(外部参照なし)_ |
-| `fetch_codespace_artifacts` | 201 | artifacts.store(1), tests.test_gar_target_cli(1) |
-| `gh_codespace_cp` | 270 | _(外部参照なし)_ |
-| `find_artifact_manifest` | 284 | _(外部参照なし)_ |
-| `load_artifact_manifest` | 295 | _(外部参照なし)_ |
-| `artifact_deploy_files` | 316 | _(外部参照なし)_ |
-| `resolve_artifact_src` | 332 | simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(2) |
-| `load_deploy_files` | 372 | artifacts.store(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1) |
-| `target_dest_path` | 385 | target.file_transfer(1) |
+| `ArtifactManifest` | 69 | artifacts.store(2) |
+| `parse_artifact_manifest` | 95 | tests.test_gar_artifacts(2) |
+| `default_artifacts_dir` | 166 | _(外部参照なし)_ |
+| `default_codespace_artifact_root` | 170 | _(外部参照なし)_ |
+| `select_codespace` | 174 | _(外部参照なし)_ |
+| `gh_env` | 196 | _(外部参照なし)_ |
+| `artifact_manifest_deploy_sources` | 202 | _(外部参照なし)_ |
+| `fetch_codespace_artifacts` | 216 | artifacts.store(1), tests.test_gar_target_cli(1) |
+| `gh_codespace_cp` | 285 | _(外部参照なし)_ |
+| `find_artifact_manifest` | 299 | _(外部参照なし)_ |
+| `load_artifact_manifest` | 310 | artifacts.store(2) |
+| `artifact_deploy_files` | 331 | _(外部参照なし)_ |
+| `resolve_artifact_src` | 347 | artifacts.store(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(2) |
+| `load_deploy_files` | 387 | artifacts.store(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.application(1), target.esp32(1), target.file_transfer(1) |
+| `target_dest_path` | 400 | target.file_transfer(1) |
+
+## `artifacts.metadata` (scripts/gar_lib/artifacts/metadata.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `CURRENT_SCHEMA_VERSION` | 15 | artifacts.store(1), target.compatibility(1), tests.test_gar_artifacts(2), tests.test_gar_target_compatibility(1) |
+| `METADATA_FILENAME` | 16 | target.file_transfer(1) |
+| `DEPLOYED_METADATA_FILENAME` | 17 | artifacts.store(1), target.compatibility(1), target.file_transfer(1) |
+| `UNKNOWN_PROVENANCE` | 18 | artifacts.provenance(10), target.compatibility(2), tests.test_gar_artifacts(4) |
+| `ArtifactMetadataError` | 21 | artifacts.store(3), target.application(1), target.compatibility(2), target.file_transfer(1), tests.test_gar_artifacts(2) |
+| `ArtifactTarget` | 26 | artifacts.provenance(7), tests.test_gar_artifacts(2), tests.test_gar_target_compatibility(3) |
+| `ArtifactKernel` | 35 | tests.test_gar_target_compatibility(2) |
+| `ArtifactMetadata` | 41 | artifacts.store(1), target.compatibility(5), tests.test_gar_artifacts(1), tests.test_gar_target_compatibility(1) |
+| `parse_artifact_metadata` | 112 | tests.test_gar_artifacts(1) |
+| `load_artifact_metadata` | 127 | artifacts.store(1), target.application(1), target.compatibility(1), target.file_transfer(1), tests.test_gar_artifacts(2) |
+| `write_artifact_metadata` | 143 | artifacts.store(1), tests.test_gar_artifacts(1), tests.test_gar_target_compatibility(1) |
+| `sha256_checksums` | 162 | artifacts.store(1), tests.test_gar_target_compatibility(1) |
+| `verify_artifact_checksums` | 178 | artifacts.store(1), target.compatibility(1) |
+| `discover_kernel_dependency` | 210 | artifacts.store(1), tests.test_gar_artifacts(1) |
+
+## `artifacts.provenance` (scripts/gar_lib/artifacts/provenance.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `CaptureProvenance` | 21 | artifacts.store(5), tests.test_gar_artifacts(2) |
+| `TargetToolsProvenance` | 29 | target.compatibility(3), target.file_transfer(1), tests.test_gar_target_architecture(1), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(1) |
+| `collect_capture_provenance` | 37 | artifacts.store(1), tests.test_gar_artifacts(6) |
+| `collect_target_tools_provenance` | 75 | target.composition(1), tests.test_gar_artifacts(2) |
 
 ## `artifacts.store` (scripts/gar_lib/artifacts/store.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactStore` | 21 | _(外部参照なし)_ |
-| `BuildArtifactStore` | 25 | api(5), build.codespaces(1), build.environment(1), build.local(1) |
-| `LocalArtifactStore` | 35 | api(1), tests.test_gar_artifacts(2), tests.test_gar_sim_architecture(4), tests.test_gar_target_architecture(1) |
+| `ArtifactStore` | 40 | _(外部参照なし)_ |
+| `BuildArtifactStore` | 44 | api(5), build.codespaces(1), build.environment(1), build.local(1) |
+| `LocalArtifactStore` | 64 | api(1), tests.test_gar_artifacts(10), tests.test_gar_sim_architecture(4), tests.test_gar_target_architecture(1) |
 
 ## `build.codespaces` (scripts/gar_lib/build/codespaces.py)
 
@@ -147,7 +176,7 @@
 | `build_parser_bundle` | 46 | tests.test_gar_cli(1) |
 | `build_parser` | 65 | tests.test_gar_cli(1) |
 | `run_cli_command` | 71 | _(外部参照なし)_ |
-| `main` | 99 | scripts.gar(entrypoint)(1), __main__(1), tests.support.gar_cli_test_support(2), tests.test_gar_cli(9), tests.test_gar_code_cli(6), tests.test_gar_sim_io(1), tests.test_gar_sim_lifecycle(1), tests.test_gar_target_architecture(1), tests.test_gar_terminal_hw(7), tests.test_gar_usb(1) |
+| `main` | 99 | scripts.gar(entrypoint)(1), __main__(1), tests.support.gar_cli_test_support(2), tests.test_gar_cli(9), tests.test_gar_code_cli(6), tests.test_gar_sim_io(1), tests.test_gar_sim_lifecycle(1), tests.test_gar_target_architecture(1), tests.test_gar_target_compatibility(2), tests.test_gar_target_lifecycle(10), tests.test_gar_terminal_hw(7), tests.test_gar_usb(1) |
 
 ## `commands.code` (scripts/gar_lib/commands/code.py)
 
@@ -230,8 +259,8 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `RecoveryAction` | 16 | _(外部参照なし)_ |
-| `report_access_failure` | 22 | commands.sim(1), commands.target(1), tests.test_gar_access_recovery(1) |
-| `plan_access_recovery` | 51 | tests.test_gar_access_recovery(3) |
+| `report_access_failure` | 22 | commands.sim(1), commands.target(2), tests.test_gar_access_recovery(1) |
+| `plan_access_recovery` | 51 | tests.test_gar_access_recovery(3), tests.test_gar_target_lifecycle(1) |
 
 ## `commands.setup.command` (scripts/gar_lib/commands/setup/command.py)
 
@@ -308,9 +337,9 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `TARGET_ACTIONS` | 17 | _(外部参照なし)_ |
-| `add_target_parser` | 25 | cli(1) |
-| `run_target_command` | 53 | cli(1) |
+| `TARGET_ACTIONS` | 26 | _(外部参照なし)_ |
+| `add_target_parser` | 37 | cli(1) |
+| `run_target_command` | 87 | cli(1) |
 
 ## `commands.terminal` (scripts/gar_lib/commands/terminal.py)
 
@@ -318,7 +347,7 @@
 |---|---:|---|
 | `add_terminal_parser` | 17 | cli(1) |
 | `run_terminal_cli` | 59 | cli(1) |
-| `run_terminal_run_command` | 79 | commands.sim(1), commands.target(1), tests.test_gar_terminal_hw(2) |
+| `run_terminal_run_command` | 79 | commands.sim(1), commands.target(2), tests.test_gar_terminal_hw(2) |
 | `run_terminal_gc_command` | 112 | tests.test_gar_terminal_hw(2) |
 
 ## `commands.usb` (scripts/gar_lib/commands/usb.py)
@@ -352,14 +381,14 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `ArtifactKind` | 12 | api(8), artifacts.store(16), build.codespaces(3), build.environment(3), build.local(3), build.spec(7), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(5), tests.test_gar_build_variables(9), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(9), tests.test_gar_wokwi_environment(5) |
-| `Artifact` | 19 | api(7), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.environment(1), target.esp32(2), target.file_transfer(1), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(4), tests.test_gar_wokwi_environment(5) |
+| `ArtifactKind` | 12 | api(9), artifacts.store(19), build.codespaces(3), build.environment(3), build.local(3), build.spec(7), simulation.runtime.linux_systemd(3), simulation.runtime.mujoco(1), simulation.runtime.wokwi(1), target.application(1), target.compatibility(1), target.esp32(1), target.file_transfer(1), tests.test_gar_artifacts(16), tests.test_gar_build_variables(9), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(1), tests.test_gar_sim_architecture(6), tests.test_gar_target_architecture(9), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(7), tests.test_gar_wokwi_environment(5) |
+| `Artifact` | 19 | api(8), artifacts.store(10), build.codespaces(2), build.environment(2), build.local(2), commands.sim(2), simulation.runtime.contract(1), simulation.runtime.linux_systemd(1), simulation.runtime.mujoco(1), simulation.runtime.pending(1), simulation.runtime.wokwi(1), target.application(2), target.compatibility(1), target.environment(2), target.esp32(3), target.file_transfer(3), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(2), tests.test_gar_pending_simulation_environments(1), tests.test_gar_target_architecture(4), tests.test_gar_target_compatibility(4), tests.test_gar_target_lifecycle(6), tests.test_gar_wokwi_environment(5) |
 
 ## `core.command` (scripts/gar_lib/core/command.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarCommand` | 10 | commands.sim(7), commands.target(2), tests.support.gar_cli_test_support(2), tests.test_gar_sim_io(2) |
+| `GarCommand` | 10 | commands.sim(7), commands.target(3), tests.support.gar_cli_test_support(2), tests.test_gar_sim_io(2) |
 | `SIM_APP_BUILD` | 28 | tests.test_gar_cli(3) |
 | `SIM_APP_CLEAN` | 29 | tests.test_gar_cli(1) |
 | `SIM_APP_DEPLOY` | 30 | tests.test_gar_cli(1) |
@@ -415,8 +444,8 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarDomainError` | 4 | access.aws(1), access.docker(1), artifacts.store(11), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(6), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), target.composition(5), target.esp32(5), target.file_transfer(7), target.manifest(4), target.ssh_prepare(6), tests.test_gar_artifacts(1), tests.test_gar_docker_simulation_host(5), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(3), tests.test_gar_wokwi_environment(4) |
-| `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1) |
+| `GarDomainError` | 4 | access.aws(1), access.docker(1), api(1), artifacts.store(13), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(6), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), target.application(7), target.compatibility(1), target.composition(6), target.environment(1), target.esp32(5), target.file_transfer(11), target.lifecycle(7), target.manifest(4), target.ssh_prepare(9), tests.test_gar_artifacts(6), tests.test_gar_docker_simulation_host(5), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(1), tests.test_gar_simulation_host(3), tests.test_gar_target_lifecycle(3), tests.test_gar_target_prepare(1), tests.test_gar_wokwi_environment(4) |
+| `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(3), target.file_transfer(1), target.lifecycle(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1), tests.test_gar_target_lifecycle(5) |
 
 ## `core.hardware` (scripts/gar_lib/core/hardware.py)
 
@@ -434,7 +463,7 @@
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `DEFAULT_GAR_TOOLS_REPO` | 11 | _(外部参照なし)_ |
-| `gar_tools_root` | 14 | commands.workspace_resolver(1), core.hardware(1), simulation.composition(1), target.manifest(1) |
+| `gar_tools_root` | 14 | artifacts.provenance(1), commands.workspace_resolver(1), core.hardware(1), simulation.composition(1), target.manifest(1) |
 | `find_gar_tools_root` | 21 | _(外部参照なし)_ |
 | `gar_tools_root_candidates` | 28 | _(外部参照なし)_ |
 | `ensure_gar_tools_available` | 52 | commands.setup.command(1), tests.test_gar_setup_config(1) |
@@ -443,7 +472,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Workspace` | 21 | api(9), artifacts.store(13), build.codespaces(3), build.environment(4), build.local(3), build.spec(2), commands.code(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), target.composition(1), tests.support.gar_cli_test_support(2), tests.test_gar_access_recovery(1), tests.test_gar_artifacts(2), tests.test_gar_build_variables(4), tests.test_gar_cli(1), tests.test_gar_code(1), tests.test_gar_code_cli(2), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(5), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(4), tests.test_gar_target_architecture(6), tests.test_gar_wokwi_environment(2), tests.test_gar_workspace(1) |
+| `Workspace` | 21 | api(9), artifacts.provenance(3), artifacts.store(14), build.codespaces(3), build.environment(4), build.local(3), build.spec(2), commands.code(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), target.composition(4), tests.support.gar_cli_test_support(2), tests.test_gar_access_recovery(1), tests.test_gar_artifacts(6), tests.test_gar_build_variables(4), tests.test_gar_cli(1), tests.test_gar_code(1), tests.test_gar_code_cli(2), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(5), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(4), tests.test_gar_target_architecture(6), tests.test_gar_target_compatibility(3), tests.test_gar_target_lifecycle(3), tests.test_gar_wokwi_environment(2), tests.test_gar_workspace(1) |
 
 ## `core.workspace_settings` (scripts/gar_lib/core/workspace_settings.py)
 
@@ -824,17 +853,38 @@
 | `write_sim_terminal_profile` | 34 | simulation.session.manager(1) |
 | `sim_terminal_script` | 61 | _(外部参照なし)_ |
 
+## `target.application` (scripts/gar_lib/target/application.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `target_application_from_artifact` | 16 | api(2) |
+
+## `target.compatibility` (scripts/gar_lib/target/compatibility.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `TargetCapabilities` | 108 | _(外部参照なし)_ |
+| `CompatibilityIssue` | 121 | _(外部参照なし)_ |
+| `CompatibilityReport` | 129 | _(外部参照なし)_ |
+| `ArtifactCompatibilityError` | 165 | target.file_transfer(1), tests.test_gar_target_compatibility(8) |
+| `probe_target_capabilities` | 171 | _(外部参照なし)_ |
+| `require_target_compatibility` | 211 | target.file_transfer(1), tests.test_gar_target_compatibility(7) |
+| `check_target_compatibility` | 262 | _(外部参照なし)_ |
+| `deployment_marker_destination` | 360 | target.file_transfer(1), tests.test_gar_target_compatibility(2) |
+
 ## `target.composition` (scripts/gar_lib/target/composition.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `target_environment_for` | 19 | api(2), tests.test_gar_target_architecture(4) |
+| `target_environment_for` | 21 | api(2), tests.test_gar_target_architecture(4), tests.test_gar_target_lifecycle(1) |
+| `target_lifecycle_for` | 82 | api(2) |
 
 ## `target.environment` (scripts/gar_lib/target/environment.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `TargetEnvironment` | 10 | target.composition(1), target.file_transfer(1) |
+| `TargetPlacementError` | 11 | api(1), target.file_transfer(1), tests.test_gar_target_lifecycle(3) |
+| `TargetEnvironment` | 32 | target.composition(1), target.file_transfer(1) |
 
 ## `target.esp32` (scripts/gar_lib/target/esp32.py)
 
@@ -866,23 +916,37 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `FileTransferTargetEnvironment` | 22 | target.composition(3), tests.test_gar_target_architecture(3) |
+| `FileTransferTargetEnvironment` | 39 | target.composition(3), tests.test_gar_target_architecture(3), tests.test_gar_target_compatibility(7), tests.test_gar_target_lifecycle(3) |
+
+## `target.lifecycle` (scripts/gar_lib/target/lifecycle.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `TargetApplication` | 31 | api(2), target.application(2), tests.test_gar_target_lifecycle(15) |
+| `TargetLifecycleResult` | 46 | api(2), commands.target(1), tests.test_gar_target_lifecycle(21) |
+| `TargetDiagnosticReport` | 93 | api(1), commands.target(1), tests.test_gar_target_lifecycle(5) |
+| `TargetDeploymentReport` | 148 | api(5), commands.target(1), tests.test_gar_target_lifecycle(7) |
+| `TargetDeploymentConvergenceError` | 216 | api(3), commands.target(1), tests.test_gar_target_lifecycle(7) |
+| `TargetLifecycle` | 230 | api(1), target.composition(1) |
+| `CommandTargetLifecycle` | 244 | target.composition(1), tests.test_gar_target_lifecycle(4) |
 
 ## `target.manifest` (scripts/gar_lib/target/manifest.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `TargetManifest` | 18 | commands.setup.command(4), commands.setup.target_setup(12), tests.test_gar_docker_simulation_host(3), tests.test_gar_setup_config(15), tests.test_gar_target_architecture(1) |
-| `TargetManifestValidationIssue` | 53 | tests.test_gar_target_manifest(2) |
-| `TargetManifestValidationError` | 65 | commands.setup.command(1), tests.test_gar_target_manifest(3) |
-| `discover_target_manifests` | 72 | commands.setup.command(1), simulation.composition(1), target.composition(1), tests.test_gar_setup_config(3), tests.test_gar_target_manifest(3) |
-| `target_by_id` | 111 | commands.setup.target_setup(1), simulation.composition(1), target.composition(1) |
+| `TARGET_LIFECYCLE_CONTRACT` | 16 | tests.test_gar_target_lifecycle(3) |
+| `TargetLifecycleCapability` | 20 | _(外部参照なし)_ |
+| `TargetManifest` | 28 | commands.setup.command(4), commands.setup.target_setup(12), target.composition(1), tests.test_gar_docker_simulation_host(3), tests.test_gar_setup_config(15), tests.test_gar_target_architecture(1), tests.test_gar_target_lifecycle(1) |
+| `TargetManifestValidationIssue` | 78 | tests.test_gar_target_manifest(2) |
+| `TargetManifestValidationError` | 90 | commands.setup.command(1), tests.test_gar_target_lifecycle(2), tests.test_gar_target_manifest(3) |
+| `discover_target_manifests` | 97 | commands.setup.command(1), simulation.composition(1), target.composition(1), tests.test_gar_setup_config(3), tests.test_gar_target_lifecycle(3), tests.test_gar_target_manifest(3) |
+| `target_by_id` | 136 | commands.setup.target_setup(1), simulation.composition(1), target.composition(1) |
 
 ## `target.ssh_prepare` (scripts/gar_lib/target/ssh_prepare.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `prepare_ssh_target` | 14 | target.file_transfer(1), tests.test_gar_target_prepare(1) |
+| `prepare_ssh_target` | 16 | target.file_transfer(1), tests.test_gar_target_lifecycle(1), tests.test_gar_target_prepare(2) |
 
 ## `vscode.profile_manage` (scripts/gar_lib/vscode/profile_manage.py)
 
@@ -934,28 +998,27 @@
 | `access.docker` | `DAEMON_FAILURE_MARKERS` | 13 |
 | `access.docker` | `connection_reason` | 35 |
 | `access.docker` | `docker_executable` | 28 |
-| `api` | `Simulation` | 32 |
-| `api` | `SimulationApp` | 43 |
-| `api` | `SimulationGpio` | 148 |
-| `api` | `SimulationHost` | 126 |
-| `api` | `SimulationIo` | 177 |
-| `api` | `SimulationRuntime` | 61 |
-| `api` | `Target` | 202 |
-| `artifacts.manifest` | `ArtifactManifest` | 69 |
+| `api` | `Simulation` | 51 |
+| `api` | `SimulationApp` | 62 |
+| `api` | `SimulationGpio` | 167 |
+| `api` | `SimulationHost` | 145 |
+| `api` | `SimulationIo` | 196 |
+| `api` | `SimulationRuntime` | 80 |
+| `api` | `Target` | 221 |
+| `api` | `TargetDeploymentResult` | 39 |
 | `artifacts.manifest` | `ArtifactManifestError` | 30 |
 | `artifacts.manifest` | `DEFAULT_CODESPACE_ARTIFACT_ROOT` | 27 |
 | `artifacts.manifest` | `DeployFile` | 35 |
 | `artifacts.manifest` | `DeploySection` | 50 |
-| `artifacts.manifest` | `artifact_deploy_files` | 316 |
-| `artifacts.manifest` | `artifact_manifest_deploy_sources` | 187 |
-| `artifacts.manifest` | `default_artifacts_dir` | 151 |
-| `artifacts.manifest` | `default_codespace_artifact_root` | 155 |
-| `artifacts.manifest` | `find_artifact_manifest` | 284 |
-| `artifacts.manifest` | `gh_codespace_cp` | 270 |
-| `artifacts.manifest` | `gh_env` | 181 |
-| `artifacts.manifest` | `load_artifact_manifest` | 295 |
-| `artifacts.manifest` | `select_codespace` | 159 |
-| `artifacts.store` | `ArtifactStore` | 21 |
+| `artifacts.manifest` | `artifact_deploy_files` | 331 |
+| `artifacts.manifest` | `artifact_manifest_deploy_sources` | 202 |
+| `artifacts.manifest` | `default_artifacts_dir` | 166 |
+| `artifacts.manifest` | `default_codespace_artifact_root` | 170 |
+| `artifacts.manifest` | `find_artifact_manifest` | 299 |
+| `artifacts.manifest` | `gh_codespace_cp` | 285 |
+| `artifacts.manifest` | `gh_env` | 196 |
+| `artifacts.manifest` | `select_codespace` | 174 |
+| `artifacts.store` | `ArtifactStore` | 40 |
 | `build.environment` | `BuildEnvironment` | 15 |
 | `build.spec` | `BuildSpec` | 18 |
 | `build.spec` | `DEFAULT_REMOTE_SIM_ARCH` | 14 |
@@ -1012,7 +1075,7 @@
 | `commands.setup.workspace_setup` | `prompt_workspace_entry` | 218 |
 | `commands.setup.workspace_setup` | `workspace_duplicate` | 177 |
 | `commands.sim` | `SIM_ACTIONS` | 28 |
-| `commands.target` | `TARGET_ACTIONS` | 17 |
+| `commands.target` | `TARGET_ACTIONS` | 26 |
 | `commands.usb` | `ANDROID_HINTS` | 32 |
 | `commands.usb` | `ANDROID_VIDS` | 34 |
 | `commands.usb` | `UsbDevice` | 92 |
@@ -1087,12 +1150,18 @@
 | `simulation.runtime.wokwi` | `DEFAULT_TIMEOUT_MS` | 20 |
 | `simulation.session.manager` | `SimulationSessionManager` | 15 |
 | `simulation.session.remote` | `sim_terminal_script` | 61 |
+| `target.compatibility` | `CompatibilityIssue` | 121 |
+| `target.compatibility` | `CompatibilityReport` | 129 |
+| `target.compatibility` | `TargetCapabilities` | 108 |
+| `target.compatibility` | `check_target_compatibility` | 262 |
+| `target.compatibility` | `probe_target_capabilities` | 171 |
 | `target.esptool` | `ESPTOOL_VENV` | 20 |
 | `target.esptool` | `ensure_esptool_python` | 131 |
 | `target.esptool` | `esp32_serial_failure_hint` | 80 |
 | `target.esptool` | `esp32_serial_port_access_error` | 49 |
 | `target.esptool` | `validate_esp32_artifact` | 35 |
 | `target.esptool` | `verify_esp32_artifact_checksums` | 93 |
+| `target.manifest` | `TargetLifecycleCapability` | 20 |
 | `vscode.terminal_requests` | `MAX_COMMAND_LENGTH` | 20 |
 | `vscode.terminal_requests` | `MAX_TITLE_LENGTH` | 21 |
 | `vscode.terminal_requests` | `SAFE_REQUEST_ID` | 22 |
