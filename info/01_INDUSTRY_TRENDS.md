@@ -21,6 +21,13 @@ Gapless Agent Runtime で構築した「AI エージェントが操作しやす�
 **👉 本PoCの価値①：**  
 本PoCの「Gravitonをシミュレータのベースにする」という設計は、まさにこの業界の最先端ベストプラクティスを体現しています。
 
+### 実機導入前の Hardware Contract
+
+クラウドで動くことと、実機のピン・電圧・driver が適合することは別の問題です。GAR は product の
+要求、target pack の capability、製品固有の binding を分け、`gar hw validate --json` で結合前に
+検証します。GPIO の重複、SPI の bus/CS 重複、電圧・driver・device・FPS の不整合を CI で検出できる
+ため、「動く artifact を実機に置いてから配線ミスを知る」工程を避けられます。
+
 ---
 
 ## 2. ハードウェア・シミュレーションの3つのアプローチと比較

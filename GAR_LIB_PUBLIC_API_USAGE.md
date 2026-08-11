@@ -176,7 +176,7 @@
 | `build_parser_bundle` | 46 | tests.test_gar_cli(1) |
 | `build_parser` | 66 | tests.test_gar_cli(1) |
 | `run_cli_command` | 72 | _(外部参照なし)_ |
-| `main` | 102 | scripts.gar(entrypoint)(1), __main__(1), tests.support.gar_cli_test_support(2), tests.test_gar_cli(9), tests.test_gar_code_cli(6), tests.test_gar_sim_io(1), tests.test_gar_sim_lifecycle(1), tests.test_gar_system(1), tests.test_gar_target_architecture(5), tests.test_gar_target_compatibility(2), tests.test_gar_target_lifecycle(10), tests.test_gar_terminal_hw(7), tests.test_gar_usb(1) |
+| `main` | 102 | scripts.gar(entrypoint)(1), __main__(1), tests.support.gar_cli_test_support(2), tests.test_gar_cli(9), tests.test_gar_code_cli(6), tests.test_gar_hw_validate(1), tests.test_gar_sim_io(1), tests.test_gar_sim_lifecycle(1), tests.test_gar_system(1), tests.test_gar_target_architecture(5), tests.test_gar_target_compatibility(2), tests.test_gar_target_lifecycle(10), tests.test_gar_terminal_hw(7), tests.test_gar_usb(1) |
 
 ## `commands.code` (scripts/gar_lib/commands/code.py)
 
@@ -243,9 +243,10 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `add_hw_parser` | 12 | cli(1) |
-| `run_hw_cli` | 41 | cli(1) |
-| `run_hw_command` | 53 | _(外部参照なし)_ |
+| `add_hw_parser` | 21 | cli(1) |
+| `run_hw_cli` | 61 | cli(1) |
+| `run_hw_command` | 92 | _(外部参照なし)_ |
+| `run_hw_validate` | 111 | _(外部参照なし)_ |
 
 ## `commands.infra` (scripts/gar_lib/commands/infra.py)
 
@@ -376,7 +377,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `resolve_workspace` | 97 | commands.code(1), commands.sim(1), commands.target(1), system.orchestrator(1), tests.test_gar_setup_config(1), tests.test_gar_sim_architecture(5) |
+| `resolve_workspace` | 97 | commands.code(1), commands.hw(1), commands.sim(1), commands.target(1), system.orchestrator(1), tests.test_gar_setup_config(1), tests.test_gar_sim_architecture(5) |
 
 ## `core.archive` (scripts/gar_lib/core/archive.py)
 
@@ -452,7 +453,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `GarDomainError` | 4 | access.aws(1), access.docker(1), api(14), artifacts.store(13), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(11), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), system.model(23), system.orchestrator(8), target.application(7), target.compatibility(1), target.composition(6), target.environment(1), target.esp32(5), target.file_transfer(16), target.lifecycle(7), target.manifest(4), target.ssh_prepare(9), tests.test_gar_artifacts(6), tests.test_gar_docker_simulation_host(5), tests.test_gar_linux_systemd_environment(1), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(2), tests.test_gar_simulation_host(3), tests.test_gar_system(7), tests.test_gar_target_lifecycle(3), tests.test_gar_target_prepare(1), tests.test_gar_target_system_environment(6), tests.test_gar_wokwi_environment(4) |
+| `GarDomainError` | 4 | access.aws(1), access.docker(1), api(14), artifacts.store(13), build.codespaces(2), build.environment(1), build.local(4), build.spec(1), commands.code(1), commands.hw(2), commands.sim(14), commands.target(6), commands.workspace_resolver(1), core.workspace(5), simulation.composition(8), simulation.host.aws_ec2(4), simulation.host.docker(7), simulation.runtime.linux_systemd(11), simulation.runtime.mujoco(8), simulation.runtime.pending(1), simulation.runtime.wokwi(15), system.model(23), system.orchestrator(8), target.application(7), target.compatibility(1), target.composition(6), target.environment(1), target.esp32(5), target.file_transfer(16), target.lifecycle(7), target.manifest(4), target.ssh_prepare(9), tests.test_gar_artifacts(6), tests.test_gar_docker_simulation_host(5), tests.test_gar_linux_systemd_environment(1), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(2), tests.test_gar_simulation_host(3), tests.test_gar_system(7), tests.test_gar_target_lifecycle(3), tests.test_gar_target_prepare(1), tests.test_gar_target_system_environment(6), tests.test_gar_wokwi_environment(4) |
 | `AccessConnectionError` | 8 | access.adb(1), access.aws(1), access.docker(3), access.ssh(2), commands.recovery(2), commands.sim(1), commands.target(3), target.file_transfer(1), target.lifecycle(1), tests.test_gar_access_channels(3), tests.test_gar_access_recovery(4), tests.test_gar_docker_simulation_host(2), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(1), tests.test_gar_target_architecture(1), tests.test_gar_target_lifecycle(5) |
 
 ## `core.hardware` (scripts/gar_lib/core/hardware.py)
@@ -466,12 +467,26 @@
 | `load_hw_definition` | 82 | api(1) |
 | `write_hw_template` | 96 | commands.hw(1), tests.test_gar_terminal_hw(1) |
 
+## `core.hardware_validation` (scripts/gar_lib/core/hardware_validation.py)
+
+| メンバ | 行 | 参照元module (回数) |
+|---|---:|---|
+| `SCHEMA_VERSION` | 18 | _(外部参照なし)_ |
+| `KINDS` | 19 | _(外部参照なし)_ |
+| `COMMON_REQUIREMENT_FIELDS` | 20 | _(外部参照なし)_ |
+| `COMMON_RESOURCE_FIELDS` | 21 | _(外部参照なし)_ |
+| `PLATFORM_FIELDS` | 22 | _(外部参照なし)_ |
+| `REQUIREMENT_FIELDS` | 23 | _(外部参照なし)_ |
+| `RESOURCE_FIELDS` | 29 | _(外部参照なし)_ |
+| `HardwareValidationReport` | 38 | _(外部参照なし)_ |
+| `validate_hardware_contract` | 77 | commands.hw(1), tests.test_gar_hw_validate(7) |
+
 ## `core.tools_repository` (scripts/gar_lib/core/tools_repository.py)
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
 | `DEFAULT_GAR_TOOLS_REPO` | 11 | _(外部参照なし)_ |
-| `gar_tools_root` | 14 | artifacts.provenance(1), commands.workspace_resolver(1), core.hardware(1), simulation.composition(1), target.manifest(1) |
+| `gar_tools_root` | 14 | artifacts.provenance(1), commands.hw(1), commands.workspace_resolver(1), core.hardware(1), simulation.composition(1), target.manifest(1) |
 | `find_gar_tools_root` | 21 | _(外部参照なし)_ |
 | `gar_tools_root_candidates` | 28 | _(外部参照なし)_ |
 | `ensure_gar_tools_available` | 52 | commands.setup.command(1), tests.test_gar_setup_config(1) |
@@ -480,7 +495,7 @@
 
 | メンバ | 行 | 参照元module (回数) |
 |---|---:|---|
-| `Workspace` | 21 | api(9), artifacts.provenance(3), artifacts.store(14), build.codespaces(3), build.environment(4), build.local(3), build.spec(2), commands.code(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), system.orchestrator(11), target.composition(4), tests.support.gar_cli_test_support(2), tests.test_gar_access_recovery(1), tests.test_gar_artifacts(6), tests.test_gar_build_variables(4), tests.test_gar_cli(1), tests.test_gar_code(1), tests.test_gar_code_cli(2), tests.test_gar_docker_simulation_host(2), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(5), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(4), tests.test_gar_system(2), tests.test_gar_target_architecture(7), tests.test_gar_target_compatibility(3), tests.test_gar_target_lifecycle(3), tests.test_gar_target_system_environment(6), tests.test_gar_wokwi_environment(2), tests.test_gar_workspace(1) |
+| `Workspace` | 21 | api(9), artifacts.provenance(3), artifacts.store(14), build.codespaces(3), build.environment(4), build.local(3), build.spec(2), commands.code(2), commands.recovery(2), commands.workspace_resolver(3), core.artifact(1), simulation.composition(8), system.orchestrator(11), target.composition(4), tests.support.gar_cli_test_support(2), tests.test_gar_access_recovery(1), tests.test_gar_artifacts(6), tests.test_gar_build_variables(4), tests.test_gar_cli(1), tests.test_gar_code(1), tests.test_gar_code_cli(2), tests.test_gar_docker_simulation_host(2), tests.test_gar_hw_validate(1), tests.test_gar_linux_systemd_environment(2), tests.test_gar_mujoco_environment(1), tests.test_gar_pending_simulation_environments(2), tests.test_gar_sim_architecture(5), tests.test_gar_sim_lifecycle(1), tests.test_gar_simulation_host(4), tests.test_gar_system(2), tests.test_gar_target_architecture(7), tests.test_gar_target_compatibility(3), tests.test_gar_target_lifecycle(3), tests.test_gar_target_system_environment(6), tests.test_gar_wokwi_environment(2), tests.test_gar_workspace(1) |
 
 ## `core.workspace_settings` (scripts/gar_lib/core/workspace_settings.py)
 
@@ -1071,7 +1086,8 @@
 | `commands.code_connection` | `run_codespace_remote` | 137 |
 | `commands.completion` | `completion_bash_script` | 42 |
 | `commands.completion` | `parser_completion_words` | 56 |
-| `commands.hw` | `run_hw_command` | 53 |
+| `commands.hw` | `run_hw_command` | 92 |
+| `commands.hw` | `run_hw_validate` | 111 |
 | `commands.infra` | `TERRAFORM_DIR` | 26 |
 | `commands.recovery` | `RecoveryAction` | 16 |
 | `commands.setup.command` | `add_setup_parser` | 64 |
@@ -1117,6 +1133,14 @@
 | `core.hardware` | `DEFAULT_HW_TARGET` | 47 |
 | `core.hardware` | `HW_DIR` | 46 |
 | `core.hardware` | `TARGET_ID_PATTERN` | 48 |
+| `core.hardware_validation` | `COMMON_REQUIREMENT_FIELDS` | 20 |
+| `core.hardware_validation` | `COMMON_RESOURCE_FIELDS` | 21 |
+| `core.hardware_validation` | `HardwareValidationReport` | 38 |
+| `core.hardware_validation` | `KINDS` | 19 |
+| `core.hardware_validation` | `PLATFORM_FIELDS` | 22 |
+| `core.hardware_validation` | `REQUIREMENT_FIELDS` | 23 |
+| `core.hardware_validation` | `RESOURCE_FIELDS` | 29 |
+| `core.hardware_validation` | `SCHEMA_VERSION` | 18 |
 | `core.tools_repository` | `DEFAULT_GAR_TOOLS_REPO` | 11 |
 | `core.tools_repository` | `find_gar_tools_root` | 21 |
 | `core.tools_repository` | `gar_tools_root_candidates` | 28 |

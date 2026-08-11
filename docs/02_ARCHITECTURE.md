@@ -40,6 +40,19 @@ system orchestrationは宣言順に既存`Gar` node APIを呼び、各actionのn
 linkからはruntime envに加えてingress/egress firewall planとdiagnostic targetを生成する。
 coreはplanを機械可読に返し、OS/infra固有のfirewall適用を暗黙の副作用にはしない。
 
+### Hardware contract v1
+
+実機hardwareは、Product所有の`requirements.json`、Target Pack所有の`capabilities.json`、
+Product×Target所有のbindingへ分ける。requirementsはBoardのGPIO番号を知らず、capabilitiesは
+Product名や用途を知らない。bindingだけが論理signalをdevice resource、GPIO offset、物理pin、
+SPI bus/CS、pinmuxへ割り当てる。Target platformのarchitecture、ABI、toolchain、init system、
+privilege modelもcapabilityに含め、READMEだけに閉じた知識にしない。
+
+`gar hw validate`はこの3入力だけを読むoffline boundaryで、SSH、deploy、Target probeを行わない。
+schemaとidentityを先に検証し、その後にdevice/driver、電圧、GPIO/SPI競合、SPI速度/mode、video FPSを
+照合する。machine-readable reportは実機へ触れる前のCI gateとして使い、実deviceの存在確認は
+Target probe/HILという別の境界で行う。
+
 Codespace は BuildEnvironment の実装のひとつ。ユーザーは通常 `gar sim app build` /
 `gar sim app deploy` / `gar target build` / `gar target deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。

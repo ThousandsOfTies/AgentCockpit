@@ -58,6 +58,14 @@
 これらは構想段階。YAGNI を守り、実際に欲しくなってから実装する。
 ここに書いてあるのは「方向」であって「やること」ではない。
 
+## 実機に触れる前の配線検証
+
+この「予行」は runtime だけのものではない。product が必要とする GPIO / SPI / video / network と、
+target pack が提供する resource、実際の physical pin / pinmux を別々に宣言する。`gar hw validate`
+は三者を突き合わせ、電圧、driver、device、GPIO line、SPI bus/CS、video FPS の不整合を実機接続前に
+止める。binding は製品ごとに持ち、target capability は再利用できるので、ハード依存を artifact や
+アプリコードに混ぜない。
+
 ## なぜ妥協せずに作れるのか（前提）
 
 このプロジェクトには納期も外部レビュアーもいない。唯一の不合格基準は「自分が気持ち悪いか」。
