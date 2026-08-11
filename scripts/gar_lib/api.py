@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,6 +42,7 @@ from scripts.gar_lib.target.lifecycle import (
 class TargetDeploymentResult:
     artifact: Artifact
     report: TargetDeploymentReport
+    configuration: TargetConfigurationReport | None = None
 
 
 class Gar:
@@ -100,6 +102,13 @@ class SimulationRuntime:
         artifact = self.artifacts.latest(ArtifactKind.SIM_RUNTIME, self.workspace)
         environment.deploy(artifact)
         return artifact
+
+    def configure_system_env(self, application: str, values: Mapping[str, str]) -> str:
+        environment = simulation_environment_for(self.workspace)
+        configure = getattr(environment, "configure_system_env", None)
+        if not callable(configure):
+            raise GarDomainError("このsimulation environmentはsystem-managed runtime env設定に未対応です")
+        return configure(application, values)
 
     def start(
         self,
@@ -244,17 +253,54 @@ class Target:
             raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
         return environment.configure(application.name, source)
 
-    def deploy(self) -> Artifact:
-        return self.deploy_report().artifact
+    def configure_system_env(self, *, app: str, values: Mapping[str, str]) -> TargetConfigurationReport:
+        """Install GAR-owned runtime bindings without requiring an artifact."""
 
-    def deploy_report(self) -> TargetDeploymentResult:
+        application = TargetApplication(app)
+        environment = target_environment_for(self.workspace)
+        if not isinstance(environment, FileTransferTargetEnvironment):
+            raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
+        return environment.configure_system_env(application.name, values)
+
+    def deploy(
+        self,
+        *,
+        system_env_app: str | None = None,
+        system_env: Mapping[str, str] | None = None,
+    ) -> Artifact:
+        return self.deploy_report(system_env_app=system_env_app, system_env=system_env).artifact
+
+    def deploy_report(
+        self,
+        *,
+        system_env_app: str | None = None,
+        system_env: Mapping[str, str] | None = None,
+    ) -> TargetDeploymentResult:
+        if (system_env_app is None) != (system_env is None):
+            raise GarDomainError("target system envにはappとvaluesの両方が必要です")
         artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
         environment = target_environment_for(self.workspace)
+        # Compatibility is a hard pre-transfer boundary.  In particular, a
+        # wrong-target artifact must not even update the topology-owned env.
         environment.validate_deployment(artifact)
         lifecycle = target_lifecycle_for(self.workspace)
         application = (
             target_application_from_artifact(artifact, require_build_id=True) if lifecycle is not None else None
         )
+        configuration = None
+        if system_env is not None:
+            assert system_env_app is not None
+            requested_application = TargetApplication(system_env_app)
+            if lifecycle is None or application is None:
+                raise GarDomainError("target system envにはapplication lifecycle capabilityが必要です")
+            if requested_application.name != application.name:
+                raise GarDomainError(
+                    "target system envのappがlatest artifactと一致しません: "
+                    f"{requested_application.name} != {application.name}"
+                )
+            if not isinstance(environment, FileTransferTargetEnvironment):
+                raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
+            configuration = environment.configure_system_env(requested_application.name, system_env)
         verification = "lifecycle-v1" if lifecycle is not None else "unavailable"
         try:
             environment.deploy(artifact)
@@ -279,6 +325,7 @@ class Target:
                     placed=True,
                     verification="unavailable",
                 ),
+                configuration=configuration,
             )
 
         assert application is not None
@@ -306,11 +353,58 @@ class Target:
         )
         if not reload_result.ok or not report.ok:
             raise TargetDeploymentConvergenceError(report)
-        return TargetDeploymentResult(artifact=artifact, report=report)
+        return TargetDeploymentResult(artifact=artifact, report=report, configuration=configuration)
 
     def status(self, *, app: str | None = None) -> TargetLifecycleResult:
         lifecycle, application = self._lifecycle_application(app)
         return lifecycle.status(application)
+
+    def start(
+        self,
+        *,
+        app: str | None = None,
+        system_env: Mapping[str, str] | None = None,
+    ) -> TargetDeploymentReport:
+        """Start (or converge) the latest verified target artifact.
+
+        Recipes own the concrete process manager operation.  GAR reloads the
+        named application and confirms its health/build identity afterwards,
+        matching the convergence performed by target deployment.
+        """
+
+        artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
+        environment = target_environment_for(self.workspace)
+        # Starting is a physical convergence operation.  Preserve deploy's
+        # compatibility boundary before updating any topology-owned file.
+        environment.validate_deployment(artifact)
+        application = target_application_from_artifact(artifact, require_build_id=True)
+        if app is not None and app != application.name:
+            raise GarDomainError(f"latest target artifactのappが一致しません: {application.name} != {app}")
+        lifecycle = target_lifecycle_for(self.workspace)
+        if lifecycle is None:
+            raise GarDomainError(
+                "選択したTargetはapplication lifecycle capabilityを提供していません。"
+                "Target recipeを更新してgar target prepareを実行してください"
+            )
+        if system_env is not None:
+            if app is None:
+                raise GarDomainError("target system envにはappが必要です")
+            if not isinstance(environment, FileTransferTargetEnvironment):
+                raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
+            environment.configure_system_env(application.name, system_env)
+        reload_result = lifecycle.reload(application)
+        diagnostic = lifecycle.diag(application)
+        report = TargetDeploymentReport(
+            application=application,
+            artifact_path=str(artifact.bundle_path),
+            placed=True,
+            reload=reload_result,
+            diagnostic=diagnostic,
+            verification="lifecycle-v1",
+        )
+        if not reload_result.ok or not report.ok:
+            raise GarDomainError("target applicationのstart/convergenceに失敗しました")
+        return report
 
     def log(self, *, app: str | None = None, lines: int = 200) -> TargetLifecycleResult:
         lifecycle, application = self._lifecycle_application(app)

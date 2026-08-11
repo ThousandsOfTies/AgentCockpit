@@ -12,7 +12,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from scripts.gar_lib.commands import code, completion, hw, setup, sim, target, terminal, usb
+from scripts.gar_lib.commands import code, completion, hw, setup, sim, system, target, terminal, usb
 from scripts.gar_lib.commands.completion import completion_bash_script as completion_bash_script
 
 
@@ -55,6 +55,7 @@ def build_parser_bundle() -> CliParserBundle:
     help_parsers.update(terminal.add_terminal_parser(commands))
     help_parsers.update(completion.add_completion_parser(commands))
     help_parsers.update(sim.add_sim_parser(commands))
+    help_parsers.update(system.add_system_parser(commands))
     help_parsers.update(target.add_target_parser(commands))
     help_parsers.update(usb.add_usb_parser(commands))
     help_parsers.update(hw.add_hw_parser(commands))
@@ -85,6 +86,8 @@ def run_cli_command(args: argparse.Namespace, bundle: CliParserBundle) -> int:
         )
     if args.command == "sim":
         return sim.run_sim_command(args, subcommand_parsers=bundle.help_parsers)
+    if args.command == "system":
+        return system.run_system_command(args, subcommand_parsers=bundle.help_parsers)
     if args.command == "target":
         return target.run_target_command(args, subcommand_parsers=bundle.help_parsers)
     if args.command == "usb":

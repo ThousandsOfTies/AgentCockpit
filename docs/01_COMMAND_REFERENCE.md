@@ -151,6 +151,34 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 
 物理ハードウェアエミュレータ（AWS EC2上の互換ランタイム、またはWokwiなどのローカル/クラウドエミュレータ）を用いた動作検証コマンドです。詳細は [06_SIMULATION.md](06_SIMULATION.md) を参照。
 
+## System topology (`gar system`)
+
+複数のproduct workspaceを一つの宣言として扱う場合は、schema v1 JSONを使います。
+`gar system {build,deploy,start,status,diag,test} --file PATH [--json]` の既定file名は
+`gar-system.json`です。`--json`は成功・失敗ともstdoutに単一JSONだけを出力します。
+
+```json
+{
+  "schema_version": 1,
+  "name": "GarStream",
+  "nodes": [
+    {"id": "tx", "workspace": "Local/GarStreamTx", "app": "gar-stream-tx", "role": "source", "environment": "sim", "runtime_env": {"PEER_IP": {"node_private_ip": "rx"}}},
+    {"id": "rx", "workspace": "Local/GarStreamRx", "app": "gar-stream-rx", "role": "receiver", "environment": "sim", "runtime_env": {}}
+  ],
+  "links": [{"id": "media", "from": "tx", "to": "rx", "protocol": "rtp/udp", "port": 5600}],
+  "order": ["tx", "rx"]
+}
+```
+
+`order`は全nodeを一度ずつ含めます。nodeの`runtime_env`は安全な大文字環境変数名をキーにし、
+`{"literal": scalar}`、`{"node_private_ip": "node-id"}`、
+`{"link_port": "link-id"}`のいずれかを値にします。IPはbuild artifactに埋め込まず、deploy/start時に
+runtimeへ注入します。simはapp→runtimeをbuildし、runtime→appをdeployしてport forwardなしでstartします。
+targetは専用のruntime env fileを配置してから既存target lifecycleを通じてbuild/deploy/start/status/diagします。
+P1-2の`test`はmachine-local値を解決せず全nodeの診断を集約し、productのGolden scenarioはまだ実行しません。
+各linkのJSONには、OS/infra adapterへ渡せるingress/egress `firewall` planと
+`diagnostic_target`も含まれます。P1-2 coreはこのplanを生成し、host firewallを暗黙には変更しません。
+
 ### 2.1. `gar <group> <subject> <action>` の3語構造
 すべてのコマンドは「グループ（`sim` / `target`）」「対象（subject）」「操作（action）」の3語で表します。
 `gar sim` の subject は、操作対象となるレイヤーに対応します。

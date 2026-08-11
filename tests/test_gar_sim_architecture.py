@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.api import Gar
+from scripts.gar_lib.api import Gar, SimulationRuntime
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.environment import build_environment_for
@@ -35,6 +35,24 @@ def cli_args(**values: object) -> argparse.Namespace:
 
 
 class GarSimulationArchitectureTest(unittest.TestCase):
+    def test_runtime_configures_system_env_through_environment_capability(self) -> None:
+        workspace = local_workspace(Path("/tmp/product"))
+        environment = mock.Mock()
+        environment.configure_system_env.return_value = "/etc/gar/system/demo.env"
+
+        with mock.patch("scripts.gar_lib.api.simulation_environment_for", return_value=environment):
+            destination = SimulationRuntime(workspace, mock.Mock()).configure_system_env("demo", {"A": "1"})
+
+        self.assertEqual("/etc/gar/system/demo.env", destination)
+        environment.configure_system_env.assert_called_once_with("demo", {"A": "1"})
+
+    def test_runtime_rejects_system_env_for_unsupported_environment(self) -> None:
+        workspace = local_workspace(Path("/tmp/product"))
+
+        with mock.patch("scripts.gar_lib.api.simulation_environment_for", return_value=object()):
+            with self.assertRaisesRegex(GarDomainError, "system-managed runtime env"):
+                SimulationRuntime(workspace, mock.Mock()).configure_system_env("demo", {"A": "1"})
+
     def test_workspace_lookup_resolves_workspace_name(self) -> None:
         entry = {
             "id": "ws_test",

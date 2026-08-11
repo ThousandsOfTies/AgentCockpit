@@ -5,10 +5,12 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
+import re
 import shlex
 import shutil
 import stat
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from posixpath import dirname
@@ -35,6 +37,7 @@ from scripts.gar_lib.target.compatibility import (
     require_target_compatibility,
 )
 from scripts.gar_lib.target.environment import TargetEnvironment, TargetPlacementError
+from scripts.gar_lib.target.lifecycle import TargetApplication
 from scripts.gar_lib.target.ssh_prepare import prepare_ssh_target
 
 
@@ -194,6 +197,31 @@ class FileTransferTargetEnvironment(TargetEnvironment):
             sha256=digest,
         )
 
+    def configure_system_env(self, application: str, values: Mapping[str, str]) -> TargetConfigurationReport:
+        """Atomically install GAR-owned, topology-resolved runtime settings.
+
+        This deliberately has a separate destination from :meth:`configure`:
+        product-owned persistent configuration remains ``/etc/gar/<app>.env``,
+        while a system topology owns ``/etc/gar/system/<app>.env``.
+        """
+
+        if not self.privileged_install or self.prepare_recipe is None:
+            raise GarDomainError("選択したTargetはrecipe-backed SSH設定配置を提供していません")
+        self._validate_system_env(application, values)
+        content = "".join(f"{name}={values[name]}\n" for name in sorted(values))
+        with tempfile.TemporaryDirectory(prefix="gar-target-system-env-") as temporary:
+            source = Path(temporary) / f"{application}.env"
+            source.write_text(content, encoding="utf-8")
+            destination = f"/etc/gar/system/{application}.env"
+            self._install_privileged(source, destination, "0644")
+            digest = _sha256_file(source)
+        return TargetConfigurationReport(
+            application=application,
+            source=Path(f"<system:{application}>"),
+            destination=destination,
+            sha256=digest,
+        )
+
     def _install_source(self, source: Path, destination: str, mode: object) -> None:
         if self._requires_privilege(destination):
             self._install_privileged(source, destination, mode)
@@ -273,6 +301,16 @@ class FileTransferTargetEnvironment(TargetEnvironment):
 
     def _requires_privilege(self, destination: str) -> bool:
         return self.privileged_install and not destination.startswith("/home/")
+
+    @staticmethod
+    def _validate_system_env(application: str, values: Mapping[str, str]) -> None:
+        TargetApplication(application)
+        safe_name = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+        for name, value in values.items():
+            if not isinstance(name, str) or safe_name.fullmatch(name) is None:
+                raise GarDomainError(f"system env名が不正です: {name!r}")
+            if not isinstance(value, str) or any(character in value for character in ("\x00", "\n", "\r")):
+                raise GarDomainError(f"system env値に改行またはNULは使えません: {name}")
 
     @staticmethod
     def _is_persistent_config_destination(destination: str) -> bool:

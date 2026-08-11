@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import sys
+import tempfile
+from collections.abc import Mapping
+from pathlib import Path
 
 from scripts.gar_lib.access.channel import CommandChannel, FileChannel
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
@@ -26,6 +30,8 @@ class LinuxSystemdSimulationEnvironment:
         "~/cuse_spi": "/usr/local/sbin/cuse_spi",
         "~/web-bridge": "/usr/local/lib/gar/web-bridge",
     }
+    _SAFE_APPLICATION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
+    _SAFE_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
     def __init__(
         self,
@@ -81,6 +87,28 @@ class LinuxSystemdSimulationEnvironment:
                 suffix = f": {detail}" if detail else ""
                 raise GarDomainError(f"artifact配置に失敗しました (exit {installed.returncode}){suffix}")
 
+    def configure_system_env(self, application: str, values: Mapping[str, str]) -> str:
+        """Atomically install a runtime-owned system environment file."""
+
+        self._validate_system_env(application, values)
+        destination = f"/etc/gar/system/{application}.env"
+        content = "".join(f"{name}={values[name]}\n" for name in sorted(values))
+        with tempfile.TemporaryDirectory(prefix="gar-system-env-") as directory:
+            source = Path(directory) / f"{application}.env"
+            source.write_text(content, encoding="utf-8")
+            staging = f"/tmp/gar-system-env-{os.getpid()}-{application}.env"
+            transferred = self.file_channel.push(source, staging)
+            if transferred.returncode != 0:
+                raise GarDomainError(f"system env転送に失敗しました (exit {transferred.returncode})")
+            installed = self.command_channel.run(
+                self._install_command(staging, destination, source_is_dir=False, mode="0644")
+            )
+        if installed.returncode != 0:
+            detail = (installed.stderr or installed.stdout).strip()
+            suffix = f": {detail}" if detail else ""
+            raise GarDomainError(f"system env配置に失敗しました (exit {installed.returncode}){suffix}")
+        return destination
+
     def start(self, hardware: dict[str, list[dict[str, str]]]) -> int:
         return self._run(self.command_builder.build_sim_start(hardware))
 
@@ -116,6 +144,16 @@ class LinuxSystemdSimulationEnvironment:
         if destination.startswith("~/web-bridge/"):
             return "/usr/local/lib/gar/web-bridge/" + destination.removeprefix("~/web-bridge/")
         return destination
+
+    @classmethod
+    def _validate_system_env(cls, application: str, values: Mapping[str, str]) -> None:
+        if not isinstance(application, str) or not cls._SAFE_APPLICATION.fullmatch(application):
+            raise GarDomainError(f"system env application名が不正です: {application!r}")
+        for name, value in values.items():
+            if not isinstance(name, str) or not cls._SAFE_ENV_NAME.fullmatch(name):
+                raise GarDomainError(f"system env名が不正です: {name!r}")
+            if not isinstance(value, str) or "\x00" in value or "\n" in value or "\r" in value:
+                raise GarDomainError(f"system env値に改行またはNULは使えません: {name}")
 
     @staticmethod
     def _install_command(staging: str, destination: str, *, source_is_dir: bool, mode: str | None) -> str:

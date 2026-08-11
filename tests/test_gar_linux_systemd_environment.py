@@ -8,12 +8,56 @@ from unittest import mock
 
 from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
+from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.simulation.runtime.linux_commands import LinuxSystemdCommandBuilder
 from scripts.gar_lib.simulation.runtime.linux_systemd import LinuxSystemdSimulationEnvironment
 
 
 class GarLinuxSystemdEnvironmentTest(unittest.TestCase):
+    def test_configure_system_env_writes_deterministic_root_owned_file(self) -> None:
+        commands = mock.Mock()
+        commands.run.return_value = AccessResult(("channel",), 0)
+        files = mock.Mock()
+
+        def capture(source: Path, destination: str) -> AccessResult:
+            self.assertEqual("ALPHA=one\nBETA=two\n", source.read_text(encoding="utf-8"))
+            self.assertTrue(source.is_file())
+            self.assertEqual("/tmp/gar-system-env-", destination[:20])
+            return AccessResult(("channel",), 0)
+
+        files.push.side_effect = capture
+        environment = LinuxSystemdSimulationEnvironment(commands, files, mock.Mock())
+
+        destination = environment.configure_system_env("demo-app", {"BETA": "two", "ALPHA": "one"})
+
+        self.assertEqual("/etc/gar/system/demo-app.env", destination)
+        install = commands.run.call_args.args[0]
+        self.assertIn("sudo mkdir -p", install)
+        self.assertIn("sudo cp", install)
+        self.assertIn("sudo chmod 0644", install)
+        self.assertIn("sudo mv -f", install)
+        self.assertIn("/etc/gar/system/demo-app.env.gar-new", install)
+        self.assertNotIn("/etc/gar/demo-app.env", install)
+
+    def test_configure_system_env_rejects_unsafe_input_before_transfer(self) -> None:
+        commands = mock.Mock()
+        files = mock.Mock()
+        environment = LinuxSystemdSimulationEnvironment(commands, files, mock.Mock())
+
+        for application, values in (
+            ("../demo", {"SAFE": "value"}),
+            ("demo", {"NOT-VALID": "value"}),
+            ("demo", {"SAFE": "line\nbreak"}),
+            ("demo", {"SAFE": "nul\x00value"}),
+        ):
+            with self.subTest(application=application, values=values):
+                with self.assertRaises(GarDomainError):
+                    environment.configure_system_env(application, values)
+
+        files.push.assert_not_called()
+        commands.run.assert_not_called()
+
     def test_deploy_uses_injected_channels_without_knowing_ssh_or_adb(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

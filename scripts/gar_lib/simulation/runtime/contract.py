@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from scripts.gar_lib.core.artifact import Artifact
@@ -18,6 +19,8 @@ class SimulationEnvironment(Protocol):
         ...
 
     def deploy(self, artifact: Artifact) -> None: ...
+
+    def configure_system_env(self, application: str, values: Mapping[str, str]) -> str: ...
 
     def start(self, hardware: dict[str, list[dict[str, str]]]) -> int: ...
 

@@ -25,6 +25,21 @@ GAR のコマンドは make の target に近い考え方に寄せる。ユー�
 buildやfetchを暗黙には実行しない。新しい成果物が必要な場合は先に`build`を実行し、
 既存Codespaces bundleだけを取り直す場合は`fetch`を明示的に実行する。
 
+### System topology v1
+
+複数workspaceで構成されるproductは、`gar-system.json`のproduct-neutralなsystem topologyで表す。
+schema v1は2件以上のnode、link、全nodeを一度ずつ列挙する実行`order`を持つ。nodeはworkspace、app、role、
+`sim`または`target`のenvironmentを宣言し、linkはfrom/to/protocol/portを持つ。GARはこの宣言から
+product固有のPnPやmedia protocolを実装しない。
+
+nodeのruntime environment値はliteral、他nodeのprivate IP、link portだけを明示的に参照できる。
+private IPはmachine-local bindingであり、buildでは解決もartifactへの埋込みもしない。deploy/start時にだけ
+既存workspace resolverでworkspaceを解決し、sim/target adapterの`configure_system_env(app, values)`へ注入する。
+system orchestrationは宣言順に既存`Gar` node APIを呼び、各actionのnode結果・link・failure・exit codeを一つの
+構造化reportで返す。`status`、`diag`、P1-2の`test`はmachine-local値を解決せず診断を集約し、Golden scenarioはP1-4の責務である。
+linkからはruntime envに加えてingress/egress firewall planとdiagnostic targetを生成する。
+coreはplanを機械可読に返し、OS/infra固有のfirewall適用を暗黙の副作用にはしない。
+
 Codespace は BuildEnvironment の実装のひとつ。ユーザーは通常 `gar sim app build` /
 `gar sim app deploy` / `gar target build` / `gar target deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。
