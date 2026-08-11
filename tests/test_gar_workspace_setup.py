@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -12,6 +14,38 @@ from scripts.gar_lib.commands.setup.workspace_setup import (
 
 
 class WorkspaceSetupTests(unittest.TestCase):
+    def test_registered_workspace_overview_is_unnumbered_and_has_blank_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = {
+                "workspaces": [
+                    {
+                        "id": "rx",
+                        "name": "Local/GarStreamRx",
+                        "connection": {"type": "local", "path": tmp},
+                        "branch": "GarStreamRx",
+                    }
+                ]
+            }
+            output = io.StringIO()
+            with (
+                mock.patch(
+                    "scripts.gar_lib.commands.setup.workspace_setup.safe_input",
+                    return_value="",
+                ),
+                mock.patch(
+                    "scripts.gar_lib.commands.setup.workspace_setup.sys.stdin.isatty",
+                    return_value=True,
+                ),
+                redirect_stdout(output),
+            ):
+                selected = configure_workspace_root(config)
+
+        text = output.getvalue()
+        self.assertEqual("rx", selected)
+        self.assertIn("    Local/GarStreamRx", text)
+        self.assertNotIn("    1. Local/GarStreamRx", text)
+        self.assertTrue(text.endswith("\n\n"))
+
     def test_empty_local_path_keeps_existing_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             existing_path = Path(tmp)
@@ -72,6 +106,7 @@ class WorkspaceSetupTests(unittest.TestCase):
                 ),
                 mock.patch("scripts.gar_lib.commands.setup.workspace_setup.save_config"),
                 mock.patch("scripts.gar_lib.commands.setup.workspace_setup._select_active_workspace") as select_active,
+                redirect_stdout(io.StringIO()) as output,
             ):
                 selected = configure_workspace_root(config)
 
@@ -82,6 +117,7 @@ class WorkspaceSetupTests(unittest.TestCase):
         self.assertEqual("ssh_remote", saved_tx["selected_environments"]["simulator"])
         self.assertEqual("vibecode-graviton-tx", saved_tx["ec2"]["host"])
         self.assertEqual("garstream-tx-device", saved_tx["target"]["host"])
+        self.assertIn("    2. Local/GarStreamTx", output.getvalue())
 
 
 if __name__ == "__main__":

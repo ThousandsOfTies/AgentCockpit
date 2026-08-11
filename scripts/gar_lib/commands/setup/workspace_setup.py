@@ -45,11 +45,12 @@ def configure_workspace_root(config: dict) -> str | None:
     while True:
         if workspaces:
             print(f"  {style('登録済み:', GREEN)}")
-            for index, entry in enumerate(workspaces, start=1):
-                print_workspace_entry(entry, indent=f"    {index}. ")
+            for entry in workspaces:
+                print_workspace_entry(entry, indent="    ")
         else:
             print(f"  {style('未設定', YELLOW)}")
 
+        print()
         action = (
             safe_input(
                 "  workspaceを追加(a)、削除(d)、修正(e)、次へ(Enter): ",
@@ -97,6 +98,7 @@ def _delete_workspace(workspaces: list[dict]) -> bool:
     if not workspaces:
         print(f"  {style('削除できる workspace がありません。', YELLOW)}")
         return False
+    _print_numbered_workspace_choices(workspaces)
     answer = safe_input("  削除する番号: ", default_on_eof="").strip()
     try:
         index = int(answer) - 1
@@ -112,6 +114,7 @@ def _edit_workspace(workspaces: list[dict]) -> str | None:
     if not workspaces:
         print(f"  {style('修正できる workspace がありません。', YELLOW)}")
         return None
+    _print_numbered_workspace_choices(workspaces)
     answer = safe_input("  修正する番号: ", default_on_eof="").strip()
     try:
         index = int(answer) - 1
@@ -144,6 +147,7 @@ def _select_active_workspace(config: dict, workspaces: list[dict]) -> str | None
     if len(workspaces) == 1:
         return workspaces[0]["id"]
 
+    _print_numbered_workspace_choices(workspaces)
     while True:
         answer = safe_input("  設定する workspace の番号 [1]: ", default_on_eof="1").strip()
         if not answer:
@@ -152,6 +156,11 @@ def _select_active_workspace(config: dict, workspaces: list[dict]) -> str | None
             return workspaces[int(answer) - 1]["id"]
         except (ValueError, IndexError):
             print(f"  {style('番号が正しくありません。', RED)}")
+
+
+def _print_numbered_workspace_choices(workspaces: Sequence[dict]) -> None:
+    for index, entry in enumerate(workspaces, start=1):
+        print_workspace_entry(entry, indent=f"    {index}. ")
 
 
 def print_workspace_entry(entry: dict, *, indent: str) -> None:
