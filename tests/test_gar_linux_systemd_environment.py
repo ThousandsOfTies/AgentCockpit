@@ -187,6 +187,8 @@ class LinuxSystemdCommandBuilderTest(unittest.TestCase):
             "PassEnvironment=GAR_BRIDGE_HOST GAR_BRIDGE_PORT GAR_BRIDGE_ALLOWED_HOSTS",
             command,
         )
+        self.assertIn("GAR_METRICS_DIR=/run/gar/metrics", command)
+        self.assertIn("mkdir -p /run/gar/metrics", command)
 
     def test_bridge_prefers_bundled_venv_before_system_python(self) -> None:
         command = self.builder.build_systemd_install(self.hardware)

@@ -187,7 +187,18 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 `{"link_port": "link-id"}`のいずれかを値にします。IPはbuild artifactに埋め込まず、deploy/start時に
 runtimeへ注入します。simはapp→runtimeをbuildし、runtime→appをdeployしてport forwardなしでstartします。
 targetは専用のruntime env fileを配置してから既存target lifecycleを通じてbuild/deploy/start/status/diagします。
-P1-2の`test`はmachine-local値を解決せず全nodeの診断を集約し、productのGolden scenarioはまだ実行しません。
+`gar system test --scenario PATH [--bridge NODE=http://host:port]... --json` は全nodeの診断、health、
+最新artifactのbuild ID/checksumに続けてproduct-owned Golden scenarioを実行します。`--bridge`はmachine-localな
+origin overrideであり、scenario fileにURLやIPを保存しません。未指定のsim Bridge URLはworkspaceの
+`docker.bridge_port`から導出します。
+
+scenario schema v1は`schema_version`、`name`、`steps`、任意の`cleanup`だけを持ちます。stepは
+`type`だけをdiscriminatorにして、`command`（Bridgeの`rotate`/`press`または
+`via: "runtime"`の`start`/`stop`）、`observe`、`assert`、`wait`（`milliseconds`）を表します。
+`observe`はnodeのappから`GET /api/metrics/{application}`を解決します。`assert`はliteralの`value`、
+または先行observeを参照する`value_metric`（相互排他）を比較でき、任意の`timeout_ms`/`interval_ms`で
+bounded pollingできます。`cleanup`のcommandは本体の失敗後も必ず実行されます。
+JSON出力にはmetrics、assertion、failure、cleanupを含みます。
 各linkのJSONには、OS/infra adapterへ渡せるingress/egress `firewall` planと
 `diagnostic_target`も含まれます。P1-2 coreはこのplanを生成し、host firewallを暗黙には変更しません。
 
@@ -319,6 +330,7 @@ gar sim host stop
 | `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeをSSH経由で初回適用。対話的sudo認証でservice account、限定installer、boot serviceなどを導入 |
 | `gar target configure --workspace NAME --app NAME --file PATH [--json]` | recipe-backed SSH Targetへ明示指定した既存の通常ファイルを`/etc/gar/<app>.env`として原子的に配置。artifactは不要 |
 | `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。hookには選択Target IDを`GAR_TARGET`で渡す |
+| `gar target preflight [--workspace NAME] [--app NAME] [--json]` | 最新TARGET_APPのchecksum/provenanceと、接続Targetのarch/ABI/libc/kernel・導入済みrecipe/tools identityを読み取り専用probeで検証。配置・設定・lifecycle操作は行わない |
 | `gar target deploy [--workspace NAME] [--json]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置。lifecycle対応Targetではreload、health、稼働build ID一致まで確認 |
 | `gar target status [--workspace NAME] [--app NAME] [--json]` | Target recipeのlifecycle capability経由でapplicationの稼働状態を取得 |
 | `gar target log [--workspace NAME] [--app NAME] [--lines N] [--json]` | Target recipe経由で末尾logを取得（既定200行） |
@@ -335,8 +347,14 @@ ADB接続に失敗した場合は、Terminal Bridgeを通じて`gar usb list` / 
 日常操作:
 
 ```bash
+gar target preflight --workspace Local/Product --app my-app --json
 gar target deploy
 ```
+
+実機への配置前には`preflight`を独立して実行できます。成功JSONはworkspace、target ID、app、build ID、
+互換性report、`compatible: true`、`ok: true`、`exit_code: 0`を返します。失敗もstdoutの単一JSONで
+`compatible: false`とerrorを返し、非0終了します。対応範囲はLinux file-transfer Targetです。
+`preflight`は互換性probe以外のSSH command、file push、configure、reload、diagを呼び出しません。
 
 systemd型Targetの標準contractでは、product artifactは
 `/opt/gar/apps/<app>/run`をentry pointとして提供します。root管理のunitはproductが

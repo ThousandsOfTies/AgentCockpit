@@ -215,6 +215,53 @@ class GarSystemCliTest(unittest.TestCase):
         self.assertEqual("", stderr.getvalue())
         self.assertFalse(json.loads(stdout.getvalue())["ok"])
 
+    def test_system_test_passes_scenario_and_safe_bridge_overrides_as_single_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            topology_path = root / "system.json"
+            scenario_path = root / "scenario.json"
+            value = topology()
+            value["nodes"][1]["environment"] = "sim"  # type: ignore[index]
+            topology_path.write_text(json.dumps(value), encoding="utf-8")
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "name": "observe",
+                        "steps": [{"type": "observe", "node": "tx", "metric": "tx.frames", "path": "frames.sent"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            expected = {"schema_version": 1, "ok": True, "name": "Example"}
+            orchestrator = mock.Mock()
+            orchestrator.return_value.run.return_value = SimpleNamespace(exit_code=0, as_dict=lambda: expected)
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with (
+                mock.patch("scripts.gar_lib.commands.system.SystemOrchestrator", orchestrator),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                code = main(
+                    [
+                        "system",
+                        "test",
+                        "--file",
+                        str(topology_path),
+                        "--scenario",
+                        str(scenario_path),
+                        "--bridge",
+                        "tx=http://127.0.0.1:8080",
+                        "--json",
+                    ]
+                )
+        self.assertEqual(0, code)
+        self.assertEqual("", stderr.getvalue())
+        self.assertEqual(expected, json.loads(stdout.getvalue()))
+        self.assertEqual(
+            {"tx": "http://127.0.0.1:8080"}, orchestrator.return_value.run.call_args.kwargs["bridge_overrides"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

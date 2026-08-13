@@ -10,7 +10,7 @@ import sys
 from argparse import Namespace
 from collections.abc import Mapping
 
-from scripts.gar_lib.api import Gar
+from scripts.gar_lib.api import Gar, TargetPreflightResult
 from scripts.gar_lib.commands.recovery import report_access_failure
 from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
@@ -28,6 +28,7 @@ TARGET_ACTIONS = {
     "configure": "applicationの永続設定ファイルを明示的に配置します",
     "prepare": "SSH実機の限定sudoデプロイ権限を初回だけ設定します",
     "build": "setup 済み target の実機用 artifact をビルドします",
+    "preflight": "最新artifactと接続Targetの互換性を配置前に読み取り専用で検証します",
     "deploy": "target runtime へ成果物を配置します",
     "fetch": "build environment から artifact bundle を WSL hub へ取得します",
     "status": "Target recipe経由でapplicationの稼働状態を取得します",
@@ -61,7 +62,7 @@ def add_target_parser(
             parents=[workspace_option],
         )
         action_parser.set_defaults(gar_command=GarCommand("target", None, action))
-        if action in {"configure", "deploy", "status", "log", "diag"}:
+        if action in {"configure", "preflight", "deploy", "status", "log", "diag"}:
             action_parser.add_argument(
                 "--json",
                 dest="json_output",
@@ -71,12 +72,12 @@ def add_target_parser(
         if action == "configure":
             action_parser.add_argument("--app", required=True, metavar="NAME", help="設定するapplication名")
             action_parser.add_argument("--file", required=True, metavar="PATH", help="配置するenv形式の設定ファイル")
-        if action in {"status", "log", "diag"}:
+        if action in {"preflight", "status", "log", "diag"}:
             action_parser.add_argument(
                 "--app",
                 default=None,
                 metavar="NAME",
-                help="観測するapplication名。省略時は最新artifactのentrypointから解決します",
+                help="対象application名。省略時は最新artifactのentrypointから解決します",
             )
         if action == "log":
             action_parser.add_argument(
@@ -101,7 +102,7 @@ def run_target_command(
         bool(getattr(args, "json_output", False))
         and isinstance(command, GarCommand)
         and command.group == "target"
-        and command.action in {"configure", "deploy", "status", "log", "diag"}
+        and command.action in {"configure", "preflight", "deploy", "status", "log", "diag"}
     )
     if not json_action:
         return _run_target_command(args, subcommand_parsers=subcommand_parsers)
@@ -162,7 +163,7 @@ def _run_target_command(
     try:
         workspace = resolve_workspace(workspace_selector)
     except GarDomainError as error:
-        if json_output and command.action in {"configure", "deploy", "status", "log", "diag"}:
+        if json_output and command.action in {"configure", "preflight", "deploy", "status", "log", "diag"}:
             _render_error(
                 command.action,
                 str(error),
@@ -197,6 +198,15 @@ def _run_target_command(
                 return 0
             case "build":
                 artifact = target_api.build()
+            case "preflight":
+                report = target_api.preflight(app=getattr(args, "app", None))
+                _render_preflight(
+                    report,
+                    workspace=workspace.name,
+                    target_id=workspace.selected_target,
+                    json_output=json_output,
+                )
+                return report.exit_code
             case "deploy":
                 if getattr(args, "json_output", False):
                     deployment = target_api.deploy_report()
@@ -246,17 +256,18 @@ def _run_target_command(
         return 0
     except AccessConnectionError as error:
         if json_output:
+            access_details = {
+                "channel": error.channel,
+                "endpoint": error.endpoint,
+                "reason": error.reason,
+                "exit_code": error.returncode,
+            }
             _render_error(
                 command.action,
                 str(error),
                 workspace=workspace.name,
                 target_id=workspace.selected_target,
-                details={
-                    "channel": error.channel,
-                    "endpoint": error.endpoint,
-                    "reason": error.reason,
-                    "exit_code": error.returncode,
-                },
+                details={"access": access_details} if command.action == "preflight" else access_details,
                 app=getattr(args, "app", None),
                 source=getattr(args, "file", None),
             )
@@ -328,6 +339,35 @@ def _render_lifecycle_result(
         print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
     if not result.stdout and not result.stderr:
         print(f"{result.application}: {'ok' if result.ok else 'failed'}")
+
+
+def _render_preflight(
+    result: TargetPreflightResult,
+    *,
+    workspace: str,
+    target_id: str | None,
+    json_output: bool,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "command": "target.preflight",
+        "workspace": workspace,
+        "target_id": target_id,
+        "app": result.application.name,
+        "build_id": result.build_id,
+        "artifact_path": str(result.artifact.bundle_path),
+        "compatible": result.compatible,
+        "ok": result.ok,
+        "exit_code": result.exit_code,
+        "compatibility": result.compatibility.as_dict(),
+    }
+    if json_output:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    print(f"Artifact: {result.artifact.bundle_path}")
+    print(f"Application: {result.application.name}")
+    print(f"Build ID: {result.build_id}")
+    print("Compatibility: OK")
 
 
 def _render_configuration(
@@ -428,6 +468,17 @@ def _render_error(
                 "placed_destinations": [],
                 "running": False,
                 "rollback": {"available": False, "attempted": False},
+            }
+        )
+    if action == "preflight":
+        report = details.get("compatibility")
+        build_id = report.get("artifact_build_id") if isinstance(report, dict) else None
+        payload.update(
+            {
+                "app": app,
+                "build_id": build_id,
+                "compatible": False,
+                "exit_code": 1,
             }
         )
     if action == "configure":

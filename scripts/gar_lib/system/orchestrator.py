@@ -2,14 +2,61 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import urllib.parse
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from scripts.gar_lib.api import Gar
+from scripts.gar_lib.artifacts.metadata import load_artifact_metadata
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
+from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.system.model import SystemLink, SystemNode, SystemTopology
+from scripts.gar_lib.system.scenario import (
+    BridgeScenarioAdapter,
+    HttpBridgeScenarioAdapter,
+    ScenarioReport,
+    SystemScenario,
+    run_scenario,
+)
+
+
+class _SystemScenarioAdapter:
+    """Keep bridge I/O and GAR lifecycle actions on their existing boundaries."""
+
+    def __init__(
+        self,
+        bridge_urls: Mapping[str, str],
+        workspaces: Mapping[str, Workspace],
+        gar_factory: Callable[[Workspace], Gar],
+    ):
+        self.bridge = HttpBridgeScenarioAdapter(bridge_urls)
+        self.workspaces = workspaces
+        self.gar_factory = gar_factory
+
+    def command(self, node: str, via: str, action: str, params: Mapping[str, object]) -> object:
+        if via == "bridge":
+            return self.bridge.command(node, via, action, params)
+        if via != "runtime":
+            raise GarDomainError(f"unknown scenario command transport: {via}")
+        workspace = self.workspaces.get(node)
+        if workspace is None:
+            raise GarDomainError(f"scenario nodeのworkspaceを解決できません: {node}")
+        runtime = self.gar_factory(workspace).sim.runtime
+        if action == "start":
+            exit_code = runtime.start(no_port_forward=True)
+        elif action == "stop":
+            exit_code = runtime.stop(keep_port_forward=True)
+        else:
+            raise GarDomainError(f"unknown scenario runtime action: {action}")
+        if exit_code:
+            raise GarDomainError(f"scenario runtime {action} failed (exit {exit_code})")
+        return {"action": action, "exit_code": exit_code}
+
+    def metrics(self, node: str, application: str) -> object:
+        return self.bridge.metrics(node, application)
 
 
 @dataclass(frozen=True)
@@ -19,6 +66,7 @@ class SystemReport:
     nodes: list[dict[str, object]]
     links: list[dict[str, object]]
     failures: list[dict[str, str]]
+    scenario: ScenarioReport | None = None
 
     @property
     def ok(self) -> bool:
@@ -29,7 +77,7 @@ class SystemReport:
         return 0 if self.ok else 1
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "schema_version": 1,
             "command": f"system.{self.command}",
             "name": self.name,
@@ -39,6 +87,9 @@ class SystemReport:
             "links": self.links,
             "failures": self.failures,
         }
+        if self.scenario is not None:
+            payload["scenario"] = self.scenario.as_dict()
+        return payload
 
 
 class SystemOrchestrator:
@@ -55,7 +106,14 @@ class SystemOrchestrator:
         self.workspace_resolver = workspace_resolver
         self.gar_factory = gar_factory
 
-    def run(self, command: str) -> SystemReport:
+    def run(
+        self,
+        command: str,
+        *,
+        scenario: SystemScenario | None = None,
+        bridge_overrides: Mapping[str, str] | None = None,
+        scenario_adapter: BridgeScenarioAdapter | None = None,
+    ) -> SystemReport:
         if command not in {"build", "deploy", "start", "status", "diag", "test"}:
             raise GarDomainError(f"未対応の system action: {command}")
         workspaces, failures = self._resolve_workspaces()
@@ -71,7 +129,88 @@ class SystemOrchestrator:
             if not result["ok"]:
                 failures.append({"node": node.id, "action": command, "error": str(result["error"])})
         links = self._resolved_links(workspaces, failures, resolve_private_ips=command in {"deploy", "start"})
-        return SystemReport(command=command, name=self.topology.name, nodes=nodes, links=links, failures=failures)
+        scenario_report: ScenarioReport | None = None
+        if scenario is not None:
+            if command != "test":
+                raise GarDomainError("scenario は system test でのみ実行できます")
+            if failures:
+                scenario_report = ScenarioReport(
+                    scenario.name,
+                    [],
+                    {},
+                    [],
+                    [],
+                    [{"error": "system diagnostics failed before scenario"}],
+                )
+            else:
+                adapter = scenario_adapter or _SystemScenarioAdapter(
+                    self._scenario_bridge_urls(scenario, workspaces, bridge_overrides or {}),
+                    workspaces,
+                    self.gar_factory,
+                )
+                scenario_report = run_scenario(scenario, adapter=adapter)
+            if not scenario_report.ok:
+                failures.append({"node": "system", "action": "scenario", "error": "scenario assertions failed"})
+        return SystemReport(
+            command=command,
+            name=self.topology.name,
+            nodes=nodes,
+            links=links,
+            failures=failures,
+            scenario=scenario_report,
+        )
+
+    def _scenario_bridge_urls(
+        self,
+        scenario: SystemScenario,
+        workspaces: Mapping[str, Workspace],
+        overrides: Mapping[str, str],
+    ) -> dict[str, str]:
+        node_ids = {
+            str(step["node"])
+            for step in (*scenario.steps, *scenario.cleanup)
+            if step["type"] == "observe" or (step["type"] == "command" and step["via"] == "bridge")
+        }
+        urls: dict[str, str] = {}
+        for node_id in node_ids:
+            override = overrides.get(node_id)
+            if override is not None:
+                urls[node_id] = self._bridge_url(override, node_id)
+                continue
+            workspace = workspaces.get(node_id)
+            if workspace is None:
+                raise GarDomainError(f"scenario nodeのworkspaceを解決できません: {node_id}")
+            port = workspace.docker.bridge_port
+            if port is None:
+                raise GarDomainError(
+                    f"scenario bridge URLが未設定です: {node_id}。--bridge {node_id}=http://127.0.0.1:PORT を指定してください"
+                )
+            urls[node_id] = f"http://127.0.0.1:{port}"
+        unknown = set(overrides) - set(self.topology.nodes)
+        if unknown:
+            raise GarDomainError(f"--bridge は存在しないnodeを参照しています: {', '.join(sorted(unknown))}")
+        return urls
+
+    @staticmethod
+    def _bridge_url(value: str, node_id: str) -> str:
+        parsed = urllib.parse.urlparse(value)
+        try:
+            valid_port = parsed.port is None or 1 <= parsed.port <= 65535
+        except ValueError:
+            valid_port = False
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.hostname is None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or not valid_port
+        ):
+            raise GarDomainError(f"--bridge {node_id} はhttp(s) origin URLである必要があります")
+        return value.rstrip("/")
 
     def _resolve_workspaces(self) -> tuple[dict[str, Workspace], list[dict[str, str]]]:
         resolved: dict[str, Workspace] = {}
@@ -116,8 +255,10 @@ class SystemOrchestrator:
                 result["status"] = status
                 if status:
                     raise GarDomainError(f"status failed (exit {status})")
-            else:  # diag and test deliberately use diagnostics only in P1-2.
+            else:  # diag and test collect health plus artifact provenance.
                 result["diagnostic"] = self._diag(gar, node)
+                result["health"] = bool(result["diagnostic"].get("ok"))
+                result["artifacts"] = self._artifact_observation(gar, node, workspace)
             return result
         except Exception as error:
             result["ok"] = False
@@ -161,10 +302,40 @@ class SystemOrchestrator:
 
     def _diag(self, gar: Gar, node: SystemNode) -> dict[str, object]:
         report = gar.sim.runtime.diag() if node.environment == "sim" else gar.target.diag(app=node.app)
-        payload = report.as_dict() if callable(getattr(report, "as_dict", None)) else {"exit_code": report.exit_code}
+        if callable(getattr(report, "as_dict", None)):
+            payload = report.as_dict()
+        elif callable(getattr(report, "to_payload", None)):
+            payload = report.to_payload()
+        else:
+            payload = {"exit_code": report.exit_code}
         if report.exit_code:
             raise GarDomainError(f"diagnostic failed (exit {report.exit_code})")
         return payload
+
+    @staticmethod
+    def _artifact_observation(gar: Gar, node: SystemNode, workspace: Workspace) -> list[dict[str, object]]:
+        kinds = (
+            (ArtifactKind.SIM_APP, ArtifactKind.SIM_RUNTIME)
+            if node.environment == "sim"
+            else (ArtifactKind.TARGET_APP,)
+        )
+        store = gar.sim.artifacts if node.environment == "sim" else gar.target.artifacts
+        observations: list[dict[str, object]] = []
+        for kind in kinds:
+            try:
+                artifact = store.latest(kind, workspace)
+                metadata = load_artifact_metadata(Path(artifact.bundle_path))
+                observations.append(
+                    {
+                        "kind": kind.value,
+                        "available": True,
+                        "build_id": metadata.build_id if metadata is not None else None,
+                        "checksums": dict(metadata.checksums) if metadata is not None else {},
+                    }
+                )
+            except Exception as error:
+                observations.append({"kind": kind.value, "available": False, "error": str(error)})
+        return observations
 
     def _runtime_env(self, node: SystemNode, workspaces: dict[str, Workspace]) -> dict[str, str]:
         values: dict[str, str] = {}

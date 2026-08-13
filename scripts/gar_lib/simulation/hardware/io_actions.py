@@ -27,8 +27,8 @@ BUTTON_LINE_ALIASES = {
     "aux_button": 27,
 }
 
-IO_ACTIONS = ("state", "press", "set", "clear")
-IO_DEVICES = ("button", "rfid", "range")
+IO_ACTIONS = ("state", "press", "set", "clear", "rotate")
+IO_DEVICES = ("button", "rfid", "range", "rotary")
 
 
 @dataclass(frozen=True)
@@ -85,6 +85,14 @@ def resolve(action: str, device: str | None, params: Mapping[str, object]) -> Io
     elif device == "range":
         if action == "set":
             return IoRequest("POST", "/api/range", {"value": int(params["value"])})
+    elif device == "rotary":
+        if action == "rotate":
+            direction = int(params.get("direction", 1))
+            if direction not in {-1, 1}:
+                raise ValueError("rotary direction must be -1 or 1")
+            return IoRequest("POST", "/api/rotary/rotate", {"direction": direction})
+        if action == "press":
+            return IoRequest("POST", "/api/rotary/press", {})
     else:
         raise ValueError(f"unknown io device: {device}")
 

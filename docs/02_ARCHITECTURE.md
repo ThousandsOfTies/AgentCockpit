@@ -36,7 +36,12 @@ nodeのruntime environment値はliteral、他nodeのprivate IP、link portだけ
 private IPはmachine-local bindingであり、buildでは解決もartifactへの埋込みもしない。deploy/start時にだけ
 既存workspace resolverでworkspaceを解決し、sim/target adapterの`configure_system_env(app, values)`へ注入する。
 system orchestrationは宣言順に既存`Gar` node APIを呼び、各actionのnode結果・link・failure・exit codeを一つの
-構造化reportで返す。`status`、`diag`、P1-2の`test`はmachine-local値を解決せず診断を集約し、Golden scenarioはP1-4の責務である。
+構造化reportで返す。`test`は診断に加えてnode healthとartifact store正本のbuild ID/checksumを集約し、
+product-owned scenario v1を実行できる。scenarioはmachine-local URLを含まず、topology nodeのappから
+Bridgeのread-only `/api/metrics/{application}`を解決する。`--bridge node=origin`だけが実行時overrideである。
+scenarioの`assert`はbounded polling、`cleanup`は失敗時にも実行するため、途中でsource runtimeを止めても
+再起動を残せる。Bridgeのmetrics readerはsafe application名、regular non-symlink、1 MiB上限、JSON objectを
+検査し、metrics pathはruntimeの`/run/gar/metrics`としてsystemdが用意する。
 linkからはruntime envに加えてingress/egress firewall planとdiagnostic targetを生成する。
 coreはplanを機械可読に返し、OS/infra固有のfirewall適用を暗黙の副作用にはしない。
 

@@ -33,6 +33,7 @@ from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import AccessConnectionError, GarDomainError
 from scripts.gar_lib.target.compatibility import (
     ArtifactCompatibilityError,
+    CompatibilityReport,
     deployment_marker_destination,
     require_target_compatibility,
 )
@@ -147,16 +148,17 @@ class FileTransferTargetEnvironment(TargetEnvironment):
                 placement_complete=len(placed_destinations) == len(files),
             ) from error
 
-    def validate_deployment(self, artifact: Artifact) -> None:
+    def validate_deployment(self, artifact: Artifact) -> CompatibilityReport:
         """Reject corrupt or incompatible Linux artifacts before any file transfer."""
 
         if self.require_active_tools_provenance and self.active_tools_provenance is None:
             raise ArtifactCompatibilityError("target tools provenanceを解決できないため転送前にdeployを拒否しました")
-        require_target_compatibility(
+        _, report = require_target_compatibility(
             artifact,
             self.command_channel,
             active_tools=self.active_tools_provenance,
         )
+        return report
 
     def prepare(self) -> None:
         if not self.privileged_install:

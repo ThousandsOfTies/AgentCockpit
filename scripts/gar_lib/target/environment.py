@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from scripts.gar_lib.core.artifact import Artifact
 from scripts.gar_lib.core.errors import GarDomainError
+
+if TYPE_CHECKING:
+    from scripts.gar_lib.target.compatibility import CompatibilityReport
 
 
 class TargetPlacementError(GarDomainError):
@@ -32,6 +35,6 @@ class TargetPlacementError(GarDomainError):
 class TargetEnvironment(Protocol):
     def prepare(self) -> None: ...
 
-    def validate_deployment(self, artifact: Artifact) -> None: ...
+    def validate_deployment(self, artifact: Artifact) -> CompatibilityReport | None: ...
 
     def deploy(self, artifact: Artifact) -> None: ...

@@ -19,6 +19,7 @@ GAR_HARDWARE_DIR = f"{GAR_ETC_DIR}/hardware"
 GAR_SBIN_DIR = "/usr/local/sbin"
 GAR_LIB_DIR = "/usr/local/lib/gar"
 GAR_RUN_DIR = "/run/gar"
+GAR_METRICS_DIR = f"{GAR_RUN_DIR}/metrics"
 GAR_HW_SIM_SOCK = f"{GAR_RUN_DIR}/hw_sim.sock"
 GAR_BRIDGE_DIR = f"{GAR_LIB_DIR}/web-bridge"
 GAR_BRIDGE_START = f"{GAR_SBIN_DIR}/gar-bridge-start"
@@ -450,6 +451,7 @@ class LinuxSystemdCommandBuilder:
             set -eu
 
             export GAR_RUNTIME_DIR="${{GAR_RUNTIME_DIR:-{GAR_RUN_DIR}}}"
+            export GAR_METRICS_DIR="${{GAR_METRICS_DIR:-{GAR_METRICS_DIR}}}"
             export GAR_HW_SIM_SOCK="${{GAR_HW_SIM_SOCK:-{GAR_HW_SIM_SOCK}}}"
             export GAR_HARDWARE_DIR="${{GAR_HARDWARE_DIR:-{GAR_HARDWARE_DIR}}}"
 
@@ -482,8 +484,10 @@ class LinuxSystemdCommandBuilder:
             Type=simple
             RuntimeDirectory=gar
             Environment=GAR_RUNTIME_DIR={GAR_RUN_DIR}
+            Environment=GAR_METRICS_DIR={GAR_METRICS_DIR}
             Environment=GAR_HW_SIM_SOCK={GAR_HW_SIM_SOCK}
             Environment=GAR_HARDWARE_DIR={GAR_HARDWARE_DIR}
+            ExecStartPre=/bin/mkdir -p {GAR_METRICS_DIR}
             PassEnvironment=GAR_BRIDGE_HOST GAR_BRIDGE_PORT GAR_BRIDGE_ALLOWED_HOSTS GAR_CAMERA_DEVICE GAR_CAMERA_WIDTH GAR_CAMERA_HEIGHT GAR_CAMERA_FPS
             ExecStart={GAR_BRIDGE_START}
             Restart=on-failure
@@ -586,7 +590,7 @@ class LinuxSystemdCommandBuilder:
         ).lstrip()
 
         commands = [
-            f"sudo mkdir -p {shlex.quote(GAR_ETC_DIR)} {shlex.quote(GAR_LIB_DIR)} {shlex.quote(GAR_SBIN_DIR)}",
+            f"sudo mkdir -p {shlex.quote(GAR_ETC_DIR)} {shlex.quote(GAR_LIB_DIR)} {shlex.quote(GAR_SBIN_DIR)} {shlex.quote(GAR_METRICS_DIR)}",
             *_hardware_csv_install_commands(hw),
             _sudo_write_file_command(
                 GAR_GPIO_SIM_START, "#!/bin/sh\n" + self.build_gpio_sim_setup(hw) + "\n", mode="0755"

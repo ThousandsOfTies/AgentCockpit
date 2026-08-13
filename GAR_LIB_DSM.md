@@ -11,32 +11,32 @@
 | **access** | 9 |  |  |  | 6 |  |  |  |  |  |  |  |  |
 | **artifacts** | 1 | 18 |  |  | 8 |  |  |  |  |  |  |  |  |
 | **build** |  | 3 | 4 |  | 15 |  |  |  |  |  |  |  |  |
-| **commands** | 2 |  |  | 53 | 52 | 3 | 2 |  | 5 | 2 | 10 |  | 39 |
+| **commands** | 2 |  |  | 53 | 52 | 3 | 3 |  | 5 | 3 | 10 |  | 39 |
 | **core** |  |  |  |  | 12 |  |  |  |  |  |  |  |  |
 | **environments** |  |  |  |  | 6 | 57 |  |  |  |  |  |  | 1 |
-| **gar_lib(top-level)** |  | 2 | 7 | 10 | 6 |  | 1 |  | 9 |  | 12 |  |  |
+| **gar_lib(top-level)** |  | 2 | 7 | 10 | 6 |  | 1 |  | 9 |  | 13 |  |  |
 | **scripts.gar(entrypoint)** |  |  |  |  |  |  | 1 |  |  |  |  |  |  |
 | **simulation** | 17 | 6 |  |  | 21 |  |  |  | 57 |  | 2 |  | 1 |
-| **system** |  |  |  | 1 | 3 |  | 1 |  |  | 3 |  |  |  |
-| **target** | 10 | 22 |  |  | 22 | 2 |  |  |  |  | 20 |  |  |
-| **tests** | 18 | 27 | 7 | 40 | 91 | 18 | 23 |  | 39 | 2 | 36 |  | 1 |
+| **system** |  | 1 |  | 1 | 5 |  | 1 |  | 1 | 9 |  |  |  |
+| **target** | 10 | 22 |  |  | 22 | 2 |  |  |  |  | 22 |  |  |
+| **tests** | 18 | 32 | 7 | 40 | 99 | 18 | 25 |  | 39 | 8 | 39 |  | 1 |
 | **vscode** |  |  |  |  | 3 |  |  |  |  |  |  |  |  |
 
-file粒度 (126x126) の完全なmatrixは `GAR_LIB_DSM_file_level.csv` を参照 (Excel/sheetsで開くと見やすい)。
+file粒度 (127x127) の完全なmatrixは `GAR_LIB_DSM_file_level.csv` を参照 (Excel/sheetsで開くと見やすい)。
 
 ## file配置距離
 
 各Pythonファイルをtreeのleaf、import元→import先の一意な組を1 edgeとして、最短pathに含まれるtree edge数を測定。平均だけでなく外れ値も確認できるようp95と最大値を併記する。
 
-- 一意なfile依存edge数: 318
-- 平均path長: 3.475
-- import binding数による加重平均path長: 3.481
+- 一意なfile依存edge数: 327
+- 平均path長: 3.471
+- import binding数による加重平均path長: 3.464
 - p95 / 最大path長: 5 / 6
 
 ## 公開メンバの参照状況サマリ
 
-- 対象module数: 126
-- 公開メンバ(top-level関数/class/UPPER定数)総数: 490
+- 対象module数: 127
+- 公開メンバ(top-level関数/class/UPPER定数)総数: 499
 - 他moduleから一度も参照されていないメンバ: 184  (詳細は `GAR_LIB_PUBLIC_API_USAGE.md` の「外部未参照」表)
 
 詳細な「メンバ単位でどこから参照されているか」は `GAR_LIB_PUBLIC_API_USAGE.md` を参照。

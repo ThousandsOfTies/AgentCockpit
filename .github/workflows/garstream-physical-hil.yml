@@ -1,0 +1,70 @@
+name: GarStream physical HIL read-only
+
+on:
+  workflow_dispatch:
+    inputs:
+      approval_ref:
+        description: Approved physical-HIL change or session reference
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garstream-physical-hil
+  cancel-in-progress: false
+
+jobs:
+  golden-scenario:
+    environment:
+      name: physical-hil
+    runs-on: [self-hosted, physical-hil]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout GAR
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout GarStreamTx product branch
+        uses: actions/checkout@v4
+        with:
+          repository: ThousandsOfTies/gar-build-env
+          ref: GarStreamTx
+          path: products/tx
+          submodules: recursive
+          persist-credentials: false
+      - name: Checkout GarStreamRx product branch
+        uses: actions/checkout@v4
+        with:
+          repository: ThousandsOfTies/gar-build-env
+          ref: GarStreamRx
+          path: products/rx
+          submodules: recursive
+          persist-credentials: false
+      - name: Install GAR runtime dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements-gar.txt
+      - name: Collect approved physical Target preflight and diagnostics
+        env:
+          GARSTREAM_EVENT_NAME: ${{ github.event_name }}
+          GARSTREAM_APPROVAL_REF: ${{ inputs.approval_ref }}
+          GARSTREAM_HIL_CONFIG_JSON: ${{ secrets.GARSTREAM_HIL_CONFIG_JSON }}
+          GARSTREAM_HIL_ARTIFACTS_DIR: ${{ secrets.GARSTREAM_HIL_ARTIFACTS_DIR }}
+        run: |
+          python3 .github/scripts/run-garstream-hil-readonly.py \
+            --event "$GARSTREAM_EVENT_NAME" \
+            --approval-ref "$GARSTREAM_APPROVAL_REF" \
+            --gar-root . \
+            --tx-root products/tx \
+            --rx-root products/rx \
+            --output artifacts/garstream-physical-hil
+      - name: Retain physical HIL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: garstream-physical-hil-read-only-${{ github.run_id }}
+          path: artifacts/garstream-physical-hil/
+          if-no-files-found: error
+          retention-days: 90

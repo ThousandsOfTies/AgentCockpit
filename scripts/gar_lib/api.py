@@ -25,6 +25,7 @@ from scripts.gar_lib.simulation.host.contract import (
 )
 from scripts.gar_lib.simulation.session.manager import VsCodeSimulationSessionManager
 from scripts.gar_lib.target.application import target_application_from_artifact
+from scripts.gar_lib.target.compatibility import CompatibilityReport
 from scripts.gar_lib.target.composition import target_environment_for, target_lifecycle_for
 from scripts.gar_lib.target.environment import TargetPlacementError
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment, TargetConfigurationReport
@@ -43,6 +44,34 @@ class TargetDeploymentResult:
     artifact: Artifact
     report: TargetDeploymentReport
     configuration: TargetConfigurationReport | None = None
+
+
+@dataclass(frozen=True)
+class TargetPreflightResult:
+    """Read-only proof that one artifact is safe to hand to target deploy."""
+
+    artifact: Artifact
+    application: TargetApplication
+    compatibility: CompatibilityReport
+
+    @property
+    def build_id(self) -> str:
+        build_id = self.application.expected_build_id
+        if build_id is None:  # pragma: no cover - guarded by preflight resolution
+            raise GarDomainError("target preflightにはschema v2 artifact build IDが必要です")
+        return build_id
+
+    @property
+    def compatible(self) -> bool:
+        return self.compatibility.compatible
+
+    @property
+    def ok(self) -> bool:
+        return self.compatible
+
+    @property
+    def exit_code(self) -> int:
+        return 0 if self.ok else 1
 
 
 class Gar:
@@ -237,6 +266,25 @@ class Target:
     def build(self) -> Artifact:
         build = build_environment_for(self.workspace, self.artifacts)
         return build.build(ArtifactKind.TARGET_APP, self.workspace)
+
+    def preflight(self, *, app: str | None = None) -> TargetPreflightResult:
+        """Probe compatibility without placing files or invoking lifecycle actions."""
+
+        artifact = self.artifacts.latest(ArtifactKind.TARGET_APP, self.workspace)
+        application = target_application_from_artifact(
+            artifact,
+            explicit_name=app,
+            require_build_id=True,
+        )
+        environment = target_environment_for(self.workspace)
+        if not isinstance(environment, FileTransferTargetEnvironment):
+            raise GarDomainError("選択したTargetはread-only artifact compatibility preflightに対応していません")
+        compatibility = environment.validate_deployment(artifact)
+        return TargetPreflightResult(
+            artifact=artifact,
+            application=application,
+            compatibility=compatibility,
+        )
 
     def prepare(self) -> None:
         target_environment_for(self.workspace).prepare()

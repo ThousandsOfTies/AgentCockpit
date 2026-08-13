@@ -1,0 +1,73 @@
+name: GarStream EC2 E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garstream-ec2-e2e
+  cancel-in-progress: false
+
+jobs:
+  golden-scenario:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout GAR
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout GarStreamTx product branch
+        uses: actions/checkout@v4
+        with:
+          repository: ThousandsOfTies/gar-build-env
+          ref: GarStreamTx
+          path: products/tx
+          submodules: recursive
+          persist-credentials: false
+      - name: Checkout GarStreamRx product branch
+        uses: actions/checkout@v4
+        with:
+          repository: ThousandsOfTies/gar-build-env
+          ref: GarStreamRx
+          path: products/rx
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install GAR runtime dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements-gar.txt
+      - name: Run Golden scenario on pre-provisioned simulation EC2 nodes
+        env:
+          GARSTREAM_EVENT_NAME: ${{ github.event_name }}
+          GARSTREAM_EC2_CONFIG_JSON: ${{ secrets.GARSTREAM_EC2_CONFIG_JSON }}
+          GARSTREAM_EC2_SSH_CONFIG: ${{ secrets.GARSTREAM_EC2_SSH_CONFIG }}
+          GARSTREAM_EC2_SSH_KEY: ${{ secrets.GARSTREAM_EC2_SSH_KEY }}
+          GARSTREAM_EC2_KNOWN_HOSTS: ${{ secrets.GARSTREAM_EC2_KNOWN_HOSTS }}
+          GARSTREAM_EC2_TX_BRIDGE_PORT: ${{ secrets.GARSTREAM_EC2_TX_BRIDGE_PORT }}
+          GARSTREAM_EC2_RX_BRIDGE_PORT: ${{ secrets.GARSTREAM_EC2_RX_BRIDGE_PORT }}
+        run: |
+          python3 .github/scripts/run-garstream-e2e.py \
+            --mode ec2 \
+            --event "$GARSTREAM_EVENT_NAME" \
+            --gar-root . \
+            --tx-root products/tx \
+            --rx-root products/rx \
+            --system-file products/rx/gar-system.json \
+            --scenario-file products/rx/scenarios/garstream_golden.json \
+            --output artifacts/garstream-ec2
+      - name: Retain EC2 system-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: garstream-ec2-e2e-${{ github.run_id }}
+          path: artifacts/garstream-ec2/
+          if-no-files-found: error
+          retention-days: 30
