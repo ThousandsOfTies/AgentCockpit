@@ -5,18 +5,20 @@
 | レイヤ | 実体 | 役割 |
 |---|---|---|
 | 1. 統合開発環境 | VSCode + `gar` CLI | AI・人間が共有する操作面。ビルド/デプロイ/観察の起点 |
-| 2. ビルド環境 | Local / GitHub Codespaces | product hookをローカルまたはクラウドで実行。CodespacesはARM64クロスビルド等に利用 |
-| 3. シミュレーション環境 | AWS EC2 Graviton | 実機と同一 ARM64 バイナリを動かす仮想 H/W 実行環境 |
-| 4. デバイス互換 Runtime | CUSE / gpio-sim + bridge | `/dev/i2c-*` `/dev/spidev*` `/dev/gpiochip*` を OS レベルで再現しアプリを無改造で動かす |
-| 5. 実機接続環境 | RasPi5（SSH/systemd recipe） | 同じapplication成果物をreal `/dev/*`で実行。OS準備とboot統合はTarget recipeが担当 |
+| 2. ビルド環境 | Local / GitHub Codespaces | Product hookを実行し、Target別toolchainでartifactを生成 |
+| 3. シミュレーション環境 | Docker / EC2 / Wokwi / MuJoCo | Productに応じた仮想環境を共通Bridge／lifecycleへ接続 |
+| 4. デバイス互換 Runtime | CUSE / gpio-sim + Bridge等 | `/dev/*`またはsimulator APIをProductの外部interfaceへ変換 |
+| 5. 実機接続環境 | Raspberry Pi 5 / Luckfox RK3506 / ESP32等 | real deviceで実行。OS準備、flash、boot統合はTarget Packが担当 |
 
-ビルド成果物は、選択したBuildEnvironment（local / Codespaces）→ WSL側artifact store → simulation/実機の一方向で流れる。EC2や実機上ではビルドしない。ESP32を含む全targetで同じBuildEnvironmentを使い、target固有のbuild手順はproduct hookに置く。
+ビルド成果物は、選択したBuildEnvironment（Local / Codespaces）→ WSL側artifact store →
+simulation／実機の一方向で流れる。実行先で場当たり的にbuildしない。Target固有のbuild手順は
+Product hook、toolchain／sysroot探索はTarget Packへ置く。
 
 ---
 
 ## コマンドモデル
 
-GAR のコマンドは make の target に近い考え方に寄せる。ユーザーが入力するのは
+GARのコマンドは明示的なlifecycle操作として扱う。ユーザーが入力するのは
 `gar sim app build` / `gar sim app deploy` / `gar target build` / `gar target deploy` のような
 抽象 target であり、個別の実行方法（PlatformIO、Codespaces、esptool、adb、scp など）は
 `gar setup` で選ばれた target 定義と接続設定から解決する。
@@ -105,7 +107,8 @@ Gapless Agent Runtimeでは、VSCodeを、開発者と AI エージェントが�
 | 人間 | SSH接続、データ入力、実機/シミュレータ操作、ログ収集、結果確認、次の手順判断 | AI Agentへの指示、結果の確認、判断 |
 | AI Agent | ソフトウェア作成、部分的なコード修正支援 | ソフトウェア作成、SSH接続、デプロイ、データ入力、仮想H/W操作、ログ収集、診断、結果整理 |
 
-この役割変更を実現するために、Gapless Agent Runtime では Make ターゲット、JSON シナリオ、ログ、状態取得を整備し、ビルド、デプロイ、シミュレータ起動、仮想 H/W 操作、ログ確認、診断までを AI が再現可能な手順として実行できる形にします。
+この役割変更を実現するために、Gapless Agent Runtimeでは`gar` CLI、JSON scenario、metrics、
+log、diagnosticを整備し、build、deploy、仮想H/W操作、確認までを再現可能にする。
 
 ### Simulation Control Plane — environment をまたぐ不変条件
 
@@ -141,7 +144,10 @@ Gapless Agent Runtime では、その標準化された作業場に AI Agent も
 
 ### VM の選定理由
 
-シミュレーション環境には AWS EC2 Graviton（ARM64）を採用している。実機である Raspberry Pi 5 と同じ **ARM64 (aarch64)** アーキテクチャのため、Codespaces でクロスビルドした成果物をそのまま EC2 にデプロイして動かせる。x86 VM を挟んだエミュレーション実行では見えない ABI 差異やアライメント問題を早期に検出できる点も選定理由のひとつ。
+Linux ARM64のreference simulationにはAWS EC2 Gravitonを採用している。Raspberry Pi 5と同じ
+**ARM64 (aarch64)／glibc** envelopeを満たすProductでは、同一binaryをdeployできる。
+x86 CPU emulationを挟まず実速で動かせる一方、kernel、driver、device、timingの同一性は別途検証する。
+Local Docker、Wokwi、MuJoCoも別のSimulationEnvironmentとして同じ上位操作へ接続する。
 
 ---
 
@@ -159,9 +165,14 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 | SPI | CUSE で `/dev/spidev0.0` を生成 | 実機と同じ spidev |
 | GPIO | `gpio-sim` で `/dev/gpiochip0` を提供 | 実機と同じ GPIO chardev v2 |
 
-### バイナリ透過性
+### 実装パリティ
 
-この構成により、Codespaces でビルドした同一バイナリが EC2 でも RasPi5 でも動く。CUSE/gpio-sim の実装と保守は AI が担うことで、実機検証フェーズに入ってもシミュレーション環境が陳腐化しない体制を目指す。
+同一binaryはarchitecture、ABI、libcが一致する場合の強い形である。Raspberry Pi 5とarm64 EC2では
+これを利用できる。RK3506のようなarmv7 Targetでは別binaryをbuildし、同じsource、Linux device I/F、
+protocol、state behaviorを契約にする。accelerator固有実装では外部behaviorと性能条件で適合を確認する。
+
+CUSE／gpio-simの実装と保守はAIと自動testが担い、実機で得た差分をprovider、Target capability、
+Bindingへ戻す。
 
 ### 仮想 H/W の操作・観察（bridge）
 
@@ -176,13 +187,13 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 | 対象 | 入口 |
 |---|---|
 | Linux Bridge 手動操作 | Virtual Hardware Panel |
-| Linux Bridge シナリオ | `python scripts/run_scenario.py path/to/scenario.json` |
+| Linux Bridge 単一nodeシナリオ | `python scripts/run_scenario.py path/to/scenario.json` |
+| 複数node Golden scenario | `gar system test --scenario ... --bridge node=origin --json` |
 | Wokwi 手動確認 | VS Code Wokwi 拡張 / Diagram Editor |
 | Wokwi 自動確認 | 共有scenarioは未提供。製品がscenarioをartifactへ含めた場合だけ`wokwi-cli --scenario`を使用 |
 | MuJoCo | `gar sim runtime start --no-port-forward`（start時にmodelを検証） |
 | ESP32 QEMU | setup選択肢とerror-only runtimeのみ。`gar-esp32-flash-image` / `gar-esp32-qemu-run`はgar-tools側の手動検証入口 |
 | Renode | setup選択肢とerror-only runtimeのみ。`renode` / `renode-test`は手動検証入口 |
-| Vibe Remote smoke | `npm run smoke:protocol` |
 
 WokwiとMuJoCoのlocal processは共通のstate storeを使う。stateはatomicに置換し、
 start/stopはfile lockで直列化する。停止時はPIDだけでなくargvと`/proc` start timeを照合し、
@@ -195,9 +206,9 @@ PID再利用で無関係なprocessを停止しない。MuJoCoのproduct assetは
 
 ## 5. 実機接続環境
 
-Gapless Agent Runtimeでは、AIが実機へ到達する接続経路をTargetごとに選びます。
-Raspberry Pi 5 / Raspberry Pi OSの標準は**SSH/scp**であり、`gar target prepare`による
-OS recipe適用と、限定sudo installerによるsystem領域deployを利用します。
+Gapless Agent Runtimeでは、AIが実機へ到達する接続経路をTargetごとに選ぶ。
+Raspberry Pi 5 / Raspberry Pi OSは**SSH/scp + systemd recipe**、Luckfox Lyra Plus RK3506は
+**SSH/scp + Buildroot／BusyBox recipe**をreferenceとする。
 
 ADBはUSBだけで到達したいLinux Target、esptoolはESP32のflashなど、別Target/backendの
 選択肢として残します。ADB / serial / SSHの切り替えと接続先はworkspaceごとに保存されるため、
@@ -228,5 +239,8 @@ root所有の`gar-app@.service`を導入する。product artifactは
 `/opt/gar/apps/<app>/run`を提供し、serviceは非rootの`gar`accountで動く。
 永続設定`/etc/gar/<app>.env`、SSH host key、userのauthorized_keysはapplication
 artifactの責務外である。`gar target configure`だけがrecipe-backed SSH Targetの限定installerを
-通じてenv fileを原子的に更新し、通常deployでは削除・上書きしない。read-only rootfsやBuildroot、
-image flashingを使うTargetは同じCLIへ別recipe/backendを追加する。
+通じてenv fileを原子的に更新し、通常deployでは削除・上書きしない。read-only rootfsや
+full-image flashingを使うTargetは、同じ上位lifecycleへ別recipe／backendを追加する。
+
+NXP UUU等のUSB recoveryはapplication deployと副作用が異なるため、Target Packがboot mode、
+USB identity、image destination、verify、recoveryを明示する独立provisioning classとして扱う。

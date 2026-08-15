@@ -12,7 +12,7 @@
 |---|---|
 | `make init` | `.venv` 作成・`gar` symlink・VSCode extension install |
 | `make start` | venv + bash completion を有効化したサブシェルを開く |
-| `make check` | Ruff、unittest、DSM同期、shell構文、VS Code拡張のNode testをまとめて確認 |
+| `make check` | Ruff、unittest、shell構文、VS Code拡張のNode testをまとめて確認 |
 | `gar setup` | target選択・gar-tools確認/取得・workspace/environment/接続設定・依存確認。`ssh_remote`ではruntime host入力必須。local product workspaceは複数登録可能 |
 | `gar setup --no-install` | 不足依存をインストールせず、導入案内を表示 |
 | `gar setup --ec2-host HOST` | simulation runtime用SSH host aliasを保存。`ssh_remote`選択時は設定必須 |
@@ -34,10 +34,10 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
   "workspaces": [
     {
       "id": "ws_42f8c1",
-      "name": "Local/GarStreamRx",
+      "name": "Local/Product",
       "connection": {
         "type": "local",
-        "path": "/home/user/Yurufuwa/GAR/gar-stream-rx"
+        "path": "/path/to/Product"
       },
       "branch": "main",
       "selected_environments": {
@@ -45,7 +45,7 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
         "simulator": "ssh_remote",
         "target": "ssh_scp"
       },
-      "selected_target": "linux-device",
+      "selected_target": "raspberry-pi-5",
       "ec2": {
         "host": "my-sim-host",
         "identity_file": "~/.ssh/my-sim-host.pem"
@@ -202,15 +202,18 @@ JSON出力にはmetrics、assertion、failure、cleanupを含みます。
 各linkのJSONには、OS/infra adapterへ渡せるingress/egress `firewall` planと
 `diagnostic_target`も含まれます。P1-2 coreはこのplanを生成し、host firewallを暗黙には変更しません。
 
-### 2.1. `gar <group> <subject> <action>` の3語構造
-すべてのコマンドは「グループ（`sim` / `target`）」「対象（subject）」「操作（action）」の3語で表します。
-`gar sim` の subject は、操作対象となるレイヤーに対応します。
+### 2.1. `gar sim <subject> <action>` の3語構造
+
+`gar sim`配下は「対象（subject）」「操作（action）」を分け、操作対象のレイヤーを明示します。
+`gar target <action>`は実機ライフサイクル、`gar system <action>`は複数node、
+`gar hw <action>`はHardware contractを扱います。`code`、`usb`、`terminal`も独立した
+top-level groupです。
 
 | subject | レイヤー | 操作対象 | 日常的な役割 |
 |---|---|---|---|
 | `gar sim host` | **ホスト** | EC2 / container などシミュレーションホストOS | シミュレーション用のVMやホストの起動・停止・接続状態の管理 |
 | `gar sim runtime` | **ランタイム** | 仮想デバイス（I2C, SPI, GPIO）のスタブ | 仮想デバイスのエミュレータ（CUSEスタブやブリッジ等）のビルド・起動・ログ監視・個別デバッグ |
-| `gar sim app` | **アプリ** | アプリケーション成果物 | 検証したいアプリケーション本体（`sensor_demo`など）のビルドと環境への反映 |
+| `gar sim app` | **アプリ** | Product成果物 | 検証したいProductアプリケーションのビルドと環境への反映 |
 | `gar sim gpio` | **仮想GPIO** | GPIO dummy runtime | GPIO dummy runtime の生成・配置・状態確認 |
 | `gar sim io` | **仮想H/W操作** | Bridge control plane | button 押下・RFID タップなど virtual H/W への入力注入（AI / CI 向け） |
 | `gar sim infra` | **インフラ** | AWS等インフラ設備 (Terraform) | テスト用インスタンス自体の作成・破棄（開発初期のみ実行） |
@@ -327,7 +330,7 @@ gar sim host stop
 
 | コマンド | 内容 |
 |---|---|
-| `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeをSSH経由で初回適用。対話的sudo認証でservice account、限定installer、boot serviceなどを導入 |
+| `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeを初回適用。接続方法と権限取得方法はTarget Packが定義し、必要なservice account、限定installer、boot serviceなどを導入 |
 | `gar target configure --workspace NAME --app NAME --file PATH [--json]` | recipe-backed SSH Targetへ明示指定した既存の通常ファイルを`/etc/gar/<app>.env`として原子的に配置。artifactは不要 |
 | `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。hookには選択Target IDを`GAR_TARGET`で渡す |
 | `gar target preflight [--workspace NAME] [--app NAME] [--json]` | 最新TARGET_APPのchecksum/provenanceと、接続Targetのarch/ABI/libc/kernel・導入済みrecipe/tools identityを読み取り専用probeで検証。配置・設定・lifecycle操作は行わない |

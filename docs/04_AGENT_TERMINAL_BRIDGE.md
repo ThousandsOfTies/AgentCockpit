@@ -20,7 +20,7 @@ AI / Codex
   -> Human sudo/auth input
 ```
 
-## 現状
+## 構成
 
 - `gar setup` は最初に target を表示し、その後カテゴリ単位で状態を表示する。
   - Target
@@ -34,7 +34,7 @@ AI / Codex
   `.gar/terminal-requests/*.json`をatomic publishする。
 - environment が sudo/auth handoff を必要とした場合も同じrequest storeを使う。
 - `gar setup` は VSCode Terminal Bridge の導入状況を表示する。
-- `tools/vscode-gar/` に最小 VSCode extension プロトタイプがある。
+- `tools/vscode-gar/` にVSCode extensionがある。
   - `.gar/terminal-requests/*.json` を監視する。
   - 要求を受けたら VSCode integrated terminal を作成する。
   - コマンドは `sendText()` で terminal に送る。
@@ -106,12 +106,7 @@ MCP 設定は `make init` が `.gar/mcp-config.json` に生成する。
 - VSCode terminal の再実装
 - Marketplace 公開前提の仕組み
 
-## 次のAIへの作業指針
+## 保守時の確認
 
-> Terminal Bridge の振る舞いルール（いつ裏で実行し、いつ handoff するか）は `AGENT.md` の「Terminal 操作の原則」を参照。
-
-1. まず `make check` を通す。
-2. `make init` を実行し、VSCode window を reload する。
-3. MCP 設定に `.gar/mcp-config.json` の内容を登録する。
-4. `run_in_visible_terminal` で visible terminal にコマンドが流れるところを確認する。
-5. handoff 後は `gar setup --no-install` や `which ... --version` を裏で実行して復帰する（詳細は `AGENT.md`）。
+request store、MCP server、VSCode extensionの変更は`make check`でまとめて確認する。
+人間入力後の成否はterminal出力の推測ではなく、対象のstatus／diag commandで再確認する。

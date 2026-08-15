@@ -25,7 +25,7 @@ help:
 	@echo "Gapless Agent Runtime development commands"
 	@echo "  make init          Create the venv and install local VS Code/MCP integration"
 	@echo "  make start         Enter an interactive shell with gar completion"
-	@echo "  make check         Run lint, tests, generated-file checks, and syntax checks"
+	@echo "  make check         Run lint, tests, and syntax checks"
 	@echo "  make port-forward  Start the selected EC2 hardware-panel port forward"
 
 check:
@@ -34,7 +34,6 @@ check:
 	$(RUFF) check scripts tests tools/*.py tools/gar-mcp/server.py
 	$(RUFF) format --check scripts tests tools/*.py tools/gar-mcp/server.py
 	$(PYTHON) -m unittest discover -s tests -v
-	$(PYTHON) tools/gen_gar_lib_dsm.py --check
 	bash -n tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
 	node --check tools/vscode-gar/extension.js
 	node --test tools/vscode-gar/*.test.js

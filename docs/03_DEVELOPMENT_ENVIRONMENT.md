@@ -1,232 +1,159 @@
-# 開発環境方針メモ
+# 開発環境の役割
 
-Gapless Agent Runtime の開発環境は、**制御・操作をできるだけ WSL2 に集約し、Windows ネイティブは原則使わなくても成り立つ状態**を目指します。
+GARは、すべてを一台へ詰め込まず、環境の役割を固定して同じ`gar`操作面から利用する。
 
-目的は、開発スクリプトをシンプルに保ちつつ、ビルド負荷を作業 PC だけに抱え込ませないことです。そのため、開発者向けの操作は Linux（WSL2 / Codespaces）を正規経路とし、Windows 固有の手順は段階的に減らしていきます。
+| 環境 | 役割 | 置かないもの |
+|---|---|---|
+| VS Code + WSL2 | control plane、local build、artifact store、deploy起点 | 恒久的な実機設定の直書き |
+| GitHub Codespaces | 再現可能なcloud build | physical deviceアクセス、runtime secret |
+| Simulation host | 配布済みapplicationと仮想deviceの実行 | 場当たり的なcompile／source修正 |
+| Physical Target | 配布済みapplicationとreal deviceの実行 | BuildEnvironment、simulation provider |
+| Windows host | VS Code UI、browser、usbipd、必要なlocal peripheral bridge | GAR domain logic |
 
----
+## WSL2をcontrol planeにする
 
-## 基本方針
+WSL2は次を所有する。
+
+- `gar` CLI
+- `.gar/config.json`
+- immutable artifact store
+- SSH config aliasを使ったremote接続
+- Codespacesとの接続
+- Simulation／Targetへのdeployと診断
+- system topologyのorchestration
+
+IP addressやprivate key pathをProduct sourceやartifactへ埋め込まず、SSH config Host名を
+machine-local設定として保存する。
+
+## BuildEnvironment
+
+BuildEnvironmentはProduct hookを実行し、GAR artifact contractへ変換する。
 
 ```text
-標準開発・制御環境: WSL2 Ubuntu（ここから gar で全てを動かす）
-クラウド開発環境: GitHub Codespaces + devcontainer
-Windows ネイティブ: 原則不要。USB 経路など残存依存のみ、減らしていく対象
-公式判定: GitHub Actions / CI
+Product source + fixed gar-tools
+  → product-*-build.sh
+  → staging artifact.json
+  → WSL LocalArtifactStore.capture()
 ```
 
-ビルド、テスト、ARM バイナリ生成、デプロイ、EC2 / 実機制御といった開発者向け操作は、すべて WSL2 上の `gar` コマンドから実行できることを目指します。
+### Local
 
-これにより、PowerShell / Bash 差分、パス表現、環境変数、Unix コマンド互換などを吸収するためだけのメンテナンスを増やさない方針とします。
+local toolchainで再現できるProductはWSL上でbuildする。Localであることは「手作業でcompileする」
+意味ではなく、Product hookを`LocalBuildEnvironment`が実行するという意味である。
 
-### sibling repo と workspace の扱い
+### GitHub Codespaces
 
-GAR は複数リポジトリで構成されるため、VS Code / AI agent の CWD や
-アクティブファイルが `gar-tools` や `gar-build-env` などを指していることがある。
-その場合でも、運用境界と環境役割の正本は `GaplessAgentRuntime` 側に置く。
-
-```text
-Yurufuwa/
-  GAR/
-    GaplessAgentRuntime/ # gar CLI、操作規約、アーキテクチャ正本
-    gar-tools/           # simulation/runtime tools
-    gar-build-env/       # Codespaces build hub
-    gar-adhoc-app/       # target app
-  GarAdhocApp/           # gar-build-envのGarAdhocApp product workspace
-    sources/
-      gar-adhoc-app/     # target app submodule
-      gar-tools/         # runtime tools submodule
-  GarVibeRemote/         # gar-build-envのVibe Remote product workspace
-    sources/
-      gar-vibe-ui/       # VS Code bridge / M5StickC app submodule
-      gar-tools/         # runtime tools submodule
-```
-
-AI agent は sibling repo で作業を始める場合でも、
-`GaplessAgentRuntime/AGENT.md`、`docs/02_ARCHITECTURE.md`、
-本ファイルを先に確認する。CWD や開いているファイルだけを根拠に、
-Codespaces / WSL / EC2 / 実機の役割を推測しない。
-
----
-
-## WSL2 の位置づけ
-
-WSL2 Ubuntu は、日常的な編集、ローカル確認、軽量なビルド作業の標準環境です。
-
-Microsoft が Windows 上に標準提供している Linux 実行環境を使うことで、Windows PC を前提にしながらも、開発ツールチェーンは Linux に寄せられます。
-
-主な役割:
-
-- 日常的なソース編集
-- Makefile / Bash 前提の開発コマンド実行
-- 軽量なビルドとローカル検証
-- Codespaces と近い実行環境での作業
-
----
-
-## Codespaces の位置づけ
-
-GitHub Codespaces は、作業 PC の計算資源を節約し、環境一致性を高めるためのクラウド開発環境です。
-
-特に、ARM ビルド、重いビルド、検証、外部 PC からの作業、AI エージェントによる自律作業に向いています。
-
-主な役割:
-
-- 重いビルドや ARM バイナリ生成の実行
-- 開発環境の再現性確保
-- 作業 PC の CPU / RAM 負荷の分離
-- VS Code / AI エージェントからの一貫した作業環境
-- EC2 Graviton や RasPi5 へのデプロイ起点
-
-Codespaces を使う場合、Remote-SSH で Codespace に入る必要はありません。通常は VS Code / GitHub Codespaces の接続機能、または `gh codespace ssh` を使います。
-
----
-
-## Codespaces の見える化と SSHFS
-
-Codespaces 上のファイルを WSL2 側の VS Code Explorer で確認したい場合は `sshfs` でマウントする（`gar code start` が自動設定）。
-
-- **用途**: ファイル配置の目視確認・軽い編集
-- **使わない場面**: 重い検索・ビルド・watch・dev server（Codespace 内で直接実行する）
-- **人間の視界**: WSL2 + sshfs + VS Code Explorer
-- **AI の実作業**: `gh codespace ssh` して Codespace ローカルで検索・ビルド
+大きいSDK、cross toolchain、devcontainerで固定した依存が必要なProductはCodespacesを利用する。
 
 ```bash
-gar code start   # マウント・SSH設定・terminal profile を一括設定
-gar code stop    # アンマウント・profile 削除
+gar code boot --workspace Local/Product
+gar code start --workspace Local/Product
+gar code status --workspace Local/Product
 ```
 
-Hardware Panel を WSL2/VS Code から見る場合:
+`gar code start`のsshfs mountは一時的な視界であり、sourceやartifactの正本ではない。
+build結果はGARが取得し、WSL側artifact storeへsnapshot化する。
+
+Codespaces上でsourceを直接編集する必要がある場合も、どのrepository／branchが正本かを先に確認する。
+
+## Simulation host
+
+Simulation hostはBuildEnvironmentではない。runtimeとapplicationを実行するだけである。
 
 ```bash
-gar sim runtime start   # EC2:8080 を WSL2:127.0.0.1 に転送（HTTP + WebSocket）
-gar sim runtime status
-gar sim runtime stop
+gar sim host start --workspace Local/Product
+gar sim runtime deploy --workspace Local/Product
+gar sim app deploy --workspace Local/Product
+gar sim runtime start --workspace Local/Product
+gar sim runtime diag --workspace Local/Product --json
 ```
 
----
+EC2 GravitonはLinux ARM64 referenceであるが、GARは`ssh_remote`というcapabilityとして扱う。
+個別instance名やIPへ依存しない。
 
-## devcontainer の位置づけ
+Local Docker、Wokwi、MuJoCoはlocal process／containerなので、EC2用port forwardやSSH hostへ
+fallbackしない。
 
-devcontainer は、Codespaces の環境定義として使います。
+## Physical Target
 
-このリポジトリには `.devcontainer/devcontainer.json` を置き、必要な OS、ツール、VS Code 拡張、初期セットアップをリポジトリ側で管理します。
-
-主なメリット:
-
-- Node / C / ARM toolchain などのバージョン差分を減らせる
-- Codespaces 起動時に必要ツールを自動セットアップできる
-- 新しい PC や外部環境でも同じ開発環境を再現しやすい
-- WSL2 側の環境設計とも揃えやすい
-
-devcontainer は「全員に必須の魔法の箱」ではなく、Linux 前提の開発環境を再現可能にするための設定ファイルとして扱います。
-
----
-
-## Windows ネイティブの位置づけ
-
-**制御・操作は WSL2 上の `gar` に集約済み**です。simulation VM 起動・停止（`gar sim host start` / `gar sim host stop`）も実機デプロイ（`gar target deploy`）も WSL2 から実行でき、Windows ネイティブは原則不要です。
-
-Raspberry Pi 5 / Raspberry Pi OS実機はSSH/scpを標準とし、`gar setup`でSSH configの
-Host名をworkspaceへ保存します。初回は`gar target prepare`でTarget所有のOS recipeを
-適用し、以後は`gar target deploy`が限定sudo installerを介してapplicationを更新します。
-USB-C/ADBが必要な別Targetでは、`usbipd-win`をWSL2から呼び出す`gar usb attach`も
-利用できます。
-
-### ESP32 / USB serial の build と flash
-
-M5StickC Plus2 Vibe Remote も、workspace の target 定義（`esp32_esptool`）に従って
-`gar target build` / `gar target deploy` の統一コマンドで扱う。build 側は選択した
-local/Codespaces環境でproduct workspaceの`product-target-build.sh`を実行し、deploy側は
-esptool flashに解決される。
+Physical TargetもBuildEnvironmentではない。Target固有toolchainはProduct hookとTarget Packが管理し、
+実機上での臨時compileを標準手順にしない。
 
 ```bash
-# product hookでPlatformIOビルドし、TARGET_APP snapshotを作成
-gar target build
-
-# 取得済み artifact を esptool で実機へ書き込み
-gar target deploy
+gar target prepare --workspace Local/Product
+gar target build --workspace Local/Product
+gar target preflight --workspace Local/Product --json
+gar target deploy --workspace Local/Product
+gar target diag --workspace Local/Product --json
 ```
 
-PlatformIO environmentやproject pathはproduct workspaceのhookと設定が管理する。
-GAR側ではserial portをworkspaceに保存し、WSL上では
-`COM3` を `/dev/ttyS3` に自動変換する。`esptool` が見つからない場合は
-`~/.local/share/gar/esptool-venv` に自動導入する。
+Raspberry Pi OSはSSH／systemd、RK3506 BuildrootはSSH／BusyBoxという違いがあるが、上位CLIは同じである。
+実処理はTarget Packのprovisioning／lifecycle recipeへ委譲する。
 
-`/dev/ttyS3` が `root:dialout` で permission denied になる場合:
+## Windowsの役割
 
-```bash
-sudo usermod -aG dialout $USER
-```
+Windows nativeは、次のhost capabilityが必要なときだけ使う。
 
-その後、WSL を再起動するかログアウト/ログインして group 変更を反映する。
+- VS Code integrated terminal
+- Edge等のbrowser
+- `usbipd-win`によるUSB device共有
+- COM portやBluetooth等、WSLから直接扱いにくいlocal peripheral
+- Windows側でしか利用できないvendor tool
 
-権限は通ったが `Could not configure port: (5, 'Input/output error')` になる場合は、
-WSL の `/dev/ttyS3` COM ブリッジでは USB シリアルの制御が足りていない可能性がある。
-Windows 側の serial monitor を閉じても変わらない場合は、WSL から `gar usb` 経由で
-CH9102 を WSL へ attach し、`/dev/ttyACM0` または `/dev/ttyUSB0` として書き込む。
+Windows PowerShell helperへGAR workflowを重複実装しない。Windows固有操作は薄いadapterにし、
+状態と結果をWSLのGARへ返す。
+
+## USBとserial
+
+Windowsに接続されたUSB deviceをWSL Target backendから使う場合:
 
 ```bash
 gar usb list
-gar usb bind --match CH9102
-gar usb attach --match CH9102
+gar usb attach --busid <busid>
+gar usb status
 ```
 
-`bind` は Host OS 側の管理者権限を要求することがある。その場合だけ Host OS 上で
-コマンドプロンプトまたは PowerShell を管理者権限で開き、`gar` ではなく `usbipd` を直接実行する。
-`--busid` の値は `gar usb bind --match CH9102` のエラー文に表示される。
+ESP32等のserial portはworkspace設定へ保存する。Windowsの`COM3`とLinuxの`/dev/tty*`を
+Product codeへ埋め込まず、選択backendが解決する。
 
-```powershell
-usbipd bind --busid <busid>
+Full-image flashでは、USB attachとTargetのrecovery／boot modeは別の状態である。GARは
+transport、protocol、対象storage、verifyを区別し、単に「USB-C接続」と表現しない。
+
+## 認証と人間入力
+
+次はbackground processで無理に処理しない。
+
+- cloud login
+- sudo password
+- GitHub device authentication
+- host keyの初回確認
+- secret／runner／protected environment登録
+- image flash等の不可逆操作
+
+必要な場合、Agent Terminal Bridgeで人間が見えるterminalへ渡し、完了後に元の`gar` commandを再実行する。
+
+## Product workspaceの置き方
+
+Product workspaceはGAR repositoryの外に置き、`sources/`で実装revisionを固定する。
+
+```text
+Yurufuwa/
+├─ GAR/GaplessAgentRuntime/
+├─ GAR/gar-tools/
+└─ ProductWorkspace/
+   ├─ scripts/
+   ├─ hardware/
+   ├─ scenarios/
+   └─ sources/
 ```
 
-すでに share 済みなら `attach` は WSL から完結する。
+詳細は[リポジトリ配置](08_REPOSITORY_LAYOUT.md)を参照する。
 
-```bash
-ls -l /dev/ttyACM* /dev/ttyUSB*
-gar target deploy
-```
+## 判断基準
 
-### 当面の Windows 入口（減らす対象）
-
-次は依然として Windows から実行されることがありますが、いずれも「必須」ではなく「まだ残っている入口」です。
-
-- VS Code / Antigravity からの接続（ホスト側 UI として）
-- USB パススルー未設定環境での adb
-- ブラウザや Simple Browser での確認
-
-開発スクリプト全体を Windows ネイティブで完全対応させることはしません。`rm`, `cp`, `export`, `/tmp`, Bash 構文、パス区切り、改行コードなどの差分を吸収するためにスクリプトとドキュメントが複雑化するためで、そのコストはプロダクト本体や検証環境の整備に回します。
-
-
----
-
-## 役割分担
-
-| 環境 | 役割 | 優先度 |
-|---|---|---|
-| WSL2 Ubuntu | 日常開発、軽量ビルド、Linux 前提スクリプト実行 | 標準 |
-| GitHub Codespaces | 重いビルド、環境再現、AI エージェント作業、外部 PC からの作業 | 標準オプション |
-| devcontainer | Codespaces の環境定義、再現性の確保 | 維持 |
-| Windows ネイティブ | 管理操作、接続、実機連携、軽い確認 | 補助 |
-| GitHub Actions / CI | 正式なビルド・テスト・デプロイ判定 | 公式 |
-
----
-
-## 運用ルール
-
-- 開発・ビルド・検証コマンドは Linux 環境で動くことを優先する。
-- Windows ネイティブ対応のためだけに npm scripts / Makefile を過度に分岐させない。
-- Codespaces と WSL2 で同じ手順に近づける。
-- devcontainer は必要最小限から始め、実際に必要になったツールだけ追加する。
-- 秘密情報はリポジトリに置かず、GitHub Codespaces secrets / GitHub Actions secrets / ローカル環境変数で扱う。
-- 最終的な正規判定は CI に置く。
-
----
-
-## 判断メモ
-
-この方針は、Windows を無視するためのものではありません。
-
-エンタープライズ向けであるほど、作業 PC、クラウド開発環境、CI、実機検証環境の役割を分ける価値があります。
-
-Gapless Agent Runtime では、Windows を操作の入口として活かしながら、開発・ビルドの複雑さは WSL2 / Codespaces 側に寄せます。これにより、開発スクリプトをシンプルに保ち、ビルド負荷のスケール先を確保し、AI エージェントが再現しやすい環境を提供します。
+- build dependencyの再現性がProductに必要ならCodespaces／devcontainerへ置く。
+- 実行中のdeviceやnetwork状態はSimulation／Targetへ置く。
+- machine-local接続情報は`.gar/config.json`とSSH configへ置く。
+- Product behaviorと配線はProductへ置く。
+- Board／OS／toolchain／provisioningはTarget Packへ置く。
+- 同じ手操作を繰り返したら、適切なGAR commandまたはrecipeへ収容する。

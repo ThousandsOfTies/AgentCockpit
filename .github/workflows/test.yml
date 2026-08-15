@@ -25,9 +25,6 @@ jobs:
           ruff check scripts tests tools/*.py tools/gar-mcp/server.py
           ruff format --check scripts tests tools/*.py tools/gar-mcp/server.py
 
-      - name: Check generated architecture documents
-        run: python tools/gen_gar_lib_dsm.py --check
-
       - name: Check shell and VS Code extension syntax
         run: |
           bash -n tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh

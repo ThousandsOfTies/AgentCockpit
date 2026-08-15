@@ -1,397 +1,179 @@
 # Gapless Agent Runtime — Agent Instructions
 
-## プロジェクト概要
+この文書は、GAR repositoryで作業するAIエージェント向けの運用正本である。
+利用手順は`docs/`、背景と将来方針は`info/`を参照し、このファイルへ重複させない。
 
-→ 詳細は [README.md](README.md) を参照。
+## 最初に確認すること
 
-## AI オペレーションの原則（契約）
+1. `git status --short --branch`で既存差分を確認する。
+2. 対象がGAR core、gar-tools、Product parent、Product sourceのどれかを確認する。
+3. `.gar/config.json`のworkspace、Target、environmentを確認する。
+4. 実機操作ならSSH config aliasと対象Boardを読み取り専用で確認する。
+5. repository内外の`AGENTS.md`と環境固有指示を読む。
 
-**AI（Codex / Copilot 等）も、原則として `gar` のサブコマンド経由で操作する。**
-これは人間が実施する操作と AI の操作を同じ「正解レール」に乗せ、品質と再現性を保つための契約。
+既存差分はユーザーまたは別作業の所有物である。未確認の`pull`、`reset`、`checkout --`、`clean`、
+一括stageを行わない。変更は担当fileへ限定する。
 
-> **rtk を使う**: `run_in_terminal` で長い出力が予想されるコマンドには `rtk` を付けてトークンを節約する。
-> 例: `rtk git status` / `rtk git log` / `rtk grep` / `rtk python3 -m pytest`
+この環境でRTK指示が有効な場合、shell commandは`rtk`をprefixする。
 
-### Workspace / sibling repo 注意
+## Repository境界
 
-GAR 関連作業では、VS Code のアクティブファイルや CWD が
-`gar-tools` / `gar-build-env` / `gar-adhoc-app` などの兄弟リポジトリを
-指していても、本ファイルと `docs/02_ARCHITECTURE.md` /
-`docs/03_DEVELOPMENT_ENVIRONMENT.md` を運用正本として先に読むこと。
-
-`/home/user/Yurufuwa/GAR` 配下の代表的な sibling repo:
-
-- `GaplessAgentRuntime/`: 操作規約・アーキテクチャ正本
-- `gar-tools/`: CUSE stubs、ESP32/M5Stack firmware runner、Renode/QEMU足場
-- `gar-build-env/`: Codespaces/devcontainer build hub
-- `gar-adhoc-app/`: ARM64 target app
-
-AI は CWD やエディタのアクティブファイルだけから運用境界を推測しない。
-GAR 系 sibling repo に入ったら、まず本リポジトリの規約へ戻って環境の役割
-（WSL=control plane、Codespaces=build、EC2/RasPi5=execution）を確認する。
-
-### GAR を「使う作業」と GAR 自体の修正を混ぜない
-
-GAR は **開発環境・操作面・検証足場** であり、完成させたいシステムそのものの
-実行環境ではない。GAR のコマンドに実行時コンポーネントのプロセス管理を安易に
-取り込まないこと。
-
-この区別が必要になった背景:
-
-- M5StickC Plus2 / Vibe Remote の検証中、Local Bridge を安定起動したくなり、
-  一度 `gar vibe-remote bridge start/status/stop` のような案を実装しかけた。
-- しかし Local Bridge は、Vibe Remote extension と Host OS 上の bridge が構成する
-  **Vibe Remote 実行時コンポーネント**であり、GAR の責務ではない。
-- GAR から実行時コンポーネントを管理し始めると、GAR が開発支援ツールではなく
-  アプリ本体の process manager になってしまい、責務境界が崩れる。
-
-判断基準:
-
-| 作業 | 所在 |
+| 変更内容 | 置き場所 |
 |---|---|
-| Codespaces でビルドする、artifact を取得する、flash する、usbipd attach を支援する | GAR に置いてよい |
-| シミュレーション対象を操作する、仮想デバイスを押す、診断ログを取る | GAR に置いてよい |
-| VS Code extension の UI/command、Local Bridge の開始・停止・状態表示、mDNS/LAN proxy の実行管理 | Vibe Remote 側に置く |
-| M5 firmware のアプリ挙動、ボタン割り当て、画面表示、WebSocket protocol | Vibe Remote / m5stickc-client 側に置く |
+| CLI、artifact、system、diagnostic、environment composition | GaplessAgentRuntime |
+| Board／OS／toolchain／provisioning／simulation provider | gar-tools |
+| Product build環境 | gar-build-envまたはProduct workspace |
+| Application、protocol、UI、menu、Peripheral利用 | Product source |
+| Product requirements、配線、Target binding、Golden scenario | Product workspace／Product repository |
 
-次のエージェントへの注意:
+Target PackへProduct名、TX／RX、menu、ILI9341のProduct用途、KY-040の操作意味、Product固有serviceを
+追加しない。Target Packは汎用capabilityまで、Productとの割り当てはBindingで行う。
 
-- 「GAR を使って開発を進める」ことと「GAR 自身を拡張する」ことを分けて考える。
-- GAR に機能を足す前に、それが **開発支援/仮想操作/成果物搬送** なのか、
-  **対象システムの実行時機能** なのかを確認する。
-- 対象システムの実行時機能なら、まず対象リポジトリ側
-  （例: `GarVibeRemote/sources/gar-vibe-ui/vibe-remote` の VS Code extension / npm scripts / firmware）へ置く。
-- GAR 側には、必要なら「その対象リポジトリの開発手順を呼び出す薄い入口」や
-  「artifact/flash/diagnostic」だけを置く。
-- 迷った場合は、ユーザーに「これは GAR の開発環境機能として残すべきか、
-  対象システム側の実行時機能として移すべきか」を確認する。
+## GARを使う作業とGARを修正する作業
 
-この契約には三つの目的がある。
+Productのbuild／deploy／診断は既存`gar` commandを使う。手作業でremote hostへfileを置いたり、
+serviceを直接編集したりしない。
 
-1. **人間への透明性** — `gar` のサブコマンド体系を見れば、Gapless Agent Runtime が何をできるかが一覧できる。AI が何をしているかを人間が常に把握できる状態を保つ。
-2. **AI の操作ブレを減らす** — 都度の判断で異なるコマンドを選ぶ揺らぎをなくし、同じ意図が常に同じ操作に対応するようにする。
-3. **シームレスな引き継ぎ** — AI が行き詰まったとき、人間が同じ `gar` コマンドで違和感なく続きを引き取れる。AI と人間の操作面を統一することで、セッションが途切れても文脈が失われない。
+GAR自体に不足があるときは、最初の事実確認に必要な読み取り専用操作を行い、その後はCLI、
+Target recipe、diagnosticへ再利用可能な形で実装する。同じ生操作を二度必要としない設計を目指す。
 
-### AI と人間の役割分担
+GAR coreを変更したらrepository rootで`make check`を実行する。
 
-| 役割 | 人間 | AI エージェント |
-|---|---|---|
-| **操作** | AI への指示、結果の確認・判断 | ビルド・デプロイ・H/W 操作・ログ収集・診断・結果整理 |
-| **観察** | Web Panel で LED / ボタン / RFID / OLED を見る | `gar sim io ...` と `gar sim runtime diag --json` で操作・観察 |
-| **ログ** | SSH でログを見る | `gar sim runtime log` / `gar sim runtime diag --json` で観察 |
+## 環境の役割
 
-### Agent 体験の磨き込み方針
-
-Gapless Agent Runtime の主戦場は **VSCode Agent モード**。独自プロトコルを増やすのではなく、**`gar` CLI を Agent から叩きやすい形に磨く**ことを差別化の軸とする。
-
-MCP server (`tools/gar-mcp`) は VSCode 以外の Agent（Claude Desktop / Cursor 等）向けの補助的な互換口として最小限維持し、機能の主役にはしない。
-
-### Simulation Bridge の契約（environment 追加時は必読）
-
-**Bridge は simulation 共通の control plane である。** Linux CUSE / gpio-sim の専用機能、あるいは Web UI の飾りとして扱ってはならない。
-
-* 人間向け疑似操作パネル、AI agent、CI scenario は、同じ Bridge の JSON command/state 契約を使うクライアントである。
-* simulator environment ごとの物理実装・SDK・標準 viewer は Bridge の背後にある adapter として扱う。
-* 新しい environment を追加するとき、標準 viewer や environment 固有 UI だけで完結させない。Bridge を起動するか、その操作 API を JSON command/state に変換する adapter を実装する。
-* `build / start / stop / status / log` は lifecycle、`command / state / scenario` は Bridge の責務として分けて考える。GPIO、RFID、レンジセンサなどは Linux environment が Bridge の背後で実現する具体的な仮想デバイスであり、Bridge 自体の代替ではない。
-* Wokwi の environment 固有 scenario は移行中の例外である。新しい environment の設計根拠にせず、共通 JSON scenario への統一を前提にする。
-
-MuJoCo を例にすると、Bridge が HTTP/JSON を受けて MuJoCo Python SDK の `data.ctrl` と `mj_step()` を呼び、標準 viewer はその物理状態を人間が観察・外乱操作するために並走する。
-
-### Vibe Remote MCP を使う応答待ち
-
-Vibe Remote MCP が利用可能なセッションでは、人間の判断待ちをチャット本文だけに閉じ込めず、
-M5StickC / Wokwi M5 の小型UIにも出す。
-
-標準の操作モデル:
-
-| ボタン | 意味 |
+| 環境 | 役割 |
 |---|---|
-| A | 選択 / 決定 |
-| B | メニュー次項目へ |
-| P | 戻る / キャンセル |
+| WSL | control plane、Local BuildEnvironment、artifact store、deploy起点 |
+| Codespaces | reproducible BuildEnvironment |
+| EC2／Docker | Simulation runtimeの実行 |
+| Physical Target | 配布済みapplicationとreal deviceの実行 |
+| Windows | VS Code、browser、usbipd、local peripheral bridge |
 
-AI が人間判断を待つ場合:
+EC2やPhysical Targetで場当たり的にcompileしない。buildはsetupで選択したLocal／Codespaces
+BuildEnvironmentとProduct hookで行う。
 
-1. `vibe_remote_request_decision` か `vibe_remote_show_ui` を呼び、`mode: "menu"` のUIを出す。
-2. チャットにも同じ質問を短く書く。
-3. `vibe_remote_get_action` を呼び、M5/Wokwiからの選択を回収する。
-4. デバイス入力とチャット入力の両方が来た場合は、最新の明示入力を優先し、必要なら一言確認する。
-5. 完了時は `vibe_remote_clear_ui` と `vibe_remote_set_status` / `vibe_remote_clear_status` で表示を片付ける。
+## 標準操作
 
-Vibe Remote MCP がツール一覧に無いセッションでは、通常のチャット確認にフォールバックする。
-
-| 改善項目 | 内容 |
-|---|---|
-| `--json` 出力モード | `gar sim runtime diag --json` 実装済み。他コマンドへも順次展開 |
-| 構造化ログ + 末尾 summary | diag 系の最後に "OK / FAIL: 理由" の 1 行 summary を出し、AI が 1 ターンで判断できるようにする |
-| `.vscode/tasks.json` テンプレート | `gar setup` で代表タスクを仕込み、AI の `run_task` から呼べるようにする |
-| `gar terminal run` の活用 | 長時間実行やインタラクティブ操作は可視 terminal に出して人間が割り込めるようにする |
-
-
-
-- **生コマンド連打を避ける** — 生 `ssh` / 生 `aws` / 生シェルを直接叩くと、筋の悪い解（例: GPIO を CUSE 単独で解こうとする）に逃げやすい。まず `gar` のサブコマンドで表現できないか探す。
-- **`gar` に無い操作は「生で叩く」のではなく「`gar` に足す」** — 不足を見つけたら、その場で生コマンドに逃げず、`gar` のサブコマンド追加を TODO 化する。`gar` = 人の操作面 ＋ AI が参照する実コマンドのドキュメント。
-- **機械可読モードを使う** — AI が状態を判断するときは `--json` を付ける（例: `gar sim runtime diag --json`）。人間向けの整形出力をパースしない。
-- **exit code を必ず見る** — 0 = 成功、非0 = 失敗。出力の体裁だけ見て「できた」と報告しない。実機能（例: LED トグルがパネルに反映）が確認できるまで done としない。
-
-### Terminal 操作の原則
-
-AI は通常作業を裏で実行し、結果を自分で確認する。
-VSCode integrated terminal は、sudo password・GitHub 認証・クラウド認証・デバイス pairing など、**人間の入力が必要な時だけ**使う。
-
-**裏で実行する（terminal 不要）:**
-- `which gh` / `aws --version` / `adb version` などのバージョン確認
-- `gar setup --no-install`
-- build / test / lint
-- log file・`.gar/config.json`・status file の確認
-
-**visible terminal に handoff する:**
-- `sudo` が必要な install / setup
-- `gh auth login` / `aws configure sso` などの cloud login
-- device code / browser auth / pairing
-
-handoff 時、AI は password や token を要求しない。「どの terminal で何を入力すべきか」だけを伝える。
-
-AI が送ってはいけない入力: sudo password / GitHub・cloud auth token / device code / private key・passphrase
-
-**Terminal Bridge の位置づけ**: 通常の command runner ではなく人間入力の受け皿。AI は terminal buffer を読もうとせず、裏で状態確認コマンドを実行して復帰する。
-
-### `gar setup` の進め方
-
-1. 裏で `gar setup --no-install` を実行して不足項目を確認する。
-2. 依存コマンドがすべてある項目はそのまま完了として扱う。
-3. 不足があり sudo/auth 不要なら、AI が裏で解決できるか試す。
-4. sudo/auth が必要なら `.gar/terminal-requests/*.json` を作り、ユーザーに integrated terminal で入力してもらう。
-5. `which ...` や `gar setup --no-install` を裏で再実行し、次の不足項目へ進む。
-
-### handoff 後の復帰手順
-
-何が起きたかわからない場合、terminal buffer を読もうとせず以下を確認する:
+### Setup
 
 ```bash
-gar setup --no-install
-which gh && gh --version
-which aws && aws --version
-which adb && adb version
-find .gar -maxdepth 3 -type f | sort
+gar setup
 ```
 
-## 接続設定の確認
+workspace編集後は、対象workspaceのTarget、BuildEnvironment、SimulationEnvironment、
+TargetEnvironment、SSH Host／serial設定が保持されたことを確認する。
 
-各環境の接続先は `.gar/config.json` に保存される（`gar setup` で設定）。現在の設定値は `gar setup` または `cat .gar/config.json` で確認すること。
-
-- **SSH 設定**: `gar sim host start` / `gar sim infra apply` が `~/.ssh/config` の HostName を更新する
-- **Codespaces 名**: `gh codespace list` で確認
-- **RasPi5 / Raspberry Pi OS**: 標準はSSH/scp。`gar setup`で保存先を確認し、`ssh <host> true`で疎通を確認。ADBは選択Targetが明示的に採用する場合だけ使う
-
----
-
-## 環境の役割と境界（鉄則）
-
-各環境には固定の役割がある。**SSH で入れること＝そこで何をしてもよい、ではない。**
-特に EC2 は「たまたま今は Linux でログインできる」だけで、本来は **実機のスタンドイン（将来はもっとプア／シェルやログインすら無い実行専用デバイスを想定）**。
-能力があることを許可と取り違えないこと。
-
-| 環境 | 役割 | やってよい | **やってはいけない** |
-|---|---|---|---|
-| **Codespaces** | remote BuildEnvironment | cross-compile、成果物生成 | 実行targetとしての運用 |
-| **WSL** | control plane / local BuildEnvironment | `gar` 発信、成果物中継、deploy、setupでlocalを選んだproduct hook | EC2/RasPi5上の場当たり的なビルド |
-| **EC2 / RasPi5** | 実行（ターゲット） | 配布済みapplicationの起動、Target recipeによるOS準備 | **手作業のツールチェーン導入・`make`・コンパイル・場当たり的なsystem設定** |
-
-- **ビルドはsetupで選択したBuildEnvironment（local / Codespaces）で行う**。EC2/RasPi5上で
-  `make` / `gcc` / `apt install build-*` 等を手作業で実行しない。実行時package、service
-  account、boot統合は`gar target prepare`が選択TargetのOS recipeから冪等に導入する。
-- ARM 向け成果物の標準経路は **Codespacesでcross-build → WSL artifact store → EC2/実機へdeploy**。
-- EC2 にビルド環境を生やそうとしている自分に気づいたら、それは役割違反。手を止めて `gar setup` で選んだ local / Codespaces の `BuildEnvironment` に戻す。
-
----
-
-## デプロイ手順
-
-### 「VM（シミュレーション環境）にデプロイして」と言われたら
-
-**target app を VM に転送する（実行テスト用）:**
+### Simulation
 
 ```bash
-gar sim app build
-gar sim app deploy
+gar sim runtime build --workspace Local/Product
+gar sim runtime deploy --workspace Local/Product
+gar sim app build --workspace Local/Product
+gar sim app deploy --workspace Local/Product
+gar sim runtime start --workspace Local/Product
+gar sim runtime diag --workspace Local/Product --json
 ```
 
-経路: 選択したBuildEnvironmentでビルド → WSL artifact store → VMへ転送
-（`artifact.json` の `deploy.app` セクション）
+人間向けPanelの目視だけで完了にしない。可能ならBridge API、metrics、scenario、logで機械的に確認する。
 
-**VM の仮想 H/W 環境（CUSE stubs, web-bridge）を更新する:**
-
-```bash
-gar sim runtime build
-gar sim runtime deploy
-```
-
-（`artifact.json` の `deploy.sim_env` セクション）
-
-> `artifact.json` の例:
-> ```json
-> {
->   "deploy": {
->     "app":     { "files": [{ "src": "sensor_demo", "dest": "~/sensor_demo", "mode": "755" }] },
->     "sim_env": { "files": [{ "src": "cuse_i2c",    "dest": "~/cuse_i2c",    "mode": "755" }] }
->   }
-> }
-> ```
-
-### 「実機にデプロイして」と言われたら
-
-1. 選択Targetにprovisioning recipeがある場合、初回またはrecipe更新時に準備:
-   ```bash
-   gar target prepare
-   ```
-   sudo passwordが必要ならvisible terminalへhandoffし、password自体は要求しない。
-2. 選択したBuildEnvironmentでビルドし、artifactをWSL側へ用意:
-   ```bash
-   gar target build
-   ```
-3. WSL hub から実機へ転送:
-   ```bash
-   gar target deploy
-   ```
-   経路: local/Codespaces build → WSL artifact store → adb/scp/esptool → 実機
-
-Raspberry Pi OS/systemd Targetではproduct artifactを
-`/opt/gar/apps/<app>/run`へ配置する。product側からroot管理のservice unitを配布せず、
-Target recipeの`gar-app@.service`を共有する。`/etc/gar/<app>.env`は永続設定であり、
-通常deployで上書き・削除しない。実機へsimulation stubやWeb Panelを配置しない。
-
----
-
-## 実行手順
-
-### VM でシミュレーション起動
-
-bridge / CUSE スタブ（I2C・SPI）/ gpio-sim は systemd unit で管理されており、`gar sim runtime start` で一括起動する。
+### Physical Target
 
 ```bash
-# WSL から: runtime サービス起動 + port forward 開始
-gar sim runtime start
-
-# EC2 に SSH してアプリ本体を起動
-ssh my-sim-host
-~/sensor_demo
-```
-
-Hardware Panel の確認: VSCode の PORTS タブで 8080 のリンクをクリックすると Simple Browser 内に表示される。
-
-### AI/CLI から VM シミュレーションを操作
-
-`gar sim` の接続先host は `gar setup` で `.gar/config.json` に保存する。
-
-```bash
-gar sim runtime start
-gar sim io press --device button --button 17
-gar sim io set --device rfid --uid 04:AB:CD:EF:01:23
-gar sim io set --device range --value 300
-gar sim runtime diag --json
-gar sim runtime status
-gar sim runtime log
-gar sim runtime diag --json
-gar sim runtime stop
-```
-
-詳細: [docs/06_SIMULATION.md](docs/06_SIMULATION.md)
-
-### RasPi5 で実機実行
-
-Raspberry Pi 5 / Raspberry Pi OSはSSH/scpとsystemd recipeを標準とする。`gar setup`で
-Targetに`raspberry-pi-5`、実機環境に`ssh_scp`、接続先にSSH configのHost名を保存する。
-applicationはboot時に共通serviceから起動する。
-
-```bash
-gar target prepare --workspace Local/Product  # 初回・recipe更新時
+gar target prepare --workspace Local/Product
 gar target build --workspace Local/Product
+gar target preflight --workspace Local/Product --json
 gar target deploy --workspace Local/Product
-ssh raspi5 'systemctl status gar-app@APP.service --no-pager'
+gar target diag --workspace Local/Product --json
 ```
 
-上の`APP`はproductのapp名（例: `gar-stream-tx`）へ置き換える。
-serviceが起動しない場合はjournalとproduct READMEを確認する。envは任意であり、
-必要なproductだけ同梱exampleから`/etc/gar/APP.env`を作る。偽の接続先を推測して
-設定しない。
+- `prepare`は初回またはrecipe更新時。
+- `preflight`は転送前のread-only compatibility検証。
+- `deploy`は最新TARGET_APP snapshotだけを使い、buildを暗黙実行しない。
+- `diag`でexpected／running build ID、status、healthを確認する。
+- 永続envは`gar target configure --app ... --file ...`で明示し、通常deployへ混ぜない。
 
----
+実機deploy、flash、再起動、電源操作は、ユーザーが対象と操作を依頼した範囲だけで行う。
+対象aliasやBoardが曖昧なら書き込み前に停止する。
 
-## Simulation 環境の起動・停止
+### Hardware contract
 
 ```bash
-gar sim host start     # 起動 + SSH config 自動更新（--pull で git pull も実行）
-gar sim host stop      # 停止
-gar sim host status    # 状態確認
+gar hw validate --workspace Local/Product --json
 ```
 
----
+offline validationと実Target probeを混同しない。前者はrequirements／capabilities／binding、
+後者は実device、driver、kernel、配線、電源を確認する。
 
-## ビルド成果物
+### Multi-node system
 
-| ファイル | 用途 |
+```bash
+gar system build --file /path/to/gar-system.json --json
+gar system deploy --file /path/to/gar-system.json --json
+gar system start --file /path/to/gar-system.json --json
+gar system test --file /path/to/gar-system.json --scenario /path/to/scenario.json --json
+```
+
+Product protocolをGARへ移さない。GARはnode lifecycle、link由来environment、metrics、assertion、
+cleanupを担当し、PnPやmedia protocolはProductが所有する。
+
+## Artifactの扱い
+
+- `SIM_APP`、`SIM_RUNTIME`、`TARGET_APP`を区別する。
+- build後のsnapshotを変更しない。
+- source commit、gar-tools commit、recipe、architecture、ABI、libc、checksumを保持する。
+- dirty source／tools、legacy metadata、checksum不一致、Target identity driftを無視しない。
+- deploy完了はfile転送ではなく、healthとrunning build ID一致まで確認する。
+
+## Terminal操作
+
+通常の非対話commandはbackgroundで実行する。次の場合だけ、Agent Terminal Bridgeで
+VS Code integrated terminalへ渡す。
+
+- sudo password
+- AWS／GitHub等のlogin
+- host keyの初回確認
+- 人間が入力すべき秘密情報
+- vendor toolのGUI／対話操作
+
+```bash
+gar terminal run \
+  --title "Gapless Agent Runtime" \
+  --command "command requiring user input"
+```
+
+認証code、password、private keyをchatやlogへ出さない。人間が完了したら元のGAR commandを再実行し、
+成功を機械可読結果で確認する。
+
+## 安全境界
+
+- image flash、disk書き込み、Terraform destroy、instance削除は対象をprobeし、依頼範囲を確認する。
+- repository root、home directory、未解決variableをrecursive削除対象にしない。
+- USB BUSID、serial port、block deviceを推測して書き込まない。
+- Physical Targetへsimulation dummy deviceやPanelをinstallしない。
+- application deployでSSH鍵、host key、`/etc/gar/<app>.env`を上書きしない。
+- secret、private IP、identity pathを公開artifactやCI reportへ記録しない。
+
+## 完了条件
+
+作業種別に応じて、次を満たす。
+
+| 作業 | 最低限の確認 |
 |---|---|
-| `../../GarAdhocApp/sources/gar-adhoc-app/app/sensor_demo` | 統合デモアプリ（GPIO + I2C OLED + SPI RFID） |
-| `gar-tools/targets/linux-device/runtime/spi-stub/cuse_spi` | SPI CUSE スタブ（MFRC-522 sim、EC2 用） |
-| `gar-tools/targets/linux-device/runtime/i2c-stub/cuse_i2c` | I2C CUSE スタブ（VL53L0X + SSD1306、EC2 用） |
-| `gar-tools/targets/linux-device/runtime/test/gpio_led_button` | GPIO 単機能デモ |
-| `gar-tools/targets/linux-device/runtime/test/vl53l0x_read` | VL53L0X 距離センサーテスト |
-| `gar-tools/targets/linux-device/runtime/web-bridge/` | Web ブリッジ + HTML パネル |
+| GAR core変更 | focused test + `make check` + `git diff --check` |
+| gar-tools変更 | Target／runtime test + manifest／recipe validation |
+| Product変更 | unit test + artifact build +該当environmentでのbehavior確認 |
+| Simulation deploy | `diag --json`、metrics／scenario、running build |
+| Physical deploy | `preflight --json`、`diag --json`、実device behavior |
+| 文書変更 | 実CLI／sourceとの照合、local link、重複と古い参照の確認 |
 
----
+未実装adapterのexpected error、CIの`skipped`、file転送成功だけを完了と報告しない。
 
-## 既知の制約・トラブルシューティング
+## 正本文書
 
-### Antigravity-IDE (Windows) からの FUSE マウントへのアクセス制限 (EPERM)
-Antigravity-IDE は Windows ネイティブなアプリケーションであり、WSL 内のファイルには Windows のファイル共有（9Pプロトコル経由: `\\wsl.localhost\...`）でアクセスします。
-WSL 内で `sshfs` 等の FUSE でマウントしたディレクトリ（例: `gar code start` でマウントした `codespaces/`）に対して、Windows 側からアクセスしようとすると、FUSE のセキュリティ機構（「マウントしたユーザー自身しかアクセスできない」という制限）に弾かれ、**EPERM (Permission denied)** エラーが発生します。
-
-**【回避策】**
-1. **VSCode を Remote-WSL で使う（推奨）**
-   VSCode の「Remote - WSL」拡張機能を使って開く（`code .`）と、プロセスが Linux 側で動くため、権限エラーは発生せず正常に読み書きできます。（※このエラーが出るのは、VSCode を Windows パス `\\wsl.localhost\...` で直接開いているか、Antigravity-IDE 自身がアクセスしようとした時のみです）
-2. **`allow_other` を使う**
-   どうしても Windows 側（Antigravity-IDE 等）から監視させたい場合は、Linux 側の `/etc/fuse.conf` で `user_allow_other` を有効化し、`sshfs` に `-o allow_other` オプションを渡す必要があります。
-
----
-
-## オプション: rtk（トークン削減プロキシ）
-
-[rtk](https://github.com/rtk-ai/rtk) は LLM のトークン消費を 60-90% 削減する CLI プロキシ。
-`git status` や `cargo test` などのコマンド出力をフィルタ・圧縮してから LLM に渡す。
-**使わなくても動く。トークンやコストが気になる場合に入れる。**
-
-### 有効にする手順（WSL2 で一度だけ）
-
-```bash
-# インストール
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"  # 未追加なら ~/.bashrc にも追記
-
-# GitHub Copilot (VS Code) 向けにフックを設定
-rtk init -g --copilot
-# → VS Code を再起動するとフックが有効になる
-
-# Codex (OpenAI) 向け（AGENTS.md + RTK.md へのインストラクション注入）
-rtk init -g --codex
-# → フックではなく指示ベース。Codex が rtk コマンドを使うよう促される
-```
-
-### 確認
-
-```bash
-rtk --version   # バージョン表示
-rtk gain        # トークン削減量の統計
-```
-
-### 無効にする
-
-```bash
-rtk init -g --uninstall
-```
-
-> **Copilot (VS Code) での動作**: `git status` などの Bash ツール呼び出しが自動で `rtk git status` に書き換えられる。
-> `Read` / `Grep` など Copilot 組み込みツールはフックを経由しないため、明示的に `rtk read` / `rtk grep` と書いた場合のみ削減される。
->
-> **Codex での動作**: フックではなく `AGENTS.md` + `RTK.md` へのインストラクション注入。Codex が判断して rtk を使う形になるため、自動書き換えではない。
+- 操作: [コマンドリファレンス](docs/01_COMMAND_REFERENCE.md)
+- 設計: [アーキテクチャ](docs/02_ARCHITECTURE.md)
+- 環境: [開発環境](docs/03_DEVELOPMENT_ENVIRONMENT.md)
+- Simulation: [シミュレーション](docs/06_SIMULATION.md)
+- 現在地: [検証状態](docs/07_VERIFICATION.md)
+- 配置: [リポジトリ配置](docs/08_REPOSITORY_LAYOUT.md)
+- Target境界: [Target Pack戦略](info/06_TARGET_PACK_STRATEGY.md)
