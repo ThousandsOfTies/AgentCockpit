@@ -17,8 +17,8 @@
 | `gar setup --no-install` | 不足依存をインストールせず、導入案内を表示 |
 | `gar setup --ec2-host HOST` | simulation runtime用SSH host aliasを保存。`ssh_remote`選択時は設定必須 |
 | `gar setup --esp32-port PORT` | ESP32 esptool用serial portを保存 |
-| `gar hw init` | 選択中targetの`hardware/`から現在directoryの`hardware/`にCSVを生成（target未選択時は`linux-device`） |
-| `gar hw init --target TARGET --dir DIR [--force]` | target templateと出力先を明示し、必要なら既存CSVを上書き |
+| `gar hw init` | 現在のProduct directoryに、Product所有の空のhardware CSV schemaを生成 |
+| `gar hw init --dir DIR [--force]` | 出力先を明示し、必要なら既存CSVを上書き（`--target`は互換用でschemaには影響しない） |
 | `gar hw validate [--workspace NAME] [--requirements PATH] [--capabilities PATH] [--binding PATH] [--json]` | Product requirements、Target capabilities、Bindingを実機接続前に静的検証 |
 | `make port-forward EC2=HOST` | 明示したEC2 SSH hostへのHardware Panel port forwardを開始 |
 | `make port-forward-stop EC2=HOST` | 明示したEC2 SSH hostのport forwardを停止 |
@@ -131,6 +131,10 @@ process内のglobal状態として後続commandへ持ち越しません。
 `gar-tools/targets/<target>/hardware/capabilities.json`はBoard resourceとarchitecture/ABI/toolchain、
 init system、privilege modelを宣言します。`hardware/bindings/<target>.json`だけが論理要件をGPIO line、
 物理pin、SPI bus/CS、pinmuxへ割り当てます。既定pathはworkspaceの`selected_target`から解決されます。
+
+`hardware/*.csv`もProduct所有のruntime入力です。GARはworkspaceの`hardware/`（またはworkspace設定の
+`hardware.path`）から読み、simulation runtimeへ渡します。Target Pack内のCSVへfallbackしないため、
+別Productの部品・配線が暗黙に混入することはありません。
 
 `gar hw validate --workspace NAME --json`はSSHや実機への書込みを行わず、pin競合、bus/CS競合、
 device/driver不足、電圧、SPI上限/mode、video FPS、Product/Target driftをstdoutの単一JSONで返します。

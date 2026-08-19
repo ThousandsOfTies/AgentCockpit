@@ -6,7 +6,6 @@ from pathlib import Path
 
 from scripts.gar_lib.core.config import load_config, saved_workspaces
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.core.tools_repository import gar_tools_root
 from scripts.gar_lib.core.workspace import Workspace
 
 
@@ -21,7 +20,6 @@ def _string(value: object) -> str | None:
 def _hardware_dir(
     entry: dict,
     connection: dict,
-    selected_target: str | None,
 ) -> Path | None:
     """Resolve the local CSV source that belongs to this product workspace."""
 
@@ -45,16 +43,6 @@ def _hardware_dir(
         if product_hardware.is_dir():
             return product_hardware
 
-        if selected_target is not None:
-            product_target_hardware = local_root / "sources" / "gar-tools" / "targets" / selected_target / "hardware"
-            if product_target_hardware.is_dir():
-                return product_target_hardware
-
-    if selected_target is not None:
-        shared_target_hardware = gar_tools_root() / "targets" / selected_target / "hardware"
-        if shared_target_hardware.is_dir():
-            return shared_target_hardware
-
     return None
 
 
@@ -68,7 +56,7 @@ def _workspace_from_entry(entry: dict) -> Workspace:
         connection=connection,
         selected_environments=_mapping(entry.get("selected_environments", entry.get("selected_providers"))),
         selected_target=selected_target,
-        hardware_dir=_hardware_dir(entry, connection, selected_target),
+        hardware_dir=_hardware_dir(entry, connection),
         ec2=_mapping(entry.get("ec2")),
         docker=_mapping(entry.get("docker")),
         target=_mapping(entry.get("target")),

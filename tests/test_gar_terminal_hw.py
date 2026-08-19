@@ -13,13 +13,6 @@ from scripts.gar_lib.commands.terminal import run_terminal_run_command
 from scripts.gar_lib.core.hardware import HW_TEMPLATE_FILES, write_hw_template
 
 
-def _create_hardware_templates(tools_root: Path, target: str = "linux-device") -> None:
-    template_dir = tools_root / "targets" / target / "hardware"
-    template_dir.mkdir(parents=True)
-    for name, headers in HW_TEMPLATE_FILES.items():
-        (template_dir / name).write_text(",".join(headers) + "\n", encoding="utf-8")
-
-
 class GarTerminalHardwareTest(unittest.TestCase):
     def test_terminal_run_creates_vscode_terminal_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -154,48 +147,28 @@ class GarTerminalHardwareTest(unittest.TestCase):
             self.assertTrue(old.exists())
             self.assertIn("scan: 1 ファイル / 対象: 1", output.getvalue())
 
-    def test_hw_init_copies_gar_tools_csv_templates(self) -> None:
+    def test_hw_init_creates_target_independent_csv_schemas(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            tools_hw = root / "gar-tools" / "targets" / "linux-device" / "hardware"
-            tools_hw.mkdir(parents=True)
-            templates = {
-                "components.csv": "component_id,name,kind,part_number,description\nboard,Board,board,Test,Template row\n",
-                "gpio.csv": "name,chip,line,direction,role,active,initial,pull,sim_control,description\nbutton,/dev/gpiochip0,1,input,button,high,,pull-up,pull,Template row\n",
-                "i2c.csv": "name,bus,dev,address,driver,sim,description\noled,1,/dev/i2c-1,0x3c,ssd1306,ssd1306,Template row\n",
-                "spi.csv": "name,bus,chip_select,dev,mode,max_speed_hz,driver,sim,description\nrfid,0,0,/dev/spidev0.0,0,1000000,mfrc522,mfrc522,Template row\n",
-                "connections.csv": "source,source_pin,target,target_pin,signal,description\nboard,GPIO1,button,signal,GPIO1,Template row\n",
-            }
-            for name, content in templates.items():
-                (tools_hw / name).write_text(content, encoding="utf-8")
-
             hw_dir = root / "hardware"
             output = io.StringIO()
-            with (
-                mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(root / "gar-tools")}),
-                contextlib.redirect_stdout(output),
-            ):
+            with contextlib.redirect_stdout(output):
                 result = main(["hw", "init", "--target", "linux-device", "--dir", str(hw_dir)])
 
             self.assertEqual(0, result)
-            for name, content in templates.items():
-                self.assertEqual(content, (hw_dir / name).read_text(encoding="utf-8"))
+            for name, headers in HW_TEMPLATE_FILES.items():
+                self.assertEqual(",".join(headers) + "\n", (hw_dir / name).read_text(encoding="utf-8"))
 
     def test_hw_init_refuses_to_overwrite_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            tools_root = root / "gar-tools"
-            _create_hardware_templates(tools_root)
             hw_dir = root / "hardware"
             hw_dir.mkdir()
             gpio_csv = hw_dir / "gpio.csv"
             gpio_csv.write_text("keep me\n", encoding="utf-8")
 
             output = io.StringIO()
-            with (
-                mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(tools_root)}),
-                contextlib.redirect_stdout(output),
-            ):
+            with contextlib.redirect_stdout(output):
                 result = main(["hw", "init", "--dir", str(hw_dir)])
 
             self.assertEqual(1, result)
@@ -231,35 +204,17 @@ class GarTerminalHardwareTest(unittest.TestCase):
     def test_hw_init_defaults_to_the_current_product_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace_root = Path(tmp)
-            tools_root = workspace_root / "gar-tools"
-            _create_hardware_templates(tools_root)
-            with (
-                mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(tools_root)}),
-                mock.patch("scripts.gar_lib.core.hardware.Path.cwd", return_value=workspace_root),
-            ):
+            with mock.patch("scripts.gar_lib.core.hardware.Path.cwd", return_value=workspace_root):
                 result = main(["hw", "init"])
 
             self.assertEqual(0, result)
             self.assertTrue((workspace_root / "hardware" / "components.csv").exists())
 
-    def test_hw_init_uses_selected_target_template(self) -> None:
+    def test_hw_init_accepts_compatibility_target_without_reading_target_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            tools_root = root / "gar-tools"
-            template = tools_root / "targets" / "luckfox-rv1106" / "hardware"
-            template.mkdir(parents=True)
-            for name, headers in HW_TEMPLATE_FILES.items():
-                (template / name).write_text(",".join(headers) + "\n", encoding="utf-8")
-
             output_dir = root / "output"
-            with (
-                mock.patch.dict(os.environ, {"GAR_TOOLS_ROOT": str(tools_root)}),
-                mock.patch(
-                    "scripts.gar_lib.commands.hw.load_config",
-                    return_value={"selected_target": "luckfox-rv1106"},
-                ),
-            ):
-                result = main(["hw", "init", "--dir", str(output_dir)])
+            result = main(["hw", "init", "--target", "luckfox-rv1106", "--dir", str(output_dir)])
 
             self.assertEqual(0, result)
             self.assertTrue((output_dir / "gpio.csv").exists())

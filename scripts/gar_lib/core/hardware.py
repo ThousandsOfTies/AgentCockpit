@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import csv
 import re
-import shutil
 from pathlib import Path
-
-from scripts.gar_lib.core.config import PROJECT_ROOT
-from scripts.gar_lib.core.tools_repository import gar_tools_root
 
 HardwareDefinition = dict[str, list[dict[str, str]]]
 
@@ -43,7 +39,6 @@ HW_TEMPLATE_FILES: dict[str, list[str]] = {
     "connections.csv": ["source", "source_pin", "target", "target_pin", "signal", "description"],
 }
 
-HW_DIR = PROJECT_ROOT / "hardware"
 DEFAULT_HW_TARGET = "linux-device"
 TARGET_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -53,17 +48,6 @@ def _resolve_hw_dir(output_dir: str | None) -> Path:
         path = Path(output_dir).expanduser()
         return path if path.is_absolute() else Path.cwd() / path
     return Path.cwd() / "hardware"
-
-
-def _default_hw_source_dir() -> Path:
-    if HW_DIR.is_dir():
-        return HW_DIR
-    template_dir = _hw_template_dir()
-    return template_dir if template_dir.is_dir() else HW_DIR
-
-
-def _hw_template_dir(target_id: str = DEFAULT_HW_TARGET) -> Path:
-    return gar_tools_root() / "targets" / target_id / "hardware"
 
 
 def _read_hw_csv(hw_dir: Path, name: str) -> list[dict[str, str]]:
@@ -82,7 +66,10 @@ def _read_hw_csv(hw_dir: Path, name: str) -> list[dict[str, str]]:
 def load_hw_definition(*, hw_dir: str | None = None) -> HardwareDefinition:
     """Load hardware assignment CSV files as plain row dictionaries."""
 
-    root = _resolve_hw_dir(hw_dir) if hw_dir else _default_hw_source_dir()
+    # Assignment CSVs are product inputs.  Never fall back to a selected
+    # target, because a Target Pack describes board capability, not an
+    # application's components or wiring.
+    root = _resolve_hw_dir(hw_dir)
     return {
         "components": _read_hw_csv(root, "components.csv"),
         "gpio": _read_hw_csv(root, "gpio.csv"),
@@ -99,15 +86,10 @@ def write_hw_template(
     force: bool = False,
     target_id: str = DEFAULT_HW_TARGET,
 ) -> int:
-    """Create hardware definition CSV files from the target template."""
+    """Create empty product-owned hardware assignment CSV files."""
 
     if not isinstance(target_id, str) or not TARGET_ID_PATTERN.fullmatch(target_id):
         print(f"gar hw init: invalid target id: {target_id!r}")
-        return 1
-
-    template_dir = _hw_template_dir(target_id)
-    if not template_dir.is_dir():
-        print(f"gar hw init: target hardware template がありません: {template_dir}")
         return 1
 
     hw_dir = _resolve_hw_dir(output_dir)
@@ -120,11 +102,7 @@ def write_hw_template(
     hw_dir.mkdir(parents=True, exist_ok=True)
     for name, headers in HW_TEMPLATE_FILES.items():
         path = hw_dir / name
-        source = template_dir / name
-        if source.exists():
-            shutil.copy2(source, path)
-        else:
-            with path.open("w", encoding="utf-8", newline="") as file:
-                csv.writer(file, lineterminator="\n").writerow(headers)
+        with path.open("w", encoding="utf-8", newline="") as file:
+            csv.writer(file, lineterminator="\n").writerow(headers)
         print(f"created {path}")
     return 0

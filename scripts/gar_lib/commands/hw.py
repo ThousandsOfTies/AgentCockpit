@@ -11,7 +11,6 @@ from argparse import Namespace
 from pathlib import Path
 
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
-from scripts.gar_lib.core.config import load_config
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.hardware import write_hw_template
 from scripts.gar_lib.core.hardware_validation import validate_hardware_contract
@@ -25,13 +24,13 @@ def add_hw_parser(
     commands = parser.add_subparsers(dest="hw_command", metavar="command")
     init_parser = commands.add_parser(
         "init",
-        help="hardware 定義 CSV を gar-tools のテンプレートから作成します",
+        help="product所有のhardware定義CSVを空のschemaから作成します",
     )
     init_parser.add_argument(
         "--target",
         dest="target_id",
         default=None,
-        help="使用するtarget template（既定: 現在workspaceのselected_target、未選択時はlinux-device）",
+        help="互換用target ID（CSV schemaはtarget非依存）",
     )
     validate_parser = commands.add_parser(
         "validate",
@@ -48,7 +47,7 @@ def add_hw_parser(
         "--dir",
         dest="output_dir",
         default=None,
-        help="CSV を作成するディレクトリ（既定: ./hardware、テンプレート: gar-tools）",
+        help="CSV を作成するproductディレクトリ（既定: ./hardware）",
     )
     init_parser.add_argument(
         "--force",
@@ -97,11 +96,10 @@ def run_hw_command(
     target_id: str | None = None,
 ) -> int:
     if command == "init":
-        selected_target = target_id or load_config().get("selected_target") or "linux-device"
         return write_hw_template(
             output_dir=output_dir,
             force=force,
-            target_id=selected_target,
+            target_id=target_id or "linux-device",
         )
 
     print(f"gar hw: unknown command: {command}")

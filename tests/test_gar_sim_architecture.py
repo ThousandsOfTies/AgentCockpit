@@ -102,7 +102,7 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         self.assertEqual(product_hardware, workspace.hardware_dir)
 
-    def test_workspace_lookup_supports_product_embedded_gar_tools(self) -> None:
+    def test_workspace_lookup_does_not_use_target_pack_as_product_hardware(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             product_root = Path(tmp) / "GarVibeRemote"
             bundled_hardware = product_root / "sources" / "gar-tools" / "targets" / "linux-device" / "hardware"
@@ -126,7 +126,7 @@ class GarSimulationArchitectureTest(unittest.TestCase):
             ):
                 workspace = resolve_workspace(None)
 
-        self.assertEqual(bundled_hardware, workspace.hardware_dir)
+        self.assertIsNone(workspace.hardware_dir)
 
     def test_workspace_lookup_honours_explicit_hardware_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

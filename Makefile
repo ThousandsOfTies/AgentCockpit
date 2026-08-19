@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 
 UID ?= 04:AB:CD:EF:01:23
-APP_REPO ?= ../gar-adhoc-app
+APP_REPO ?= ../../GarAdhocApp/sources/gar-adhoc-app
 SCENARIO ?= $(APP_REPO)/scenarios/sensor_demo_rfid.json
 VSCODE_EXT_NAME = gar-terminal-bridge
 VSCODE_EXT_VERSION = 0.0.3
