@@ -21,7 +21,9 @@ from scripts.gar_lib.artifacts.manifest import (
 )
 from scripts.gar_lib.artifacts.metadata import (
     CURRENT_SCHEMA_VERSION,
-    DEPLOYED_METADATA_FILENAME,
+    DEPLOYED_METADATA_FILENAMES,
+    METADATA_FILENAME,
+    METADATA_FILENAMES,
     ArtifactMetadata,
     ArtifactMetadataError,
     discover_kernel_dependency,
@@ -69,7 +71,7 @@ class LocalArtifactStore:
     }
 
     _LATEST_FILE = "latest.json"
-    _METADATA_FILE = "gar-artifact.json"
+    _METADATA_FILE = METADATA_FILENAME
 
     def __init__(
         self,
@@ -171,9 +173,13 @@ class LocalArtifactStore:
         symlink = next((path for path in sorted(source.rglob("*")) if path.is_symlink()), None)
         if symlink is not None:
             raise GarDomainError(f"artifact staging directoryにsymlinkは置けません: {symlink}")
-        reserved_marker = next(iter(sorted(source.rglob(DEPLOYED_METADATA_FILENAME))), None)
-        if reserved_marker is not None:
-            raise GarDomainError("artifact staging directoryに予約済みdeploy markerは置けません: " f"{reserved_marker}")
+        reserved_names = {*METADATA_FILENAMES, *DEPLOYED_METADATA_FILENAMES}
+        reserved_metadata = next(
+            (path for path in sorted(source.rglob("*")) if path.name in reserved_names),
+            None,
+        )
+        if reserved_metadata is not None:
+            raise GarDomainError("artifact staging directoryにGAR所有metadataは置けません: " f"{reserved_metadata}")
 
     def sync_from_codespaces(
         self,

@@ -221,7 +221,9 @@ def require_target_compatibility(
     try:
         metadata = load_artifact_metadata(artifact.bundle_path)
         if metadata is None:
-            raise ArtifactMetadataError("legacy artifact has no gar-artifact.json")
+            raise ArtifactMetadataError(
+                "artifact has no artifact-info.json (legacy gar-artifact.json is also accepted)"
+            )
         verify_artifact_checksums(artifact.bundle_path, metadata)
     except ArtifactMetadataError as error:
         raise ArtifactCompatibilityError(

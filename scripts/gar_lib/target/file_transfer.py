@@ -24,8 +24,8 @@ from scripts.gar_lib.artifacts.manifest import (
 )
 from scripts.gar_lib.artifacts.metadata import (
     DEPLOYED_METADATA_FILENAME,
-    METADATA_FILENAME,
     ArtifactMetadataError,
+    find_artifact_metadata_path,
     load_artifact_metadata,
 )
 from scripts.gar_lib.artifacts.provenance import TargetToolsProvenance
@@ -96,7 +96,9 @@ class FileTransferTargetEnvironment(TargetEnvironment):
         # Persistent application configuration is intentionally outside the
         # artifact contract. Only ``gar target configure`` may write it.
         files = [entry for entry in files if not self._is_persistent_config_destination(entry["dest"])]
-        metadata_source = artifact.bundle_path / METADATA_FILENAME if isinstance(artifact.bundle_path, Path) else None
+        metadata_source = (
+            find_artifact_metadata_path(artifact.bundle_path) if isinstance(artifact.bundle_path, Path) else None
+        )
         marker_parent = self._deployment_marker_parent(artifact, metadata_source)
         if marker_parent is not None and not self._has_application_directory(files, bundle_root, marker_parent):
             raise GarDomainError(

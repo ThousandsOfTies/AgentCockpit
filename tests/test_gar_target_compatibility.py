@@ -53,7 +53,7 @@ class InspectingFileChannel:
     def push(self, source: Path, destination: str) -> AccessResult:
         self.destinations.append(destination)
         self.source_modes.append(stat.S_IMODE(source.stat().st_mode))
-        marker = source / ".gar-artifact.json"
+        marker = source / ".artifact-info.json"
         if marker.is_file():
             self.marker_mode = stat.S_IMODE(marker.stat().st_mode)
             self.marker_payload = json.loads(marker.read_text(encoding="utf-8"))
@@ -180,11 +180,11 @@ class TargetCompatibilityTest(unittest.TestCase):
         self.assertEqual("20260811T000000000000Z-deadbeef", metadata.build_id)
         self.assertEqual("demo", metadata.app_name)
         self.assertEqual(
-            "/opt/gar/apps/demo/.gar-artifact.json",
+            "/opt/gar/apps/demo/.artifact-info.json",
             deployment_marker_destination(metadata),
         )
         self.assertEqual(
-            "/opt/gar/apps/demo/.gar-artifact.json",
+            "/opt/gar/apps/demo/.artifact-info.json",
             deployment_marker_destination(replace(metadata, entrypoint="/opt/gar/apps/demo/bin/run")),
         )
         self.assertEqual(1, len(channel.commands))

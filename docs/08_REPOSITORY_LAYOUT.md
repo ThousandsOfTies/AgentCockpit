@@ -91,8 +91,13 @@ BuildEnvironmentがProduct hookを実行し、用途別snapshotを作る。
 └─ target_app/<build-id>/
 ```
 
-各directoryにはartifact本体、manifest、metadata、checksumを保持する。`latest.json`は最新snapshotを
-指すだけで、snapshot自体はbuild後に変更しない。`deploy`は`build`／`fetch`を暗黙実行しない。
+各directoryにはartifact本体、`artifact.json`（配置manifest）、`artifact-info.json`（GARが生成する
+provenance metadata）、checksumを保持する。`latest.json`は最新snapshotを指すだけで、snapshot自体は
+build後に変更しない。Target上では`artifact-info.json`の内容を`.artifact-info.json`へコピーし、配置済み
+buildのmarkerとして使う。`deploy`は`build`／`fetch`を暗黙実行しない。
+
+旧snapshotに残る`gar-artifact.json`と、既存Targetに残る`.gar-artifact.json`は読み取り互換で扱う。
+新しくcapture／deployするartifactは`artifact-info.json`と`.artifact-info.json`を生成する。
 
 Productのbuild staging directoryやCodespaces内の一時artifactは正本ではない。WSL側storeへcaptureされ、
 schemaとchecksumを通過したsnapshotだけがdeploy対象になる。

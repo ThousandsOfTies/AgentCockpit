@@ -13,8 +13,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 CURRENT_SCHEMA_VERSION = 2
-METADATA_FILENAME = "gar-artifact.json"
-DEPLOYED_METADATA_FILENAME = ".gar-artifact.json"
+# ``artifact-info.json`` is GAR's snapshot metadata.  Keep the previous name
+# readable so existing immutable snapshots remain deployable after the rename.
+METADATA_FILENAME = "artifact-info.json"
+LEGACY_METADATA_FILENAME = "gar-artifact.json"
+METADATA_FILENAMES = (METADATA_FILENAME, LEGACY_METADATA_FILENAME)
+# The deployed marker follows the snapshot metadata name.  Keep the old
+# marker readable in target recipes while existing applications transition.
+DEPLOYED_METADATA_FILENAME = ".artifact-info.json"
+LEGACY_DEPLOYED_METADATA_FILENAME = ".gar-artifact.json"
+DEPLOYED_METADATA_FILENAMES = (DEPLOYED_METADATA_FILENAME, LEGACY_DEPLOYED_METADATA_FILENAME)
 UNKNOWN_PROVENANCE = "unknown"
 
 
@@ -39,7 +47,7 @@ class ArtifactKernel:
 
 @dataclass(frozen=True)
 class ArtifactMetadata:
-    """Typed view of schema v1 or v2 ``gar-artifact.json`` metadata."""
+    """Typed view of schema v1 or v2 ``artifact-info.json`` metadata."""
 
     schema_version: int
     kind: str
@@ -127,8 +135,8 @@ def parse_artifact_metadata(payload: object) -> ArtifactMetadata:
 def load_artifact_metadata(bundle_root: Path) -> ArtifactMetadata | None:
     """Load snapshot metadata, returning ``None`` for pre-snapshot bundles."""
 
-    path = bundle_root / METADATA_FILENAME
-    if not path.is_file():
+    path = find_artifact_metadata_path(bundle_root)
+    if path is None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -143,7 +151,7 @@ def load_artifact_metadata(bundle_root: Path) -> ArtifactMetadata | None:
 def write_artifact_metadata(bundle_root: Path, metadata: ArtifactMetadata) -> None:
     path = bundle_root / METADATA_FILENAME
     descriptor = json.dumps(metadata.as_dict(), ensure_ascii=False, indent=2) + "\n"
-    fd, temporary = tempfile.mkstemp(prefix=".gar-artifact-", suffix=".json", dir=bundle_root)
+    fd, temporary = tempfile.mkstemp(prefix=".artifact-info-", suffix=".json", dir=bundle_root)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as output:
             os.fchmod(output.fileno(), 0o644)
@@ -164,7 +172,7 @@ def sha256_checksums(bundle_root: Path) -> dict[str, str]:
 
     checksums: dict[str, str] = {}
     for path in sorted(bundle_root.rglob("*")):
-        if not path.is_file() or path == bundle_root / METADATA_FILENAME:
+        if not path.is_file() or (path.parent == bundle_root and path.name in METADATA_FILENAMES):
             continue
         relative = path.relative_to(bundle_root).as_posix()
         digest = hashlib.sha256()
@@ -173,6 +181,20 @@ def sha256_checksums(bundle_root: Path) -> dict[str, str]:
                 digest.update(chunk)
         checksums[relative] = digest.hexdigest()
     return checksums
+
+
+def find_artifact_metadata_path(bundle_root: Path) -> Path | None:
+    """Return the canonical or legacy snapshot metadata path.
+
+    A bundle must not contain both names: accepting an ambiguous pair would
+    make it unclear which provenance record is authoritative.
+    """
+
+    candidates = [bundle_root / name for name in METADATA_FILENAMES if (bundle_root / name).is_file()]
+    if len(candidates) > 1:
+        names = ", ".join(path.name for path in candidates)
+        raise ArtifactMetadataError(f"artifact bundle has multiple metadata files: {names}")
+    return candidates[0] if candidates else None
 
 
 def verify_artifact_checksums(bundle_root: Path, metadata: ArtifactMetadata) -> None:

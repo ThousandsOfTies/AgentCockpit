@@ -189,12 +189,43 @@ class ArtifactMetadataTest(unittest.TestCase):
             finally:
                 os.umask(previous_umask)
 
-            path = root / "gar-artifact.json"
+            path = root / "artifact-info.json"
             mode = stat.S_IMODE(path.stat().st_mode)
-            temporary_files = list(root.glob(".gar-artifact-*.json"))
+            temporary_files = list(root.glob(".artifact-info-*.json"))
 
         self.assertEqual(0o644, mode)
         self.assertEqual([], temporary_files)
+
+    def test_loader_accepts_the_legacy_metadata_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "gar-artifact.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "kind": "sim_app",
+                        "workspace_id": "ws",
+                        "build_id": "legacy-build",
+                        "captured_at": "2026-08-01T00:00:00+00:00",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            metadata = load_artifact_metadata(root)
+
+        self.assertIsNotNone(metadata)
+        assert metadata is not None
+        self.assertEqual("legacy-build", metadata.build_id)
+
+    def test_loader_rejects_ambiguous_metadata_filenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "artifact-info.json").write_text("{}\n", encoding="utf-8")
+            (root / "gar-artifact.json").write_text("{}\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ArtifactMetadataError, "multiple metadata files"):
+                load_artifact_metadata(root)
 
     def test_future_snapshot_schema_is_rejected_explicitly(self) -> None:
         with self.assertRaisesRegex(ArtifactMetadataError, "unsupported.*schema_version: 3"):
@@ -379,11 +410,11 @@ class LocalArtifactStoreTest(unittest.TestCase):
             staging = workspace.local_root / "artifacts" / "from-codespace"
             store = LocalArtifactStore(snapshot_root=root / "snapshots")
             write_app_bundle(staging, "placeholder")
-            reserved = staging / "files" / "application" / ".gar-artifact.json"
+            reserved = staging / "files" / "application" / ".artifact-info.json"
             reserved.parent.mkdir()
             reserved.write_text("{}\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(GarDomainError, "予約済みdeploy marker"):
+            with self.assertRaisesRegex(GarDomainError, "GAR所有metadata"):
                 store.capture(ArtifactKind.SIM_APP, workspace)
 
             self.assertFalse((root / "snapshots").exists())
@@ -398,10 +429,25 @@ class LocalArtifactStoreTest(unittest.TestCase):
             reserved = staging / "files" / "application" / ".gar-artifact.json"
             reserved.mkdir(parents=True)
 
-            with self.assertRaisesRegex(GarDomainError, "予約済みdeploy marker"):
+            with self.assertRaisesRegex(GarDomainError, "GAR所有metadata"):
                 store.capture(ArtifactKind.SIM_APP, workspace)
 
             self.assertFalse((root / "snapshots").exists())
+
+    def test_capture_rejects_product_owned_snapshot_metadata(self) -> None:
+        for filename in ("artifact-info.json", "gar-artifact.json"):
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                workspace = local_workspace(root / "product")
+                staging = workspace.local_root / "artifacts" / "from-codespace"
+                store = LocalArtifactStore(snapshot_root=root / "snapshots")
+                write_app_bundle(staging, "placeholder")
+                (staging / filename).write_text("{}\n", encoding="utf-8")
+
+                with self.assertRaisesRegex(GarDomainError, "GAR所有metadata"):
+                    store.capture(ArtifactKind.SIM_APP, workspace)
+
+                self.assertFalse((root / "snapshots").exists())
 
     def test_latest_accepts_existing_schema_v1_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
