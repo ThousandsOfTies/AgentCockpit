@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.api import Gar, SimulationRuntime
+from scripts.gar_lib.api import Gar, SimulationRuntime, _workspace_hardware
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
 from scripts.gar_lib.build.environment import build_environment_for
@@ -35,6 +35,27 @@ def cli_args(**values: object) -> argparse.Namespace:
 
 
 class GarSimulationArchitectureTest(unittest.TestCase):
+    def test_unresolved_workspace_hardware_never_uses_the_current_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd_hardware = Path(tmp) / "hardware"
+            cwd_hardware.mkdir()
+            (cwd_hardware / "gpio.csv").write_text(
+                "name,chip,line,direction,role,active,initial,pull,sim_control,description\n"
+                "foreign,/dev/gpiochip0,1,input,button,high,,,,foreign product\n",
+                encoding="utf-8",
+            )
+            remote_workspace = Workspace(
+                id="ws_remote",
+                name="Codespaces/Product",
+                branch="Product",
+                connection={"type": "codespaces", "codespace": "product-space"},
+            )
+
+            with mock.patch("scripts.gar_lib.core.hardware.Path.cwd", return_value=Path(tmp)):
+                hardware = _workspace_hardware(remote_workspace)
+
+        self.assertTrue(all(not rows for rows in hardware.values()))
+
     def test_runtime_configures_system_env_through_environment_capability(self) -> None:
         workspace = local_workspace(Path("/tmp/product"))
         environment = mock.Mock()

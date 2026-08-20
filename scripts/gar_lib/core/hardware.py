@@ -67,8 +67,17 @@ def load_hw_definition(*, hw_dir: str | None = None) -> HardwareDefinition:
     """Load hardware assignment CSV files as plain row dictionaries."""
 
     # Assignment CSVs are product inputs.  Never fall back to a selected
-    # target, because a Target Pack describes board capability, not an
-    # application's components or wiring.
+    # target or the caller's CWD, because a Target Pack describes board
+    # capability, not an application's components or wiring.
+    if hw_dir is None:
+        return {
+            "components": [],
+            "gpio": [],
+            "i2c": [],
+            "spi": [],
+            "video": [],
+            "connections": [],
+        }
     root = _resolve_hw_dir(hw_dir)
     return {
         "components": _read_hw_csv(root, "components.csv"),

@@ -10,6 +10,7 @@ from scripts.gar_lib.access.adb import AdbFileChannel, AdbShellChannel
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
 from scripts.gar_lib.artifacts.provenance import collect_target_tools_provenance
 from scripts.gar_lib.core.errors import GarDomainError
+from scripts.gar_lib.core.tools_repository import gar_tools_root
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.target.environment import TargetEnvironment
 from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
@@ -97,10 +98,23 @@ def target_lifecycle_for(workspace: Workspace) -> TargetLifecycle | None:
 def _selected_target_manifest(workspace: Workspace) -> TargetManifest | None:
     if workspace.selected_target is None:
         return None
-    manifest = target_by_id(discover_target_manifests(), workspace.selected_target)
+    manifest = target_by_id(
+        discover_target_manifests(tools_root=_workspace_tools_root(workspace)),
+        workspace.selected_target,
+    )
     if manifest is None:
         raise GarDomainError(f"選択したTarget定義が見つかりません: {workspace.selected_target}")
     return manifest
+
+
+def _workspace_tools_root(workspace: Workspace) -> Path:
+    """Prefer the Product-pinned tools checkout for local Target operations."""
+
+    if workspace.connection_type == "local":
+        candidate = workspace.local_root / "sources" / "gar-tools"
+        if (candidate / "targets").is_dir():
+            return candidate
+    return gar_tools_root()
 
 
 def _ssh_host(workspace: Workspace) -> str:

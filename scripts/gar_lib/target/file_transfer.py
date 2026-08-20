@@ -23,8 +23,8 @@ from scripts.gar_lib.artifacts.manifest import (
     target_dest_path,
 )
 from scripts.gar_lib.artifacts.metadata import (
-    DEPLOYED_METADATA_FILENAME,
     ArtifactMetadataError,
+    deployed_metadata_filename,
     find_artifact_metadata_path,
     load_artifact_metadata,
 )
@@ -125,7 +125,7 @@ class FileTransferTargetEnvironment(TargetEnvironment):
                             composed_source = Path(temporary) / source.name
                             shutil.copytree(source, composed_source)
                             source_mode = stat.S_IMODE(composed_source.stat().st_mode)
-                            marker = composed_source / DEPLOYED_METADATA_FILENAME
+                            marker = composed_source / deployed_metadata_filename(metadata_source)
                             try:
                                 composed_source.chmod(source_mode | stat.S_IWUSR)
                                 shutil.copy2(metadata_source, marker)

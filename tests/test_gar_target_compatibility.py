@@ -14,6 +14,8 @@ from scripts.gar_lib.access.channel import AccessResult
 from scripts.gar_lib.api import Gar
 from scripts.gar_lib.artifacts.metadata import (
     CURRENT_SCHEMA_VERSION,
+    LEGACY_DEPLOYED_METADATA_FILENAME,
+    LEGACY_METADATA_FILENAME,
     ArtifactKernel,
     ArtifactMetadata,
     ArtifactTarget,
@@ -46,6 +48,7 @@ class FakeCommandChannel:
 class InspectingFileChannel:
     def __init__(self):
         self.destinations: list[str] = []
+        self.marker_filename: str | None = None
         self.marker_payload: dict[str, object] | None = None
         self.marker_mode: int | None = None
         self.source_modes: list[int] = []
@@ -53,10 +56,12 @@ class InspectingFileChannel:
     def push(self, source: Path, destination: str) -> AccessResult:
         self.destinations.append(destination)
         self.source_modes.append(stat.S_IMODE(source.stat().st_mode))
-        marker = source / ".artifact-info.json"
-        if marker.is_file():
-            self.marker_mode = stat.S_IMODE(marker.stat().st_mode)
-            self.marker_payload = json.loads(marker.read_text(encoding="utf-8"))
+        for filename in (".artifact-info.json", LEGACY_DEPLOYED_METADATA_FILENAME):
+            marker = source / filename
+            if marker.is_file():
+                self.marker_filename = filename
+                self.marker_mode = stat.S_IMODE(marker.stat().st_mode)
+                self.marker_payload = json.loads(marker.read_text(encoding="utf-8"))
         return AccessResult(("push",), 0)
 
     def pull(self, source: str, destination: Path) -> AccessResult:
@@ -323,6 +328,20 @@ class TargetCompatibilityTest(unittest.TestCase):
             "20260811T000000000000Z-deadbeef",
             file_channel.marker_payload["build_id"],
         )
+        self.assertEqual(0o444, file_channel.marker_mode)
+
+    def test_legacy_snapshot_deploy_keeps_the_legacy_target_marker_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifact = write_v2_artifact(root, workspace(root))
+            (root / "artifact-info.json").rename(root / LEGACY_METADATA_FILENAME)
+            file_channel = InspectingFileChannel()
+            environment = FileTransferTargetEnvironment(FakeCommandChannel(target_stdout()), file_channel)
+
+            environment.deploy(artifact)
+
+        self.assertEqual(LEGACY_DEPLOYED_METADATA_FILENAME, file_channel.marker_filename)
+        self.assertIsNotNone(file_channel.marker_payload)
         self.assertEqual(0o444, file_channel.marker_mode)
 
     def test_read_only_application_directory_accepts_marker_without_changing_mode(self) -> None:

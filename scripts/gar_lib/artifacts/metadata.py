@@ -197,6 +197,16 @@ def find_artifact_metadata_path(bundle_root: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def deployed_metadata_filename(metadata_path: Path) -> str:
+    """Return the target marker name compatible with a snapshot metadata file."""
+
+    return (
+        LEGACY_DEPLOYED_METADATA_FILENAME
+        if metadata_path.name == LEGACY_METADATA_FILENAME
+        else DEPLOYED_METADATA_FILENAME
+    )
+
+
 def verify_artifact_checksums(bundle_root: Path, metadata: ArtifactMetadata) -> None:
     """Verify v2 file integrity; schema v1 snapshots intentionally have no hashes."""
 

@@ -96,10 +96,12 @@ class TargetManifestValidationError(GarDomainError):
 
 def discover_target_manifests(
     environments: Sequence[type[EnvironmentSetupOption]] | None = None,
+    *,
+    tools_root: Path | None = None,
 ) -> list[TargetManifest]:
     """Return valid manifests, or raise with every path-specific issue found."""
 
-    targets_root = _targets_root()
+    targets_root = _targets_root(tools_root)
     if not targets_root.is_dir():
         return []
     if environments is None:
@@ -140,9 +142,11 @@ def target_by_id(
     return next((target for target in targets if target.id == target_id), None)
 
 
-def _targets_root() -> Path:
+def _targets_root(tools_root: Path | None = None) -> Path:
     configured = os.environ.get("GAR_TOOLS_TARGETS")
-    return Path(configured).expanduser() if configured else gar_tools_root() / "targets"
+    if configured:
+        return Path(configured).expanduser()
+    return (tools_root or gar_tools_root()) / "targets"
 
 
 def _backend_ids_by_category(

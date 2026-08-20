@@ -18,7 +18,7 @@ from scripts.gar_lib.commands.setup import configure_target_connection
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import AccessConnectionError
 from scripts.gar_lib.core.workspace import Workspace
-from scripts.gar_lib.target.composition import target_environment_for
+from scripts.gar_lib.target.composition import _selected_target_manifest, target_environment_for
 from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
 from scripts.gar_lib.target.manifest import TargetManifest
@@ -35,6 +35,35 @@ def workspace(root: Path, *, target: str = "adb_usb") -> Workspace:
 
 
 class GarTargetArchitectureTest(unittest.TestCase):
+    def test_target_manifest_prefers_the_local_product_tools_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            product_root = Path(tmp) / "product"
+            tools_root = product_root / "sources" / "gar-tools"
+            (tools_root / "targets").mkdir(parents=True)
+            selected_workspace = Workspace(
+                id="ws",
+                name="Local/Product",
+                branch="Product",
+                connection={"type": "local", "path": str(product_root)},
+                selected_target="raspberry-pi-5",
+            )
+            expected = mock.Mock()
+
+            with (
+                mock.patch(
+                    "scripts.gar_lib.target.composition.discover_target_manifests",
+                    return_value=[expected],
+                ) as discover,
+                mock.patch(
+                    "scripts.gar_lib.target.composition.target_by_id",
+                    return_value=expected,
+                ),
+            ):
+                manifest = _selected_target_manifest(selected_workspace)
+
+        self.assertIs(expected, manifest)
+        discover.assert_called_once_with(tools_root=tools_root)
+
     def test_target_configure_has_no_artifact_dependency_and_reports_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "demo.env"
