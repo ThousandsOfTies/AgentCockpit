@@ -53,7 +53,7 @@ workflow固有のsecret、runner、成果物契約は[workflow README](../.githu
 | AWS SSM simulation | setup optionのみ。通常はSSH Remoteを使用 |
 | Wokwi scenario | Product所有のWokwi形式を使用。共通Bridge scenarioへの統一途中 |
 | Physical Golden HIL | read-only preflight／diagまで。自動deployと物理操作adapterは未実装 |
-| Full-image provisioning | SSH application deployとは別契約。NXP UUU等のUSB recovery backendは未実装 |
+| Full-image provisioning | Target manifestで選択するNXP UUU backendとUSB-C serial起動確認を実装済み。実機HILは未実施 |
 | Target資産の純化 | RK3506 capabilityはProduct-neutral化済み。Linux simulation runtimeや旧RV1106資産にはGarStream由来の名称・周辺構成が残る |
 
 最後の項目は重要な設計負債である。Target Packが保持するのはBoard capability、OS、toolchain、
