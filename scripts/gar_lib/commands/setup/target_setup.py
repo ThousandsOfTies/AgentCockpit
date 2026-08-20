@@ -221,12 +221,14 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
 
 def configure_target_connection(config: dict) -> None:
     environment_id = config.get("selected_environments", {}).get("target")
-    if environment_id not in {"adb_usb", "adb_win", "ssh_scp"}:
+    if environment_id not in {"adb_usb", "adb_win", "ssh_scp", "uuu"}:
         return
 
     print(style("Target Runtime:", BOLD, BLUE))
     if environment_id == "ssh_scp":
         _configure_ssh_target(config)
+    elif environment_id == "uuu":
+        _configure_uuu_target(config)
     else:
         _configure_adb_target(config)
 
@@ -269,8 +271,43 @@ def _configure_adb_target(config: dict) -> None:
         print(f"  {style('更新しました:', GREEN)} {answer}")
 
 
+def _configure_uuu_target(config: dict) -> None:
+    current = saved_target_setting(config, "serial")
+    candidates = detect_uuu_serial_port_candidates()
+    default_port = current or (candidates[0] if len(candidates) == 1 else None)
+    print("  USB-C debug UART: " f"{style(current or default_port or '未設定', BOLD, GREEN)}")
+    print("  UUUのdownload USBと、起動確認用のUSB-C debug UARTは別接続です。")
+    if candidates:
+        print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")
+    if not sys.stdin.isatty():
+        if not current:
+            print(f"     {style('保存するには対話 terminal でgar setupを実行してください。', DIM)}")
+        return
+    prompt_default = default_port or ""
+    prompt_example = f" [{prompt_default}]" if prompt_default else " (例: /dev/ttyCH343USB0)"
+    answer = safe_input(
+        f"USB-C debug UART deviceを入力してください{prompt_example}: ",
+        default_on_eof=prompt_default,
+    ).strip()
+    selected = answer or prompt_default
+    if selected and selected != current:
+        set_saved_target_setting(config, "serial", selected)
+        save_config(config)
+        print(f"  {style('更新しました:', GREEN)} {selected}")
+
+
 def detect_esp32_serial_port_candidates() -> list[str]:
     patterns = ("/dev/ttyACM*", "/dev/ttyUSB*", "/dev/ttyS*")
+    candidates: list[str] = []
+    for pattern in patterns:
+        for path in sorted(Path("/").glob(pattern.removeprefix("/"))):
+            if path.exists():
+                candidates.append(str(path))
+    return candidates
+
+
+def detect_uuu_serial_port_candidates() -> list[str]:
+    patterns = ("/dev/ttyCH343USB*", "/dev/ttyCH342USB*", "/dev/ttyUSB*", "/dev/ttyACM*")
     candidates: list[str] = []
     for pattern in patterns:
         for path in sorted(Path("/").glob(pattern.removeprefix("/"))):

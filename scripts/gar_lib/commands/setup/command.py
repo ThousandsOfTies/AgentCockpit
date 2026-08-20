@@ -284,7 +284,7 @@ def _configure_selected_environment_connection(
 
     if category_id == "simulator" and environment_id == "ssh_remote":
         configure_default_ec2_host(config, ec2_host=ec2_host)
-    elif category_id == "target" and environment_id == "ssh_scp":
+    elif category_id == "target" and environment_id in {"ssh_scp", "uuu"}:
         configure_target_connection(config)
 
 
@@ -347,10 +347,13 @@ def _run_completion_phase(
     print()
     configure_esp32_serial_port(config, esp32_port=esp32_port)
     print()
-    if (
-        config.get("selected_environments", {}).get("target") != "ssh_scp"
-        or saved_target_setting(config, "host") is None
-    ):
+    target_environment = config.get("selected_environments", {}).get("target")
+    target_connection_missing = (
+        target_environment in {"adb_usb", "adb_win"}
+        or (target_environment == "ssh_scp" and saved_target_setting(config, "host") is None)
+        or (target_environment == "uuu" and saved_target_setting(config, "serial") is None)
+    )
+    if target_connection_missing:
         configure_target_connection(config)
     print()
     print_target_next_steps(config)

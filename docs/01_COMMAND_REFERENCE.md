@@ -43,9 +43,12 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
       "selected_environments": {
         "codespace": "local",
         "simulator": "ssh_remote",
-        "target": "ssh_scp"
+        "target": "uuu"
       },
-      "selected_target": "raspberry-pi-5",
+      "selected_target": "frdm-imx91s",
+      "target": {
+        "serial": "/dev/ttyCH343USB0"
+      },
       "ec2": {
         "host": "my-sim-host",
         "identity_file": "~/.ssh/my-sim-host.pem"
@@ -55,13 +58,15 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
 }
 ```
 
-`simulator` に `local_docker` を選んだ場合は `ec2` の代わりに `docker` を使います。
-container の image・device・mount など「どんな container が必要か」は target 定義
-(`gar-tools/targets/<id>/target.json` の `simulation.docker`) が持ちます。
-workspace の `docker` はその上書きだけを担当し、すべて省略可能です。
+`gar setup` の simulator 一覧では `local_docker` を新規選択しません。Docker 用の
+image・device・mount 設定は、既存または明示的な build/UT workspace と互換性を保つため、
+target 定義 (`gar-tools/targets/<id>/target.json` の `simulation.docker`) に残しています。
+標準の Linux device simulation は `ssh_remote` を使用します。
+
+Docker backendを明示した既存workspaceでは、workspaceの `docker` 設定で target 定義を
+上書きできます。すべて省略可能です。
 
 ```json
-      "selected_environments": {"codespace": "local", "simulator": "local_docker"},
       "docker": {
         "container": "gar-sim",
         "image": "gar-linux-device:latest",
@@ -109,7 +114,7 @@ product build hook に次の環境変数を渡します。artifact を動かす 
 
 | simulator | `GAR_SIM_ARCH` | `CC` |
 |---|---|---|
-| `local_docker` | このマシンのアーキテクチャ（`docker.arch` で上書き） | `gcc` |
+| `local_docker`（明示／既存workspace） | このマシンのアーキテクチャ（`docker.arch` で上書き） | `gcc` |
 | `ssh_remote` | `aarch64`（`ec2.arch` で上書き） | `aarch64-linux-gnu-gcc` |
 
 `GAR_SIM_ENVIRONMENT` には simulator の ID そのものが入ります。target build
