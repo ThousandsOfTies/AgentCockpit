@@ -73,6 +73,26 @@ class TargetManifest:
             raise GarDomainError(f"target provisioning recipeが見つかりません: {recipe}")
         return recipe
 
+    def provisioning_file_path(self, backend_id: str, key: str) -> Path | None:
+        """Resolve a Target-owned provisioning file declared by a backend."""
+
+        settings = self.provisioning_settings(backend_id)
+        relative_path = settings.get(key)
+        if relative_path is None:
+            return None
+        if not isinstance(relative_path, str) or not relative_path:
+            raise GarDomainError(f"target provisioning {key}が不正です: {self.id}/{backend_id}")
+        if self.source_path is None:
+            raise GarDomainError(f"target provisioning fileの場所を解決できません: {self.id}")
+        repository_root = self.source_path.parent.parent.parent.resolve()
+        tools_root = (repository_root / self.tools_root).resolve()
+        target_file = (tools_root / relative_path).resolve()
+        if not target_file.is_relative_to(tools_root):
+            raise GarDomainError(f"target provisioning fileがtoolsRoot外を参照しています: {self.id}")
+        if not target_file.is_file():
+            raise GarDomainError(f"target provisioning fileが見つかりません: {target_file}")
+        return target_file
+
 
 @dataclass(frozen=True)
 class TargetManifestValidationIssue:
@@ -393,9 +413,14 @@ def _validate_provisioning_settings(
             issues.append(TargetManifestValidationIssue(path, field, "settings must be an object"))
             continue
         recipe_type = settings.get("type")
+        if recipe_type == "uuu":
+            validated_settings = _validate_uuu_settings(settings, path, field, issues)
+            if validated_settings is not None:
+                validated[backend_id] = validated_settings
+            continue
         recipe_path = settings.get("path")
         if recipe_type != "ssh-script":
-            issues.append(TargetManifestValidationIssue(path, f"{field}.type", "must be 'ssh-script'"))
+            issues.append(TargetManifestValidationIssue(path, f"{field}.type", "must be 'ssh-script' or 'uuu'"))
             continue
         if not isinstance(recipe_path, str) or not recipe_path or Path(recipe_path).is_absolute():
             issues.append(TargetManifestValidationIssue(path, f"{field}.path", "must be a relative path"))
@@ -403,7 +428,7 @@ def _validate_provisioning_settings(
         if ".." in Path(recipe_path).parts:
             issues.append(TargetManifestValidationIssue(path, f"{field}.path", "must not escape toolsRoot"))
             continue
-        validated_settings: dict[str, Any] = {"type": recipe_type, "path": recipe_path}
+        validated_settings = {"type": recipe_type, "path": recipe_path}
         if "recipeVersion" in settings:
             recipe_version = settings["recipeVersion"]
             if not isinstance(recipe_version, int) or isinstance(recipe_version, bool) or recipe_version < 1:
@@ -422,6 +447,74 @@ def _validate_provisioning_settings(
                 continue
             validated_settings["lifecycle"] = lifecycle
         validated[backend_id] = validated_settings
+    return validated
+
+
+def _validate_uuu_settings(
+    settings: Mapping[str, Any],
+    path: Path,
+    field: str,
+    issues: list[TargetManifestValidationIssue],
+) -> dict[str, Any] | None:
+    command = settings.get("command")
+    if not isinstance(command, list) or not command or not all(isinstance(item, str) and item for item in command):
+        issues.append(TargetManifestValidationIssue(path, f"{field}.command", "must be a non-empty string array"))
+        return None
+    if any(any(character in item for character in ("\x00", "\n", "\r")) for item in command):
+        issues.append(TargetManifestValidationIssue(path, f"{field}.command", "must not contain control characters"))
+        return None
+
+    image_section = settings.get("imageSection", "image")
+    if not isinstance(image_section, str) or not image_section:
+        issues.append(TargetManifestValidationIssue(path, f"{field}.imageSection", "must be a non-empty string"))
+        return None
+    allowed_placeholders = {"{image}", "{artifact}"}
+    placeholders = {item for command_item in command for item in command_item.split() if item.startswith("{")}
+    unknown = placeholders - allowed_placeholders
+    if unknown:
+        issues.append(
+            TargetManifestValidationIssue(
+                path,
+                f"{field}.command",
+                "contains unsupported placeholders",
+                tuple(sorted(allowed_placeholders)),
+            )
+        )
+        return None
+
+    validated: dict[str, Any] = {
+        "type": "uuu",
+        "command": list(command),
+        "imageSection": image_section,
+    }
+    serial_verify = settings.get("serialVerify")
+    if serial_verify is not None:
+        if not isinstance(serial_verify, dict):
+            issues.append(TargetManifestValidationIssue(path, f"{field}.serialVerify", "must be an object"))
+            return None
+        pattern = serial_verify.get("pattern")
+        if not isinstance(pattern, str) or not pattern:
+            issues.append(
+                TargetManifestValidationIssue(path, f"{field}.serialVerify.pattern", "must be a non-empty string")
+            )
+            return None
+        timeout = serial_verify.get("timeoutSeconds", 30)
+        if not isinstance(timeout, int | float) or isinstance(timeout, bool) or timeout <= 0:
+            issues.append(
+                TargetManifestValidationIssue(
+                    path,
+                    f"{field}.serialVerify.timeoutSeconds",
+                    "must be a positive number",
+                )
+            )
+            return None
+        baud = serial_verify.get("baud", 115200)
+        if not isinstance(baud, int) or isinstance(baud, bool) or baud <= 0:
+            issues.append(
+                TargetManifestValidationIssue(path, f"{field}.serialVerify.baud", "must be a positive integer")
+            )
+            return None
+        validated["serialVerify"] = {"pattern": pattern, "timeoutSeconds": timeout, "baud": baud}
     return validated
 
 

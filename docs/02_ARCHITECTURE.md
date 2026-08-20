@@ -90,7 +90,10 @@ target.build
 `product-target-build.sh`をlocalまたはCodespacesで実行する処理、
 `target.deploy` は最新 firmware artifact の flash になる。RasPi/Linux device なら
 `target.prepare`はTarget manifestのOS recipe適用、`target.deploy`はADBまたは
-SSH/scpでの配置になる。
+SSH/scpでの配置になる。Target manifestの`defaultBackends.target`で、これらに加えて
+IMX91SのUUUフルイメージ書き込みを選択できる。UUU backendはmanifestの
+`provisioning.uuu.command`をargvとして実行し、`deploy.image.files`のイメージを
+`{image}`へ展開する（シェル経由では実行しない）。
 
 ---
 
@@ -244,3 +247,5 @@ full-image flashingを使うTargetは、同じ上位lifecycleへ別recipe／back
 
 NXP UUU等のUSB recoveryはapplication deployと副作用が異なるため、Target Packがboot mode、
 USB identity、image destination、verify、recoveryを明示する独立provisioning classとして扱う。
+FRDM-IMX91SではUUUのdownload USB接続とUSB-C debug UARTを別接続として扱い、
+`target.serial`にコンソールdeviceを設定すると書き込み後の起動パターン確認を行える。

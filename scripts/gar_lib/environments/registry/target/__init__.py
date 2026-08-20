@@ -6,6 +6,7 @@ from scripts.gar_lib.environments.registry.target.esp32_esptool import (
     Esp32EsptoolEnvironment,
 )
 from scripts.gar_lib.environments.registry.target.ssh_scp import SshScpEnvironment
+from scripts.gar_lib.environments.registry.target.uuu import UuuEnvironment
 from scripts.gar_lib.environments.setup_option import EnvironmentSetupOption
 
 ENVIRONMENT_OPTIONS: tuple[type[EnvironmentSetupOption], ...] = (
@@ -13,4 +14,5 @@ ENVIRONMENT_OPTIONS: tuple[type[EnvironmentSetupOption], ...] = (
     AdbWinEnvironment,
     Esp32EsptoolEnvironment,
     SshScpEnvironment,
+    UuuEnvironment,
 )

@@ -17,6 +17,7 @@ from scripts.gar_lib.target.esp32 import Esp32TargetEnvironment
 from scripts.gar_lib.target.file_transfer import FileTransferTargetEnvironment
 from scripts.gar_lib.target.lifecycle import CommandTargetLifecycle, TargetLifecycle
 from scripts.gar_lib.target.manifest import TargetManifest, discover_target_manifests, target_by_id
+from scripts.gar_lib.target.uuu import UuuTargetEnvironment
 
 
 def target_environment_for(workspace: Workspace) -> TargetEnvironment:
@@ -76,6 +77,12 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
         if port is None:
             raise GarDomainError(f"ESP32 serial portが未設定です: {workspace.name}。gar setupで設定してください。")
         return Esp32TargetEnvironment(port)
+
+    if backend == "uuu":
+        manifest = _selected_target_manifest(workspace)
+        if manifest is None:
+            raise GarDomainError("UUU targetには選択されたTarget manifestが必要です")
+        return UuuTargetEnvironment(manifest, console_port=workspace.target.serial)
 
     raise GarDomainError(f"target environmentはまだ未対応です: {backend or '(未設定)'}")
 
