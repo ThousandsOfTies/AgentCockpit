@@ -47,6 +47,7 @@ class GarDiscoveryTest(unittest.TestCase):
         self.assertIn("mujoco", environment_ids)
         self.assertIn("esp32_qemu_firmware", environment_ids)
         self.assertIn("wokwi", environment_ids)
+        self.assertNotIn("local_docker", environment_ids)
         self.assertIn("local", environment_ids)
         self.assertIn("adb_usb", environment_ids)
         self.assertIn("ssh_scp", environment_ids)
@@ -340,7 +341,7 @@ class GarDiscoveryTest(unittest.TestCase):
             requests = list((tmp_path / ".gar" / "terminal-requests").glob("*.json"))
             self.assertEqual(1, len(requests))
 
-    def test_local_docker_simulator_installs_docker_with_apt_get(self) -> None:
+    def test_explicit_local_docker_backend_installs_docker_with_apt_get(self) -> None:
         commands: list[list[str]] = []
 
         def fake_run_subprocess(argv: list[str]) -> int:

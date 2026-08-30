@@ -1,7 +1,8 @@
 """Compose simulation runtime objects from the environment selected by a workspace.
 
-`gar setup` で選ばれた backend id（`local_docker` / `wokwi` など）を見て、
-対応する実装とアクセス経路を組み立てるだけの層。実処理は各実装が持つ。
+`gar setup` で選ばれた backend id（または既存workspaceで明示された
+`local_docker` / `wokwi` など）を見て、対応する実装とアクセス経路を組み立てるだけの層。
+実処理は各実装が持つ。
 """
 
 from __future__ import annotations

@@ -1,8 +1,31 @@
 # コマンドリファレンス
 
-`gar` コマンド一覧。WSL の venv 上で実行する（`make start` で有効化）。
-設計背景は [02_ARCHITECTURE.md](02_ARCHITECTURE.md)、シミュレーション詳細は
-[06_SIMULATION.md](06_SIMULATION.md) を参照。
+`gar` コマンド一覧。**現行実装はWSLのvenv上で実行する**（`make start`で有効化）。
+Windowsをentrypointにする運用の経緯と人間作業は
+[0から実機まで](00_ZERO_TO_TARGET_TUTORIAL.md)、既存設計は
+[02_ARCHITECTURE.md](02_ARCHITECTURE.md)、シミュレーション詳細は
+[06_SIMULATION.md](06_SIMULATION.md)を参照する。
+
+## 実行場所と実装状態
+
+Windows host用の同名`gar` launcherは移行目標であり、まだこのrepositoryには存在しない。
+macOS用entrypoint／host adapterも未実装・未検証である。
+次の表は、現行commandの実体と、command名を変えずに到達する移行先を区別する。
+
+| capability／command | 現行実装 | Windows host移行後 | 状態 |
+|---|---|---|---|
+| `gar setup`、`gar sim ... build`、`gar target build`、`gar system ...` | WSL上のPython GAR | Windows launcherからWSL backendへ固定routing | launcher未実装 |
+| `gar target deploy`（UUU） | WSL上でmanifestのLinux版`uuu`を直接起動 | Windows native `uuu.exe`を起動 | Windows UUU adapter未実装 |
+| UUU後の`serialVerify` | POSIX `/dev/tty*`を`termios`で監視 | Windows COM adapterで監視 | Windows COM adapter未実装 |
+| `adb_win` Target | WSLからWindows `adb.exe`を起動 | Windows hostからnative `adb.exe`を起動可能にする | 現行のWSL interop経路は実装済み |
+| `gar usb` | WSLから`usbipd.exe`を操作 | Linux専用USB toolだけが使う例外経路 | 現行実装済み |
+| Local Docker simulation | WSLからDockerを操作する既存workspace | Docker Desktop WSL2 backendをWSLから操作 | 現行setupでは新規選択せず、Desktop上の同等性も未検証 |
+| Git、test、project全体の検索 | WSL shellで各command／`rg`を直接実行 | Windows launcherからWSLへ固定routing可能 | 対応するGAR top-level commandは未実装 |
+
+移行では「Windowsで失敗したらWSL」というfallbackを標準にしない。build／source操作はWSL、
+UUU／COMはWindows、Linux専用USBだけはWSL + usbipd、というcapability単位の固定routingにする。
+Docker Desktopを導入しただけではProduct buildが自動的にcontainer化されない。Product build hook
+またはSimulationEnvironmentがDockerを選択した場合だけ利用する。
 
 ---
 
@@ -165,6 +188,8 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 `--target NAME`（互換alias: `--codespace NAME`）で接続先を一時上書きできます。
 `start`は`--remote-path`、`--mount-dir`、`--settings`、`--profile-name`、`--no-mount`、
 `stop`は同種のlocal接続設定と`--shutdown`に対応します。
+`code boot`／`shutdown`はcloud VMの起動／停止と課金状態を変える。初回認証、organization policy、
+課金可否は人間が確認し、不要になったVMは明示的に停止する。
 
 ---
 
@@ -287,6 +312,9 @@ gar sim host stop
 | `gar sim host status [--json]` | ホストの実状態を表示。Dockerではinspectしたimage/portと現在specの一致も報告 |
 | `gar sim host <start/stop/status> --workspace NAME` | 指定workspaceのsimulator選択に応じ、DockerまたはEC2 host設定を使う |
 
+remote `host start`はcloud computeと課金状態を変え得る。人間または明示的に権限を与えられたCIが
+provider、workspace、課金可否を確認し、不要になったhostは`stop`する。
+
 #### 仮想デバイス環境管理 (`gar sim runtime`)
 | コマンド | 内容 |
 |---|---|
@@ -332,6 +360,8 @@ gar sim host stop
 | `gar sim infra destroy` | インスタンスを完全に破棄 |
 
 各infra actionは`--key-name`、`--region`、`--auto-approve`をTerraformへ渡せます。
+`apply`／`destroy`は外部resourceを変更する。`--auto-approve`はTerraformの入力を省略するだけであり、
+人間または明示的に権限を与えられたCIによる実行承認を省略する意味ではない。
 
 ---
 
@@ -339,14 +369,33 @@ gar sim host stop
 
 | コマンド | 内容 |
 |---|---|
-| `gar target prepare [--workspace NAME]` | 選択Targetが持つOS別recipeを初回適用。接続方法と権限取得方法はTarget Packが定義し、必要なservice account、限定installer、boot serviceなどを導入 |
+| `gar target prepare [--workspace NAME]` | recipe-backed SSH TargetだけがOS別recipeを初回適用。ADB、esptool、UUUでは不要でありerrorになる |
 | `gar target configure --workspace NAME --app NAME --file PATH [--json]` | recipe-backed SSH Targetへ明示指定した既存の通常ファイルを`/etc/gar/<app>.env`として原子的に配置。artifactは不要 |
 | `gar target build [--workspace NAME]` | workspaceのlocal/Codespaces build environmentで`scripts/product-target-build.sh`を実行し、実機用artifact snapshotを最新化。hookには選択Target IDを`GAR_TARGET`で渡す |
-| `gar target preflight [--workspace NAME] [--app NAME] [--json]` | 最新TARGET_APPのchecksum/provenanceと、接続Targetのarch/ABI/libc/kernel・導入済みrecipe/tools identityを読み取り専用probeで検証。配置・設定・lifecycle操作は行わない |
-| `gar target deploy [--workspace NAME] [--json]` | workspaceに設定したADB・serial（esptool flash）・SSH/scp環境へ最新artifactを配置。lifecycle対応Targetではreload、health、稼働build ID一致まで確認 |
-| `gar target status [--workspace NAME] [--app NAME] [--json]` | Target recipeのlifecycle capability経由でapplicationの稼働状態を取得 |
-| `gar target log [--workspace NAME] [--app NAME] [--lines N] [--json]` | Target recipe経由で末尾logを取得（既定200行） |
-| `gar target diag [--workspace NAME] [--app NAME] [--json]` | status、health、期待/稼働build IDをまとめて診断 |
+| `gar target preflight [--workspace NAME] [--app NAME] [--json]` | Linux file-transfer Targetのchecksum/provenanceと、arch/ABI/libc/kernel・recipe/tools identityをread-only probeで検証。UUUは非対応 |
+| `gar target deploy [--workspace NAME] [--json]` | ADB・serial（esptool）・SSH/scp・UUU環境へ最新artifactを配置またはflash。lifecycle対応Targetだけreload、health、稼働build ID一致まで確認 |
+| `gar target status [--workspace NAME] [--app NAME] [--json]` | lifecycle capabilityを持つTargetのapplication稼働状態を取得。UUUは非対応 |
+| `gar target log [--workspace NAME] [--app NAME] [--lines N] [--json]` | lifecycle capabilityを持つTargetの末尾logを取得（既定200行）。UUUは非対応 |
+| `gar target diag [--workspace NAME] [--app NAME] [--json]` | lifecycle capabilityを持つTargetのstatus、health、期待/稼働build IDを診断。UUUは非対応 |
+
+UUU Targetが利用する標準経路は`target build` → 人間によるboot／USB確認 → `target deploy`だけである。
+`serialVerify`がTarget Packにあればdeploy内で実行するが、application lifecycleのhealth／build ID
+収束とは別の確認である。
+
+### 人間確認と副作用
+
+次は運用上の確認境界である。現行CLIがすべての確認promptを強制するとは限らないため、AIは
+commandが実行可能であることを、人間の承認済みであることと同一視しない。
+
+| 操作 | 主な副作用 | 人間の関与 |
+|---|---|---|
+| `target build` | local／cloudのCPU、disk、artifact snapshotを更新 | 通常不要。cloud認証や課金判断が必要な場合だけ確認 |
+| `target preflight` | Linux file-transfer Targetのread-only probe | 通常不要。対象Targetのidentityは人間が最初に確定する。UUUでは実行しない |
+| `target prepare` | recipe-backed SSH TargetのOS、account、service、権限設定を変更 | 初回とrecipe更新時に対象と変更内容を承認。ADB、esptool、UUUでは実行しない |
+| `target configure` | 永続的なruntime設定を変更 | 設定値、secretの扱い、対象appを確認 |
+| `target deploy`（SSH／ADB） | applicationを置換し、serviceをrestartし得る | productionや稼働中Targetでは実行時点を承認 |
+| `target deploy`（esptool／UUU） | firmware／full imageを書き換え、既存dataを失い得る | Board、port、storage、boot mode、imageを毎回確認して承認 |
+| `target status`／`log`／`diag` | lifecycle Targetでは原則read-only | 通常不要。logにsecretが含まれ得る環境では共有範囲を確認。UUUでは実行しない |
 
 低レベルコマンド:
 
@@ -356,7 +405,7 @@ gar sim host stop
 
 ADB接続に失敗した場合は、Terminal Bridgeを通じて`gar usb list` / `gar usb attach`による復旧手順を案内する。
 
-日常操作:
+Recipe-backed Linux Targetの日常操作:
 
 ```bash
 gar target preflight --workspace Local/Product --app my-app --json
@@ -394,11 +443,14 @@ ESP32 / USB serial の低レベル確認やトラブルシュートは
 
 ---
 
-## 4. USB 接続（WSL2 usbipd-win passthrough）
+## 4. USB 接続（WSL2 usbipd-win passthrough、例外経路）
 
 WSL2 から Windows 側の `usbipd-win` を呼び、USB serial / adb デバイスを
 `/dev/ttyACM*` や `/dev/ttyUSB*` として WSL2 に接続するための補助コマンド。
 Windows 側に `usbipd-win` が必要。
+
+これは現行UUU／POSIX serial backendとの互換経路である。Windows native UUU／COM adapterへ
+移行したTargetでは使わず、Linux専用toolがUSB deviceを直接必要とする場合だけ明示的に使う。
 
 初回 bind は Host OS 側の管理者権限が必要になることがある。その場合は
 Windows 管理者 PowerShell で一度だけ実行する。
@@ -418,12 +470,103 @@ usbipd bind --busid <busid>
 `attach` / `bind`は`--busid`、`--match`、`--no-remember`、`detach`は`--busid` / `--match`、
 `status`は`--busid` / `--match` / `--json`に対応します。
 
+WSLへattachしている間、そのUSB deviceはWindows native toolから利用できない。人間が対象を識別し、
+device所有権をWSLへ移すことを承認してからattachする。FRDM-IMX91Sの現行UUU経路ではdownload USBと
+debug UARTが別deviceであり、保存できるbus IDは一件だけである。両方を`gar usb list`で識別し、
+各commandへ`--busid`を明示する。自動検出に頼らない。
+
+現行UUU経路では、これに加えてWSLへLinux版UUU／libusbを導入し、debug UARTを開けるよう
+udev ruleまたはgroup membershipを人間が設定する。Windows native UUU／COMへ移行した後は不要になる。
+
 adb 実機は Windows 側 `adb.exe` を直接使う environment もあり、その場合は `usbipd-win`
 不要。USB serial flash など WSL2 の device node が必要な経路では `gar usb` を使う。
 
 ---
 
-## 補助
+## 5. Windows hostの初回準備（GAR外のcommand）
+
+この節は`gar` commandではない。Windowsをentrypointにするため、人間がmachineごとに一度だけ
+実行または確認するOS操作である。UAC、driver導入、physical Target選択をAIが無断で完了扱いにしない。
+判断理由と安全な実行順の正本は[0から実機まで](00_ZERO_TO_TARGET_TUTORIAL.md)とし、この節は
+copy可能なhost commandの索引だけを提供する。
+
+### WSLとDockerの確認
+
+```powershell
+wsl.exe --list --verbose
+docker version
+wsl.exe --distribution Ubuntu-26.04 -- docker version
+```
+
+Dockerを使う場合は、人間がDocker DesktopのWSL2 backendと対象distributionのWSL integrationを
+有効にする。最後のcommandは現在のPCのdistribution名を使った例であり、別machineでは
+`Ubuntu-26.04`を`wsl.exe --list --verbose`で確認した名前へ置き換える。Windows側だけでなく、
+対象WSL distribution内からDocker daemonへ到達できることと、Product workspaceがWSL filesystem上に
+あることを確認する。
+
+### Yurufuwa作業領域rootのWindows link
+
+artifact単位や個別Projectのlinkを切替のたびに張り替えない。複数Projectを含むYurufuwa作業領域rootへ
+directory symbolic linkを一本だけ作成する。junction（`/J`）ではなくsymbolic linkを使う。
+
+次は現在のPCの値である。別machineでは、先に`wsl.exe --list --verbose`でdistribution名を、
+WSL shellの`pwd`で作業領域rootを確認してから`-Target`を置き換える。
+
+```powershell
+New-Item -ItemType Directory -Force C:\GAR
+New-Item -ItemType SymbolicLink `
+  -Path C:\GAR\Yurufuwa `
+  -Target '\\wsl.localhost\Ubuntu-26.04\home\user\Yurufuwa'
+
+Test-Path C:\GAR\Yurufuwa\GAR\GaplessAgentRuntime
+```
+
+2026-08-28のこのmachineでの試験ではlink作成に管理者PowerShellが必要だった。Developer Modeを有効にする場合も、
+有効化は人間が判断する。link作成後の通常参照には管理者権限を要求しない。
+
+Windows pathはWindows native peripheral toolがartifactへ到達するためのaliasである。WSL commandは
+引き続き`/home/user/Yurufuwa`を使い、Windows native Git／build／recursive searchをlink越しに
+実行しない。配下Projectの切替に追加linkやlinkの張り替えは不要である。
+
+### Windows native UUUとserialの確認
+
+```powershell
+Get-Command uuu.exe
+uuu.exe -h
+Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Name
+```
+
+これらはtoolとportの存在確認だけであり、flash commandではない。人間がdownload USB、debug UART、
+boot mode、対象Board、書込みstorageを確認してから`gar target deploy`を承認する。Windows native
+UUU／COM adapterが未実装の間は、Windows上で同名`gar`からdeployできるとはみなさない。
+
+### 移行中の診断用WSL起動
+
+Windows launcher実装前にPowerShellから現行GARを診断するときは、`wsl.exe`で明示的にWSL commandを
+起動できる。ただし、これはdaily user interfaceではなく移行中の診断手段である。次は現在のPCの例で、
+別machineではdistribution名と`--cd`のpathを置き換える。
+
+```powershell
+wsl.exe --distribution Ubuntu-26.04 `
+  --cd /home/user/Yurufuwa/GAR/GaplessAgentRuntime `
+  -- bash -lc 'source .venv/bin/activate && gar --help'
+```
+
+### Text検索command
+
+| command | 用途 | Project全体での扱い |
+|---|---|---|
+| WSL版`rg` | source、設定、logの高速な再帰検索 | 標準。WSL filesystem内で実行する |
+| Windows版`rg.exe` | NTFS上のWindows-local file検索 | WSL project linkの全走査には使わない |
+| `Select-String` | PowerShell pipeline内の小規模なtext検索 | 補助用途 |
+| `findstr` | 単純なliteral検索やcommand出力のfilter | `grep`互換interfaceとして使わない |
+
+`gar grep`と`gar search`は現行commandではない。将来追加する場合は、Windows上でもWSL版`rg`へ
+固定routingし、OSごとに異なるregex semanticsをuser／AIへ見せない。
+
+---
+
+## 6. 補助
 
 | コマンド | 内容 |
 |---|---|

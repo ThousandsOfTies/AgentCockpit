@@ -28,13 +28,15 @@ Simulation runtimeは次を提供する。
 
 | Environment | Runtime | 状態 |
 |---|---|---|
-| `local_docker` | Linux systemd互換runtimeをcontainerで実行 | 実装済み |
 | `ssh_remote` | Linux systemd runtimeをSSH hostへ配置 | 実装済み。EC2 Gravitonがreference |
 | `wokwi` | Product所有のWokwi project／firmwareをlocal processで実行 | 実装済み |
 | `mujoco` | Product modelをmaterializeしMuJoCo processを実行 | 実装済み |
 | `renode_mcu` | installerと選択肢 | runtime未実装を明示するerror-only adapter |
 | `esp32_qemu_firmware` | installerと選択肢 | runtime未実装を明示するerror-only adapter |
 | `aws_ssm` | installerと選択肢 | runtime未実装を明示するerror-only adapter |
+
+`local_docker`の実装とtarget側のDocker設定は、明示的なbuild/UTまたは既存workspaceとの互換性のために
+残しています。ただし、`gar setup`のsimulation選択肢には含めません。
 
 未実装backendを選んだ場合、別backendへ暗黙fallbackしない。
 
