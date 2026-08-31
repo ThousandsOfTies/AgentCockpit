@@ -193,7 +193,7 @@ def _sync_config_from_outputs(config: dict, outputs: dict[str, str], *, region: 
         if host is None:
             print(
                 "gar sim infra: public IPは取得しましたがSSH hostが未設定です。"
-                "`gar setup --ec2-host HOST` を実行してください。",
+                "`gar config --ec2-host HOST` を実行してください。",
                 file=sys.stderr,
             )
         elif SshConfigHostAddressUpdater().update(host, public_ip):

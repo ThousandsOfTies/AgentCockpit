@@ -17,7 +17,7 @@ const processedRequests = new Set();
 
 function activate(context) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("gar.runSetup", () => {
+    vscode.commands.registerCommand("gar.runConfig", () => {
       const folder = workspaceFolder();
       if (!folder) {
         vscode.window.showErrorMessage("Gapless Agent Runtime workspace folder was not found.");
@@ -27,7 +27,7 @@ function activate(context) {
       runInTerminal({
         title: "Gapless Agent Runtime",
         cwd: folder.fsPath,
-        command: ".venv/bin/gar setup",
+        command: ".venv/bin/gar config",
       });
     })
   );

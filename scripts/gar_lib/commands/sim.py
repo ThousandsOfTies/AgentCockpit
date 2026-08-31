@@ -108,7 +108,7 @@ def add_sim_parser(
         "--workspace",
         default=None,
         metavar="NAME",
-        help="gar setup で登録した workspace 名。登録が1件なら省略できます",
+        help="gar config で登録した workspace 名。登録が1件なら省略できます",
     )
     json_option = _shared_option(
         "--json",

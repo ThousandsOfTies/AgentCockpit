@@ -40,7 +40,7 @@ def add_terminal_parser(
     run_parser.add_argument(
         "command_parts",
         nargs=argparse.REMAINDER,
-        help="実行するコマンド。例: gar terminal run -- gar setup",
+        help="実行するコマンド。例: gar terminal run -- gar config",
     )
 
     gc_parser = commands.add_parser(

@@ -12,14 +12,14 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:gar.runSetup"
+    "onCommand:gar.runConfig"
   ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "gar.runSetup",
-        "title": "Gapless Agent Runtime: Run gar setup"
+        "command": "gar.runConfig",
+        "title": "Gapless Agent Runtime: Run gar config"
       }
     ]
   }

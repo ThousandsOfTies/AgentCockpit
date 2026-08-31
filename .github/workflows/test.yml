@@ -69,6 +69,7 @@ jobs:
         run: |
           python -m scripts.gar_lib --help
           python -m scripts.gar_lib target --help
+          cmd /c scripts\gar.cmd setup
           cmd /c scripts\gar.cmd --help
           python -m unittest discover -s tests -p test_gar_windows_host.py -v
           python -m unittest discover -s tests -p test_gar_uuu.py -v

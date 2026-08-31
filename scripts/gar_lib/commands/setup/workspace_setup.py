@@ -1,4 +1,4 @@
-"""Workspace registration phase for ``gar setup``."""
+"""Workspace registration phase for ``gar config``."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def configure_workspace_root(config: dict) -> str | None:
             for entry in workspaces:
                 print_workspace_entry(entry, indent="    - ")
         else:
-            print(f"  {style('未設定', YELLOW)} 対話的に `gar setup` を実行して登録してください。")
+            print(f"  {style('未設定', YELLOW)} 対話的に `gar config` を実行して登録してください。")
         return workspaces[0]["id"] if len(workspaces) == 1 else None
 
     changed = False

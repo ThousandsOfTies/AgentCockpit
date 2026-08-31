@@ -18,7 +18,7 @@ Windows control surface (`gar`)
 ```
 
 Windowsは入口とUSB／serialの所有者、DockerはLinux build／test／toolの実行場所、UbuntuはLinux device simulationのSim Hostです。ローカルはVirtualBox、remoteはAWSという
-provider差だけを`gar setup`で選び、日常操作はOSにかかわらず同じ`gar ...`を使います。
+provider差だけを`gar config`で選び、日常操作はOSにかかわらず同じ`gar ...`を使います。
 WSLはGARの必須構成要素ではありません。Docker Desktopが内部実装でWSL2を利用する場合も、
 GARからはDocker Engineとして扱います。
 
@@ -54,11 +54,12 @@ Windowsではrepository rootから次を実行します。launcherが`.venv`とG
 
 ```powershell
 scripts\gar.cmd setup
+scripts\gar.cmd config
 ```
 
-Linux／macOSのhostで同じCLIを利用する場合は`scripts/gar setup`です。
-GAR core自体を開発するLinux環境では、従来どおり`make init` / `make start`を使えます。
-
+`setup`はrepositoryの`.venv`とGAR用Python依存を準備し、未登録なら`scripts`をユーザーPATHへ
+追加するか`[Y/n]`で確認して終了します。登録済みなら変更せずSKIPします。`config`がworkspace、
+Target、Build、Simulation等を設定します。Linux／macOSでは`scripts/gar setup`、`scripts/gar config`です。
 Product workspaceには、少なくとも次を置きます。
 
 ```text

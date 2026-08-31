@@ -36,7 +36,7 @@ VSCode integrated terminal で実行する request を作成します。
 
 ```json
 {
-  "command": ".venv/bin/gar setup",
+  "command": ".venv/bin/gar config",
   "cwd": "/path/to/GaplessAgentRuntime",
   "title": "Gapless Agent Runtime"
 }

@@ -51,16 +51,16 @@ GAR coreを変更したらrepository rootで`make check`を実行する。
 | Physical Target | 配布済みapplicationとreal deviceの実行 |
 | WSL | GARの必須要素ではない。Docker Desktopが内部で利用する場合もGARからはDockerとして扱う |
 
-Sim HostやPhysical Targetで場当たり的にcompileしない。buildはsetupで選択した
+Sim HostやPhysical Targetで場当たり的にcompileしない。buildは`gar config`で選択した
 Local Docker／Codespaces BuildEnvironmentとProduct hookで行う。VirtualBoxとAWSを別simulatorと
 扱わず、`ssh_remote`に対するSim Host providerの差としてcomposition境界で吸収する。
 
 ## 標準操作
 
-### Setup
+### Configuration
 
 ```bash
-gar setup
+gar config
 ```
 
 workspace編集後は、対象workspaceのTarget、BuildEnvironment、SimulationEnvironment、

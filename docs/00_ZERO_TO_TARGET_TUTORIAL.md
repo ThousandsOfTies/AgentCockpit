@@ -48,7 +48,7 @@ VirtualBoxとAWSは別のsimulatorではない。Ubuntu上の同じLinux device 
 | NXP初回準備 | NXP UUU、download USB driver、debug UART driverを導入 | vendorとdeviceの信頼判断が必要 |
 | VirtualBox初回準備 | Ubuntu VM、network、SSH key／host key、bootstrap、`gpio_sim`を準備 | VM／kernelはsoftwareから推測できない |
 | AWS初回準備 | login、region、instance type、key、課金上限を選ぶ | credentialと課金をGARが代行決定しない |
-| `gar setup` | Product、Target、Build、Simulator、Sim Host、接続先を選ぶ | どの製品／machineを操作するかの決定 |
+| `gar config` | Product、Target、Build、Simulator、Sim Host、接続先を選ぶ | どの製品／machineを操作するかの決定 |
 | 実機作業 | 配線、電圧、boot switch、USB、COM、storageを確認 | 誤接続／誤flashを防ぐ |
 | 破壊的操作 | full-image flash、Terraform destroyの対象と時点を承認 | data消去や外部resource変更がある |
 | 受入れ | display、LED、音、機構、発熱などを確認 | fixtureのない物理観測は自動化できない |
@@ -82,25 +82,21 @@ Docker Desktopのdaemon起動、workspaceのfile sharing、VirtualBoxのnetwork�
 Windowsでrepository rootから実行する。
 
 ```powershell
-scripts\gar.cmd --help
 scripts\gar.cmd setup
+scripts\gar.cmd config
+scripts\gar.cmd --help
 ```
 
-launcherはrepository内の`.venv\Scripts\python.exe`とGAR用のPython依存を必要に応じて用意する。
-PATHに`scripts`を追加した後は、以下を`gar ...`と表記する。Linux／macOSのhostでは
+`setup`はlauncherだけが処理し、repository内の`.venv\Scripts\python.exe`とGAR用Python依存を
+必要に応じて用意する。`scripts`がPATHに無ければユーザーPATHへ登録するか`[Y/n]`で確認し、
+登録済みならSKIPする。変更は新しいterminalから有効になる。workspace／environment設定は行わず、
+続く`config`が担当する。PATH登録後は以下を`gar ...`と表記する。Linux／macOSのhostでは
 `scripts/gar ...`を使う。公開commandと引数は同じである。
-
-GAR core自体の開発環境では従来の次の手順も使える。
-
-```bash
-make init
-make start
-```
 
 ## 2. Workspaceとenvironmentを設定する
 
 ```powershell
-gar setup
+gar config
 ```
 
 対話で次を選ぶ。
@@ -114,7 +110,7 @@ gar setup
 7. VirtualBox VM名、SSH config Host alias、COM port等のmachine-local値
 
 ```powershell
-gar setup --no-install
+gar config --no-install
 ```
 
 `--no-install`は不足commandを表示するだけで、導入を実行しない。設定は
@@ -234,7 +230,7 @@ gar sim runtime log --workspace Local/Product
 
 ### Sim Hostを切り替えた場合
 
-VirtualBoxの既定はx86_64、AWS Gravitonの既定はaarch64である。`gar setup`でproviderを
+VirtualBoxの既定はx86_64、AWS Gravitonの既定はaarch64である。`gar config`でproviderを
 切り替えたら、SIM_RUNTIMEとSIM_APPの両方を再buildする。異なるarchitectureの
 最新snapshotをdeployしようとするとGARは拒否する。
 

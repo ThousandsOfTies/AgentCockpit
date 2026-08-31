@@ -25,7 +25,7 @@ VirtualBox Ubuntu、remote variantはAWS Ubuntuが担う。
 GARのコマンドは明示的なlifecycle操作として扱う。ユーザーが入力するのは
 `gar sim app build` / `gar sim app deploy` / `gar target build` / `gar target deploy` のような
 抽象 target であり、個別の実行方法（PlatformIO、Codespaces、esptool、adb、scp など）は
-`gar setup` で選ばれた target 定義と接続設定から解決する。
+`gar config` で選ばれた target 定義と接続設定から解決する。
 
 現在の`deploy`は、host側artifact storeにある最新bundleを対象runtimeへ反映する操作であり、
 buildやfetchを暗黙には実行しない。新しい成果物が必要な場合は先に`build`を実行し、
@@ -89,7 +89,7 @@ target.build
   depends on target.sources
 ```
 
-`gar setup` は、この graph の各 node が何を意味するかを保存する。たとえば ESP32/M5StickC
+`gar config` は、この graph の各 node が何を意味するかを保存する。たとえば ESP32/M5StickC
 なら `target.access` は USB serial 接続先、`target.build` はproduct workspaceの
 `product-target-build.sh`をlocalまたはCodespacesで実行する処理、
 `target.deploy` は最新 firmware artifact の flash になる。RasPi/Linux device なら

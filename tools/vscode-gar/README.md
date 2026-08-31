@@ -10,7 +10,7 @@ Agentは共通request store経由で`.gar/terminal-requests/*.json`に要求を�
 ## Agent からの使い方
 
 ```bash
-gar terminal run --title "Gapless Agent Runtime" --command ".venv/bin/gar setup"
+gar terminal run --title "Gapless Agent Runtime" --command ".venv/bin/gar config"
 ```
 
 ## VSCode からの使い方
@@ -26,7 +26,7 @@ make init
 Command Palette で次を実行します。
 
 ```text
-Gapless Agent Runtime: Run gar setup
+Gapless Agent Runtime: Run gar config
 ```
 
 ## Request / Status

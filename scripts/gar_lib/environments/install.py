@@ -42,7 +42,7 @@ def print_user_terminal_handoff(
         print("この実行環境では sudo を直接実行できません:")
         print(textwrap.indent(reason, "  "))
     print("ユーザーの通常ターミナルで次のコマンドを実行してください。")
-    print("完了後、もう一度 `gar setup` を実行すると続きから確認できます。")
+    print("完了後、もう一度 `gar config` を実行すると続きから確認できます。")
     print()
     print("```bash")
     for command in commands:

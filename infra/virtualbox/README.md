@@ -9,7 +9,7 @@ Sim Hostです。Product buildやUUU／COM操作を担当しません。
 2. Ubuntu kernelで`gpio_sim`を利用できることを確認する。
 3. `infra/simulation-host/ubuntu-bootstrap.sh`をroot権限で実行する。
 4. Windowsの`%USERPROFILE%\.ssh\config`へ固定aliasを登録し、host keyを確認する。
-5. `gar setup`でSimulation Environmentに`SSH Remote`、Sim Hostに
+5. `gar config`でSimulation Environmentに`SSH Remote`、Sim Hostに
    `Local Ubuntu (VirtualBox)`を選び、VM名とSSH aliasを保存する。
 
 例:

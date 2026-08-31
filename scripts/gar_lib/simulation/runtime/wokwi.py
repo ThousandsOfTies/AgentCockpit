@@ -68,7 +68,7 @@ class WokwiSimulationEnvironment:
 
             executable = self._wokwi_executable()
             if executable is None:
-                raise GarDomainError("wokwi-cliが見つかりません。gar setupでWokwiを設定してください。")
+                raise GarDomainError("wokwi-cliが見つかりません。gar configでWokwiを設定してください。")
             firmware = self._resolve_project_path(self._firmware_path())
             if not firmware.is_file():
                 raise GarDomainError(

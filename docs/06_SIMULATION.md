@@ -61,9 +61,65 @@ Simulation runtimeは次を提供する。
 | `esp32_qemu_firmware` | hostless | installer／選択肢とerror-only runtime |
 | `aws_ssm` | AWS | installer／選択肢とerror-only runtime |
 
-`local_docker`のSimulationEnvironmentは旧workspace／testとの互換のため残るが、`gar setup`の
+`local_docker`のSimulationEnvironmentは旧workspace／testとの互換のため残るが、`gar config`の
 標準simulation選択肢ではない。Dockerは標準ではBuildEnvironmentであり、`gpio_sim`の
 local Sim HostはVirtualBox Ubuntuである。未実装backendを選んだ場合は別backendへfallbackしない。
+
+### Legacy local Docker設定
+
+明示的に`local_docker`を選んだ既存workspaceでは、Target Packの
+`gar-tools/targets/<id>/target.json`に`simulation.docker`を宣言する。workspaceの`docker`設定は
+machine-localな上書きに限る。
+
+```json
+{
+  "docker": {
+    "container": "gar-sim",
+    "image": "gar-linux-device:latest",
+    "bridge_port": 18080
+  }
+}
+```
+
+これらはすべて省略でき、指定した値だけがTarget Packの宣言を上書きする。Target Pack側は次の形である。
+
+```json
+{
+  "simulation": {
+    "docker": {
+      "image": "gar-linux-device:latest",
+      "buildContext": "targets/linux-device",
+      "publishedBridgePort": 8080,
+      "containerBridgePort": 8080,
+      "publishedHost": "127.0.0.1",
+      "init": ["/sbin/init"],
+      "privileged": true,
+      "hostCgroups": true,
+      "environment": ["GAR_BRIDGE_HOST=0.0.0.0"],
+      "tmpfs": ["/run", "/run/lock"],
+      "mounts": ["/sys/kernel/config:/sys/kernel/config"],
+      "devices": ["/dev/fuse", "/dev/cuse"]
+    }
+  }
+}
+```
+
+`buildContext`があればcontainer作成前にimageをbuildする。`publishedBridgePort`はhost側、
+`containerBridgePort`はcontainer内、`publishedHost`の既定値は`127.0.0.1`である。
+legacy `bridgePort`は両portへ同じ値を設定する互換形式として読む。containerはhost kernelを
+共有するため、`gpio-sim`にはLinux 5.17以降のhost kernelが必要である。
+
+### Simulation artifactのarchitecture
+
+`gar sim app build`と`gar sim runtime build`は、実行先に合わせた値をProduct hookへ渡す。
+
+| Simulation Environment / Host | `GAR_SIM_ARCH` | `CC` |
+|---|---|---|
+| `local_docker` | host architecture（`docker.arch`で上書き） | `gcc` |
+| `ssh_remote` + `virtualbox` | `x86_64`（`simulation_host.arch`で上書き） | `x86_64-linux-gnu-gcc` |
+| `ssh_remote` + `aws_ec2` | `aarch64`（`simulation_host.arch`で上書き） | `aarch64-linux-gnu-gcc` |
+
+`GAR_SIM_ENVIRONMENT`にはSimulationEnvironment IDを渡す。`gar target build`にはこれらを渡さない。
 
 ## Linux device compatibility runtime
 
@@ -113,7 +169,7 @@ command／stateへ変換するBridge adapterを用意する。
 2. `infra/simulation-host/ubuntu-bootstrap.sh`をroot権限で実行する。
 3. `sudo modprobe gpio-sim`と`/sys/kernel/config`の利用可否を確認する。
 4. Windowsの`%USERPROFILE%\.ssh\config`へ固定Host aliasとkeyを登録し、host keyを確認する。
-5. `gar setup`でSimulation Environmentに`SSH Remote`、Sim Hostに`Local Ubuntu (VirtualBox)`を選ぶ。
+5. `gar config`でSimulation Environmentに`SSH Remote`、Sim Hostに`Local Ubuntu (VirtualBox)`を選ぶ。
 6. VM名／UUIDとSSH aliasを保存する。
 
 詳細とSSH config例は[`infra/virtualbox/README.md`](../infra/virtualbox/README.md)を参照する。
@@ -211,3 +267,14 @@ gar system test \
 
 VirtualBox controllerやWindows process adapterがunit testで検証されていても、実VMのnetwork、
 kernel module、USB deviceまで自動的に確認済みにはならない。[検証状態](07_VERIFICATION.md)を参照する。
+
+## 低レベルport forward
+
+通常は`gar sim runtime start`／`stop`がHardware Panel用port forwardを管理する。接続だけを
+切り分けて診断する場合は、GAR core repositoryで次のMake wrapperを使える。
+
+| コマンド | 内容 |
+|---|---|
+| `make port-forward SIM_HOST=HOST` | 指定Sim Hostへのport forwardを開始 |
+| `make port-forward-stop SIM_HOST=HOST` | port forwardを停止 |
+| `make port-forward-status SIM_HOST=HOST` | port forward状態を確認 |

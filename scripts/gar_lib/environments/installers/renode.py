@@ -1,6 +1,6 @@
 """Install the Renode MCU simulator in a user-local location.
 
-`gar setup` のシミュレート環境の選択肢として Renode を提供する。
+`gar config` のシミュレート環境の選択肢として Renode を提供する。
 
 Renode は VM ではなく機能的シミュレータ（命令セットエミュレータ）で、
 Cortex-M / RISC-V などの MCU ファームウェアを未改変のまま仮想実行できる。
@@ -239,7 +239,7 @@ def _finish_launcher_install(installed_launcher: Path) -> int:
     if shutil.which("renode") is None or shutil.which("renode-test") is None:
         print(
             f"注意: PATH に {BIN_DIR} が含まれていません。"
-            "シェル設定に追加してから `gar setup` を再実行してください。\n"
+            "シェル設定に追加してから `gar config` を再実行してください。\n"
             f'  export PATH="{BIN_DIR}:$PATH"'
         )
         return 1
@@ -347,7 +347,7 @@ def _install_renode_test_dependencies() -> int:
         if result.returncode != 0:
             print(
                 "renode-test 用 venv の作成に失敗しました。"
-                "python3-venv を導入してから `gar setup` を再実行してください。"
+                "python3-venv を導入してから `gar config` を再実行してください。"
             )
             return result.returncode
 

@@ -1,4 +1,4 @@
-"""Orchestrate the ordered phases of ``gar setup``."""
+"""Orchestrate the ordered phases of ``gar config``."""
 
 from __future__ import annotations
 
@@ -62,12 +62,12 @@ from scripts.gar_lib.vscode.terminal_ui import (
 )
 
 
-def add_setup_parser(
+def add_config_parser(
     subparsers: argparse._SubParsersAction,
 ) -> dict[str, argparse.ArgumentParser]:
     parser = subparsers.add_parser(
-        "setup",
-        help="接続環境を選択して依存コマンドを確認します",
+        "config",
+        help="workspaceと実行環境を設定し、依存コマンドを確認します",
     )
     parser.add_argument(
         "--no-install",
@@ -84,10 +84,10 @@ def add_setup_parser(
         default=None,
         help="ESP32 esptool environment が使う serial port を保存します（例: COM3, /dev/ttyUSB0）",
     )
-    return {"setup": parser}
+    return {"config": parser}
 
 
-def run_setup_cli(args: Namespace) -> int:
+def run_config_cli(args: Namespace) -> int:
     return run_setup(
         no_install=args.no_install,
         ec2_host=args.ec2_host,
@@ -102,7 +102,7 @@ def run_setup(
 ) -> int:
     if ec2_host is not None and not is_valid_runtime_host(ec2_host):
         print(
-            "gar setup: --ec2-hostには空白や制御文字を含まないSSH host名を指定してください。",
+            "gar config: --ec2-hostには空白や制御文字を含まないSSH host名を指定してください。",
             file=sys.stderr,
         )
         return 1
@@ -335,7 +335,7 @@ def _print_incomplete_setup(
     optional_missing_categories: Sequence[str],
 ) -> None:
     print()
-    print(style("未完了のセットアップ:", BOLD, RED))
+    print(style("未完了の設定:", BOLD, RED))
     for category_name in missing_categories:
         print(f"  - {style(category_name, RED)}")
     _print_optional_missing_categories(optional_missing_categories)
@@ -372,7 +372,7 @@ def _run_completion_phase(
     print()
 
     _print_optional_missing_categories(optional_missing_categories)
-    print(style("初期化が完了しました。", BOLD, GREEN))
+    print(style("設定が完了しました。", BOLD, GREEN))
 
 
 def _print_optional_missing_categories(categories: Sequence[str]) -> None:

@@ -135,7 +135,7 @@ class GarSetupConfigTest(unittest.TestCase):
         self.assertIn("未導入", text)
         self.assertIn("設定済み", text)
         self.assertNotIn("1. Development Test", text)
-        self.assertIn("初期化が完了しました。", text)
+        self.assertIn("設定が完了しました。", text)
 
     def test_setup_defaults_to_first_unconfigured_category_environment(self) -> None:
         environments = [FakeDevelopmentEnvironment, FakeMissingTargetAccessEnvironment]
@@ -175,7 +175,7 @@ class GarSetupConfigTest(unittest.TestCase):
         self.assertIn("未設定", text)
         self.assertIn("選択: Missing Test", text)
         self.assertIn("3. 実機環境", text)
-        self.assertIn("未完了のセットアップ", text)
+        self.assertIn("未完了の設定", text)
 
     def test_setup_saves_selected_environment_after_successful_setup(self) -> None:
         environments = [FakeDevelopmentEnvironment]
@@ -408,7 +408,7 @@ class GarSetupConfigTest(unittest.TestCase):
         self.assertIn("実機環境", text)
         self.assertIn("後で設定可", text)
         self.assertIn("あとで設定できる項目", text)
-        self.assertNotIn("未完了のセットアップ", text)
+        self.assertNotIn("未完了の設定", text)
 
     def test_setup_allows_simulation_to_remain_unconfigured(self) -> None:
         environments = [FakeDevelopmentEnvironment, FakeMissingSimulationEnvironment]
@@ -451,7 +451,7 @@ class GarSetupConfigTest(unittest.TestCase):
         self.assertIn("シミュレート環境", text)
         self.assertIn("後で設定可", text)
         self.assertIn("あとで設定できる項目", text)
-        self.assertNotIn("未完了のセットアップ", text)
+        self.assertNotIn("未完了の設定", text)
 
     def test_setup_defaults_to_optional_category_after_required_items(self) -> None:
         from scripts.gar_lib.commands.setup import (
@@ -659,7 +659,7 @@ class GarSetupConfigTest(unittest.TestCase):
                 result = run_setup(no_install=True)
 
         self.assertEqual(1, result)
-        self.assertIn("未完了のセットアップ", output.getvalue())
+        self.assertIn("未完了の設定", output.getvalue())
 
     def test_setup_can_store_default_ec2_host(self) -> None:
         config = {"selected_environments": {"simulator": "ssh_remote"}}

@@ -61,7 +61,7 @@ class GarCliRootParserTest(GarCliDispatchAssertions, unittest.TestCase):
         self.assertFalse(hasattr(bundle.root, "_agp_subcommand_parsers"))
         self.assertTrue(
             {
-                "setup",
+                "config",
                 "code",
                 "terminal",
                 "completion",
@@ -71,6 +71,21 @@ class GarCliRootParserTest(GarCliDispatchAssertions, unittest.TestCase):
                 "hw",
             }.issubset(bundle.help_parsers)
         )
+
+    def test_setup_is_not_a_public_cli_command(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as exc:
+                main(["setup"])
+
+        self.assertEqual(2, exc.exception.code)
+
+    def test_config_is_the_public_configuration_command(self) -> None:
+        with mock.patch("scripts.gar_lib.commands.setup.run_config_cli", return_value=0) as run_config:
+            result = main(["config", "--no-install"])
+
+        self.assertEqual(0, result)
+        run_config.assert_called_once()
+        self.assertTrue(run_config.call_args.args[0].no_install)
 
     def test_completion_bash_script_uses_argcomplete(self) -> None:
         text = completion_bash_script()

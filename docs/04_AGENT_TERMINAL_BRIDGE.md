@@ -12,7 +12,7 @@ AI と VSCode terminal を直接つなぐのではなく、明示的な橋を置
 
 ```text
 AI / Codex
-  -> gar setup command を裏で実行
+  -> gar config command を裏で実行
   -> sudo/auth が必要なら gar terminal run
   -> .gar/terminal-requests/*.json
   -> Gapless Agent Runtime VSCode Extension
@@ -22,7 +22,7 @@ AI / Codex
 
 ## 構成
 
-- `gar setup` は最初に target を表示し、その後カテゴリ単位で状態を表示する。
+- `gar config` は最初に target を表示し、その後カテゴリ単位で状態を表示する。
   - Target
   - 開発環境
   - シミュレート環境
@@ -33,13 +33,13 @@ AI / Codex
 - `gar terminal run`、setup installer、MCPは共通の`TerminalRequestStore`を使い、
   `.gar/terminal-requests/*.json`をatomic publishする。
 - environment が sudo/auth handoff を必要とした場合も同じrequest storeを使う。
-- `gar setup` は VSCode Terminal Bridge の導入状況を表示する。
+- `gar config` は VSCode Terminal Bridge の導入状況を表示する。
 - `tools/vscode-gar/` にVSCode extensionがある。
   - `.gar/terminal-requests/*.json` を監視する。
   - 要求を受けたら VSCode integrated terminal を作成する。
   - コマンドは `sendText()` で terminal に送る。
   - terminal 出力の捕捉や追加入力送信は行わない。AI は裏で状態確認して復帰する。
-  - `Gapless Agent Runtime: Run gar setup` コマンドも提供する。
+  - `Gapless Agent Runtime: Run gar config` コマンドも提供する。
   - request validationとshell quotingはNode標準testで回帰確認する。
 
 ## 使い方
@@ -67,7 +67,7 @@ MCP tool `run_in_visible_terminal` は以下の request を作る。
 
 ```json
 {
-  "command": ".venv/bin/gar setup",
+  "command": ".venv/bin/gar config",
   "cwd": "/path/to/GaplessAgentRuntime",
   "title": "Gapless Agent Runtime"
 }
@@ -76,7 +76,7 @@ MCP tool `run_in_visible_terminal` は以下の request を作る。
 MCP を使わず CLI から同じ request を作る場合:
 
 ```bash
-gar terminal run --title "Gapless Agent Runtime" --command ".venv/bin/gar setup"
+gar terminal run --title "Gapless Agent Runtime" --command ".venv/bin/gar config"
 ```
 
 ## Request / status lifecycle
@@ -89,12 +89,12 @@ extensionはrequestを検証し、terminalへ`sendText()`できた後だけ`proc
 
 実行結果は terminal から読まず、AI が裏で状態確認コマンドを実行して判断する。
 
-## gar setupとの統合
+## gar configとの統合
 
-`gar setup` は VSCode Terminal Bridge の有無を確認する。
+`gar config` は VSCode Terminal Bridge の有無を確認する。
 
 導入済みなら、AI は sudo が必要な処理を `gar terminal run` 経由で visible terminal に流せる。
-未導入の場合は、TTY 実行時に `gar setup` から直接導入できる。まとめて整える場合は `make init` を実行する。
+未導入の場合は、TTY 実行時に `gar config` から直接導入できる。まとめて整える場合は `make init` を実行する。
 
 MCP 設定は `make init` が `.gar/mcp-config.json` に生成する。
 

@@ -113,7 +113,7 @@ def plan_access_recovery(
                 title="GAR: simulation接続の復旧",
                 terminal_command=None,
                 instructions=(
-                    "AWS regionが未設定です。gar setupでsimulation環境を設定してください。",
+                    "AWS regionが未設定です。gar configでsimulation環境を設定してください。",
                     f"設定後に再実行: {retry_command}",
                 ),
             )

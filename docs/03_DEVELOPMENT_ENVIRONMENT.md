@@ -64,7 +64,7 @@ Product source + fixed gar-tools
 
 ### Local Docker
 
-`gar setup`の`Local Docker`は、Product workspaceを`/workspace`へbind mountし、
+`gar config`の`Local Docker`は、Product workspaceを`/workspace`へbind mountし、
 Linux container内のBashでProduct hookを実行する。旧`local`設定IDは互換のため残るが、
 意味はhost native buildではなくLocal Dockerである。
 
@@ -158,7 +158,55 @@ VM名、IP address、SSH alias、COM port、credential pathはProduct sourceへ�
 ```
 
 `codespace: "local"`は旧schemaとの互換IDで、UIでは`Local Docker`と表示する。
-この断片は説明用であり、実際は`gar setup`がworkspace entry内へ保存する。
+この断片は説明用であり、実際は`gar config`がworkspace entry内へ保存する。
+
+### Workspace設定モデル
+
+`.gar/config.json`の`workspaces`配列が設定の正本である。Target、Build、Simulation、Sim Host、
+machine-local接続値はworkspace要素ごとに保存され、別Productの設定と混ざらない。
+workspaceの`id`はGARが生成する不変ID、`name`は`--workspace NAME`で指定する表示名である。
+connectionは`local`、`codespaces`、`network`のいずれかで、複数登録時はcommandごとに
+CWDまたは`--workspace`から対象を解決する。対話設定時に選んだworkspaceを、後続processへ
+暗黙のglobal状態として持ち越さない。
+
+```json
+{
+  "workspaces": [
+    {
+      "id": "ws_42f8c1",
+      "name": "Local/Product",
+      "connection": {"type": "local", "path": "C:/Work/Product"},
+      "branch": "main",
+      "selected_environments": {
+        "codespace": "local",
+        "simulator": "ssh_remote",
+        "simulation_host": "virtualbox",
+        "target": "uuu"
+      },
+      "selected_target": "frdm-imx91s",
+      "build": {
+        "image": "gar-build-env:ubuntu-24.04",
+        "docker_socket": false
+      },
+      "simulation_host": {
+        "provider": "virtualbox",
+        "host": "gar-sim-local",
+        "arch": "x86_64",
+        "repo_dir": "/home/gar/GaplessAgentRuntime",
+        "bridge_port": 8080
+      },
+      "virtualbox": {"vm": "GAR Ubuntu Sim"},
+      "target": {"serial": "COM5"}
+    }
+  ]
+}
+```
+
+`selected_environments.codespace`は歴史的なkeyで、`local`の現在の意味は`Local Docker`である。
+`native`は既存workspace向けのlegacy BuildEnvironmentである。`build.image`の既定値は
+`gar-build-env:ubuntu-24.04`、`build.docker_socket`の既定値は`false`である。
+Linux device simulationでは`simulator=ssh_remote`と、接続先を表す
+`simulation_host=virtualbox|aws_ec2`を独立して保存する。
 
 ## 人間が担当する作業
 

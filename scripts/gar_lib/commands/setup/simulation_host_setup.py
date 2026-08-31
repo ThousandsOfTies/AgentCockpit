@@ -54,7 +54,7 @@ def _configure_virtualbox(config: dict) -> None:
     print(f"  VirtualBox VM: {style(current_vm or '未設定', BOLD, GREEN if current_vm else YELLOW)}")
     if not sys.stdin.isatty():
         if not current_host or not current_vm:
-            print(f"     {style('対話terminalでgar setupを実行してVM名とSSH aliasを保存してください。', DIM)}")
+            print(f"     {style('対話terminalでgar configを実行してVM名とSSH aliasを保存してください。', DIM)}")
         return
 
     host = _prompt_ssh_alias(current_host)

@@ -1,4 +1,4 @@
-"""Environment selection phase for ``gar setup``."""
+"""Environment selection phase for ``gar config``."""
 
 from __future__ import annotations
 

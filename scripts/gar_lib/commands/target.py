@@ -27,7 +27,7 @@ from scripts.gar_lib.target.lifecycle import (
 TARGET_ACTIONS = {
     "configure": "applicationの永続設定ファイルを明示的に配置します",
     "prepare": "SSH実機の限定sudoデプロイ権限を初回だけ設定します",
-    "build": "setup 済み target の実機用 artifact をビルドします",
+    "build": "config済みtargetの実機用artifactをビルドします",
     "preflight": "最新artifactと接続Targetの互換性を配置前に読み取り専用で検証します",
     "deploy": "target runtime へ成果物を配置します",
     "fetch": "BuildEnvironment から artifact store へbundleを取得します",
@@ -47,7 +47,7 @@ def add_target_parser(
         "--workspace",
         default=None,
         metavar="NAME",
-        help="gar setup で登録した workspace 名。登録が1件なら省略できます",
+        help="gar config で登録した workspace 名。登録が1件なら省略できます",
     )
     target_parser = subparsers.add_parser(
         "target",

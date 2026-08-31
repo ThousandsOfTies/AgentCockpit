@@ -50,7 +50,7 @@ def build_parser_bundle() -> CliParserBundle:
     commands = root.add_subparsers(dest="command", metavar="command")
     help_parsers: dict[str, argparse.ArgumentParser] = {}
 
-    help_parsers.update(setup.add_setup_parser(commands))
+    help_parsers.update(setup.add_config_parser(commands))
     help_parsers.update(code.add_code_parser(commands))
     help_parsers.update(terminal.add_terminal_parser(commands))
     help_parsers.update(completion.add_completion_parser(commands))
@@ -72,8 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
 def run_cli_command(args: argparse.Namespace, bundle: CliParserBundle) -> int:
     """Dispatch parsed arguments to one command module's explicit CLI adapter."""
 
-    if args.command == "setup":
-        return setup.run_setup_cli(args)
+    if args.command == "config":
+        return setup.run_config_cli(args)
     if args.command == "code":
         return code.run_code_cli(args, help_parser=bundle.help_parsers["code"])
     if args.command == "terminal":

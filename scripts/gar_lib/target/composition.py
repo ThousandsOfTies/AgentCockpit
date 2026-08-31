@@ -38,7 +38,7 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
     if backend == "adb_win":
         executable = workspace.adb.exe_path or shutil.which("adb.exe")
         if executable is None:
-            raise GarDomainError("adb.exeが見つかりません。gar setupで実機環境を設定してください。")
+            raise GarDomainError("adb.exeが見つかりません。gar configで実機環境を設定してください。")
         return FileTransferTargetEnvironment(
             AdbShellChannel(serial, executable=executable),
             AdbFileChannel(serial, executable=executable, local_path_transform=_windows_path),
@@ -76,7 +76,7 @@ def target_environment_for(workspace: Workspace) -> TargetEnvironment:
     if backend == "esp32_esptool":
         port = workspace.target.port or workspace.esp32.port
         if port is None:
-            raise GarDomainError(f"ESP32 serial portが未設定です: {workspace.name}。gar setupで設定してください。")
+            raise GarDomainError(f"ESP32 serial portが未設定です: {workspace.name}。gar configで設定してください。")
         return Esp32TargetEnvironment(port)
 
     if backend == "uuu":
@@ -130,7 +130,7 @@ def _ssh_host(workspace: Workspace) -> str:
     if host is None and workspace.connection_type == "network":
         host = workspace.connection.host
     if host is None:
-        raise GarDomainError(f"実機のSSH hostが未設定です: {workspace.name}。gar setupで設定してください。")
+        raise GarDomainError(f"実機のSSH hostが未設定です: {workspace.name}。gar configで設定してください。")
     return host
 
 

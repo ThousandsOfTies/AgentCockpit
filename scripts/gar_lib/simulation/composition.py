@@ -1,6 +1,6 @@
 """Compose simulation runtime objects from the environment selected by a workspace.
 
-`gar setup` で選ばれた backend id（または既存workspaceで明示された
+`gar config` で選ばれた backend id（または既存workspaceで明示された
 `local_docker` / `wokwi` など）を見て、対応する実装とアクセス経路を組み立てるだけの層。
 実処理は各実装が持つ。
 """
@@ -208,7 +208,7 @@ def docker_spec_for(
         if not image:
             raise GarDomainError(
                 "simulation container の image を決められません。"
-                "gar setup で target を選ぶか、workspace の docker.image を設定してください"
+                "gar config で target を選ぶか、workspace の docker.image を設定してください"
             )
         spec = DockerHostSpec(image=image)
 

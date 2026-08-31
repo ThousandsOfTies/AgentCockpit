@@ -37,7 +37,7 @@ class MujocoEnvironment(SimulationEnvironmentSetupOption):
         del missing
         return (
             "MuJoCo Python package が見つかりません。\n"
-            "`gar setup` で MuJoCo を選ぶと、現在の Python 環境へ `pip install mujoco` を実行します。\n"
+            "`gar config` で MuJoCo を選ぶと、現在の Python 環境へ `pip install mujoco` を実行します。\n"
             "手動の場合: python -m pip install mujoco\n"
             "GPU/GUI がない環境では viewer の代わりにプロダクト側 runner を使ってください。"
         )

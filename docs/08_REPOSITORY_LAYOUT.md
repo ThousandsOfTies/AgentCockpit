@@ -22,7 +22,7 @@ Yurufuwa/
       └─ gar-tools/            # buildに使うTarget資産の固定済みsource
 ```
 
-利用者がsibling `gar-tools`を持たない場合、`gar setup`は
+利用者がsibling `gar-tools`を持たない場合、`gar config`は
 `GaplessAgentRuntime/.gar/tools`へ取得できる。開発者のsibling checkoutと利用者のauto-cloneは
 同じ役割を持つが、正本の選択を曖昧にしない。
 
@@ -129,7 +129,7 @@ deploy時にmetadataのarchitectureと選択中のSim Hostを照合する。
 | Path | 内容 |
 |---|---|
 | `.gar/config.json` | workspace、選択environment、接続alias |
-| `.gar/tools/` | setupが取得したgar-tools checkout |
+| `.gar/tools/` | `gar config`が取得したgar-tools checkout |
 | `.gar/artifacts/` | immutable artifact snapshots |
 | `.gar/terminal-requests/` | visible terminalへの要求 |
 | `.gar/terminal-status/` | request実行状態 |
@@ -210,7 +210,7 @@ Target recipe identityと一致しないartifactをdeployしない。
 
 ## なぜGAR本体にgar-tools submoduleを持たないか
 
-GAR利用者の入口を`clone → make init → gar setup`へ保つため、Runtime本体はgar-toolsを必須submoduleにしない。
+GAR利用者の入口を`clone → gar setup → gar config`へ保つため、Runtime本体はgar-toolsを必須submoduleにしない。
 一方、再現可能なProduct buildでは、Product workspaceが使用したgar-tools revisionを固定する。
 
 この二つは矛盾しない。Runtime利用時の単純さと、Product build時の再現性を別の境界で満たしている。

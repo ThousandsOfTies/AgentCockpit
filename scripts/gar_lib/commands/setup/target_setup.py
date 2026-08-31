@@ -1,4 +1,4 @@
-"""Target selection and target-specific connection phases for ``gar setup``."""
+"""Target selection and target-specific connection phases for ``gar config``."""
 
 from __future__ import annotations
 
@@ -207,7 +207,7 @@ def configure_esp32_serial_port(config: dict, *, esp32_port: str | None = None) 
         print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")
     if not sys.stdin.isatty():
         if not current_port:
-            print(f"     {style('保存するには対話 terminal で gar setup を実行してください。', DIM)}")
+            print(f"     {style('保存するには対話 terminal で gar config を実行してください。', DIM)}")
         return
 
     prompt_default = default_port or ""
@@ -246,7 +246,7 @@ def _configure_ssh_target(config: dict) -> None:
         print(f"  現在の SSH Host: {style('未設定', YELLOW)}")
     if not sys.stdin.isatty():
         if not current:
-            print(f"     {style('対話terminalでgar setupを実行して実機のSSH hostを保存してください。', DIM)}")
+            print(f"     {style('対話terminalでgar configを実行して実機のSSH hostを保存してください。', DIM)}")
         return
 
     answer = safe_input(
@@ -285,7 +285,7 @@ def _configure_uuu_target(config: dict) -> None:
         print(f"     {style('検出候補:', DIM)} {', '.join(candidates)}")
     if not sys.stdin.isatty():
         if not current:
-            print(f"     {style('保存するには対話 terminal でgar setupを実行してください。', DIM)}")
+            print(f"     {style('保存するには対話 terminal でgar configを実行してください。', DIM)}")
         return
     prompt_default = default_port or ""
     prompt_example = f" [{prompt_default}]" if prompt_default else " (例: /dev/ttyCH343USB0)"

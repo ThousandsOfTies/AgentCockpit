@@ -131,7 +131,7 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
     except json.JSONDecodeError as exc:
         print(
             f"gar: warning: {CONFIG_PATH} is not valid JSON ({exc}); using defaults. "
-            "Run `gar setup` to recreate it.",
+            "Run `gar config` to recreate it.",
             file=sys.stderr,
         )
         return default_config()

@@ -65,7 +65,7 @@ def _add_workspace_argument(parser: argparse.ArgumentParser) -> None:
         "--workspace",
         default=None,
         metavar="NAME",
-        help="gar setup で登録した product workspace 名",
+        help="gar config で登録した product workspace 名",
     )
 
 
@@ -212,7 +212,7 @@ def run_code_command(
     print(
         f"gar code {command}: 現在のsetupでは対応する開発環境が見つかりません。\n"
         f"  development: {environment_id}\n"
-        "  `gar setup` でLocalまたはGitHub Codespacesを選択してください。",
+        "  `gar config` でLocalまたはGitHub Codespacesを選択してください。",
         file=sys.stderr,
     )
     return 1

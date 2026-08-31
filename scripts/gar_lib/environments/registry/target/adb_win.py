@@ -6,7 +6,7 @@ WSL互換経路から呼ぶ場合も``usbipd-win``によるattach/bindは不要�
 WSL互換経路ではローカル側のファイルパスのみ``wslpath -w``でWindows形式へ変換して
 ``adb.exe`` に渡す。device 側のパス（dest）は Linux のままで変換しない。
 
-``adb.exe`` の場所は ``gar setup`` 時に確定し、``.gar/config.json`` の
+``adb.exe`` の場所は ``gar config`` 時に確定し、``.gar/config.json`` の
 ``adb.exe_path`` に保存する。実行時は 保存パス > PATH 上の ``adb.exe`` の順で解決する。
 """
 

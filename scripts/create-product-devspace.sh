@@ -2,7 +2,7 @@
 # Create an application-specific gar-build-env product branch and workspace.
 #
 # This is deliberately a standalone bootstrap script, rather than a `gar`
-# subcommand: it creates the product workspace that `gar setup` configures.
+# subcommand: it creates the product workspace that `gar config` configures.
 set -euo pipefail
 
 usage() {
@@ -30,7 +30,7 @@ Example:
 
 After the script succeeds, implement the application-specific commands in
 scripts/product-sim-build.sh and scripts/product-target-build.sh, then run
-`gar setup` and add the checkout from
+`gar config` and add the checkout from
 the interactive Product Workspaces screen.
 EOF
 }
@@ -167,5 +167,5 @@ fi
 
 printf '\nCreated %s at %s.\n' "${product_name}" "${destination}"
 printf 'Next: edit %s/scripts/product-sim-build.sh and product-target-build.sh, then run:\n' "${destination}"
-printf '  gar setup\n'
+printf '  gar config\n'
 printf '  # Product Workspaces で追加し、local path に %q を入力\n' "${destination}"

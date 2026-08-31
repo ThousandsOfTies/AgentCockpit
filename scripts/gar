@@ -61,6 +61,15 @@ def ensure_venv() -> int:
     return 0
 
 
+# Bootstrapの処理概要:
+# - gar.cmdまたはこのscriptは、最初はsystem Pythonや別Projectのvenvで起動され得る。
+# - このrepositoryの.venvが有効でなければ、ensure_venv()でPythonとruntime依存を
+#   準備し、元のCLI引数を保ったまま、そのPythonで同じscriptを一度だけ再実行する。
+# - 再実行した子processには再帰防止用のGAR_VENVを設定する。手動でrepositoryの
+#   venvをactivate済みならVIRTUAL_ENVが一致するため、再実行せずCLI処理へ進む。
+# - 引数がsetupだけなら、bootstrap完了後にlauncher自身が消費して正常終了する。
+#   workspaceやenvironmentの設定はGAR CLIのconfig commandが担当する。対話実行では
+#   scripts directoryのPATH登録を確認し、登録済みなら変更せずSKIPする。
 def main() -> int:
     if os.environ.get("GAR_VENV") != str(VENV) and os.environ.get("VIRTUAL_ENV") != str(VENV):
         result = ensure_venv()
@@ -70,6 +79,19 @@ def main() -> int:
         env = os.environ.copy()
         env["GAR_VENV"] = str(VENV)
         return subprocess.run([str(VENV_PYTHON), __file__, *sys.argv[1:]], env=env).returncode
+
+    if sys.argv[1:] == ["setup"]:
+        # A manually activated repository venv bypasses the relaunch above, so
+        # explicitly verify/install its runtime dependencies for setup.
+        if os.environ.get("GAR_VENV") != str(VENV):
+            result = ensure_venv()
+            if result != 0:
+                return result
+        print(f"GAR runtimeの準備が完了しました: {VENV}")
+        sys.path.insert(0, str(ROOT))
+        from scripts.gar_lib.launcher_setup import offer_scripts_path_registration
+
+        return offer_scripts_path_registration(ROOT / "scripts")
 
     sys.path.insert(0, str(ROOT))
 

@@ -169,7 +169,7 @@ def run_esp32_flash_command(
     resolved_port = normalize_esp32_serial_port(port)
     if not resolved_port:
         print(
-            "gar target deploy: ESP32 serial port is not configured.\n" "Run: gar setup",
+            "gar target deploy: ESP32 serial port is not configured.\n" "Run: gar config",
             file=sys.stderr,
         )
         return 1

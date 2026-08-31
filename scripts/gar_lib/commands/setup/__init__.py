@@ -1,9 +1,9 @@
-"""Public entry points for the ``gar setup`` command package."""
+"""Implementation package for the public ``gar config`` command."""
 
 from scripts.gar_lib.commands.setup.command import (
-    add_setup_parser,
+    add_config_parser,
+    run_config_cli,
     run_setup,
-    run_setup_cli,
 )
 from scripts.gar_lib.commands.setup.environment_setup import (
     EnvironmentCategory,
@@ -23,7 +23,7 @@ __all__ = [
     "EnvironmentCategory",
     "EnvironmentSelection",
     "EnvironmentSelectionStatus",
-    "add_setup_parser",
+    "add_config_parser",
     "configure_default_ec2_host",
     "configure_target_connection",
     "default_workspace_name",
@@ -31,5 +31,5 @@ __all__ = [
     "ensure_environment_dependencies",
     "first_unconfigured_category_index",
     "run_setup",
-    "run_setup_cli",
+    "run_config_cli",
 ]
