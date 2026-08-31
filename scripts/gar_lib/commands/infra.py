@@ -177,6 +177,15 @@ def _sync_config_from_outputs(config: dict, outputs: dict[str, str], *, region: 
         set_default_ec2_private_ip(config, private_ip)
     if region:
         set_default_ec2_region(config, region)
+    simulation_host = config.setdefault("simulation_host", {})
+    if isinstance(simulation_host, dict):
+        simulation_host["provider"] = "aws_ec2"
+        simulation_host["arch"] = "aarch64"
+        host = default_ec2_host(config)
+        if host:
+            simulation_host["host"] = host
+        if private_ip:
+            simulation_host["private_ip"] = private_ip
     save_config(config)
 
     if public_ip:

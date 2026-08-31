@@ -17,6 +17,7 @@ from scripts.gar_lib.commands.setup.environment_setup import (
     select_setup_category,
     unconfigured_categories,
 )
+from scripts.gar_lib.commands.setup.simulation_host_setup import configure_simulation_host_connection
 from scripts.gar_lib.commands.setup.target_setup import (
     configure_esp32_serial_port,
     configure_target,
@@ -268,6 +269,7 @@ def _run_environment_selection_phase(
             config,
             ec2_host=ec2_host,
         )
+        optional_categories = optional_setup_categories(config, targets)
         redraw_notice = f"更新しました: {category.name} = {environment.display_name}"
 
     return optional_categories
@@ -282,8 +284,8 @@ def _configure_selected_environment_connection(
 ) -> None:
     """Ask for SSH details immediately after choosing an SSH environment."""
 
-    if category_id == "simulator" and environment_id == "ssh_remote":
-        configure_default_ec2_host(config, ec2_host=ec2_host)
+    if category_id == "simulation_host":
+        configure_simulation_host_connection(config, ec2_host=ec2_host)
     elif category_id == "target" and environment_id in {"ssh_scp", "uuu"}:
         configure_target_connection(config)
 
@@ -306,8 +308,18 @@ def _required_missing_categories(
     missing: list[str] = []
     if targets and selected_target_manifest(config, targets) is None:
         missing.append("Target")
-    if config.get("selected_environments", {}).get("simulator") == "ssh_remote" and default_ec2_host(config) is None:
-        missing.append("Simulation Runtime host (--ec2-host)")
+    if config.get("selected_environments", {}).get("simulator") == "ssh_remote":
+        provider = config.get("selected_environments", {}).get("simulation_host")
+        simulation_host = config.get("simulation_host")
+        simulation_host = simulation_host if isinstance(simulation_host, dict) else {}
+        virtualbox = config.get("virtualbox")
+        virtualbox = virtualbox if isinstance(virtualbox, dict) else {}
+        if provider == "virtualbox":
+            if not simulation_host.get("host") or not virtualbox.get("vm"):
+                missing.append("Local Sim Host (SSH alias / VirtualBox VM)")
+        elif provider == "aws_ec2":
+            if not simulation_host.get("host") and default_ec2_host(config) is None:
+                missing.append("Remote Sim Host (--ec2-host)")
     missing.extend(
         unconfigured_categories(
             environments,

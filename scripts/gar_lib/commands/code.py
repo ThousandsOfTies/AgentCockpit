@@ -1,4 +1,4 @@
-"""`gar code` subcommand: Codespace SSHFS mount and VSCode terminal profile."""
+"""`gar code` subcommand: Codespace connection and VS Code terminal profile."""
 
 from __future__ import annotations
 
@@ -38,6 +38,10 @@ from scripts.gar_lib.vscode.profile_manage import (
 )
 
 DEFAULT_CODESPACE_REMOTE_PATH = "/workspaces/gar-build-env"
+
+
+def _is_windows_host() -> bool:
+    return os.name == "nt"
 
 
 @dataclass(frozen=True)
@@ -91,12 +95,12 @@ def add_code_parser(
 
     start_parser = commands.add_parser(
         "start",
-        help="Codespace build workspace を WSL hub から見えるようにします",
+        help="Codespace build workspaceへのSSH接続を準備します",
     )
     _add_workspace_argument(start_parser)
     _add_codespace_argument(start_parser, purpose="接続する")
     start_parser.add_argument("--remote-path", default=None, help="Codespace 側 workspace path")
-    start_parser.add_argument("--mount-dir", default=None, help="WSL 側 sshfs mount path")
+    start_parser.add_argument("--mount-dir", default=None, help="POSIX host側のsshfs mount path")
     start_parser.add_argument("--settings", default=None, help="VS Code settings.json path")
     start_parser.add_argument("--profile-name", default=None, help="VS Code terminal profile 名")
     start_parser.add_argument(
@@ -107,17 +111,17 @@ def add_code_parser(
 
     stop_parser = commands.add_parser(
         "stop",
-        help="Codespace build workspace の WSL hub 側接続を停止します",
+        help="Codespace build workspaceのlocal接続を停止します",
     )
     _add_workspace_argument(stop_parser)
     _add_codespace_argument(stop_parser, purpose="停止する")
-    stop_parser.add_argument("--mount-dir", default=None, help="WSL 側 sshfs mount path")
+    stop_parser.add_argument("--mount-dir", default=None, help="POSIX host側のsshfs mount path")
     stop_parser.add_argument("--settings", default=None, help="VS Code settings.json path")
     stop_parser.add_argument("--profile-name", default=None, help="VS Code terminal profile 名")
     stop_parser.add_argument(
         "--shutdown",
         action="store_true",
-        help="WSL 側接続の後片付け後に GitHub Codespace VM も停止します",
+        help="local接続の後片付け後にGitHub Codespace VMも停止します",
     )
 
     shutdown_parser = commands.add_parser("shutdown", help="development target を停止します")
@@ -127,7 +131,7 @@ def add_code_parser(
     status_parser = commands.add_parser("status", help="Codespace VM / 接続状態を確認します")
     _add_workspace_argument(status_parser)
     _add_codespace_argument(status_parser, purpose="確認する")
-    status_parser.add_argument("--mount-dir", default=None, help="WSL 側 sshfs mount path")
+    status_parser.add_argument("--mount-dir", default=None, help="POSIX host側のsshfs mount path")
     return {"code": parser}
 
 
@@ -397,12 +401,17 @@ def resolve_code_start_options(
     selected_mount_dir = (
         Path(mount_dir if mount_dir is not None else default_codespaces_mount_dir()).expanduser().resolve()
     )
+    default_settings = (
+        Path(os.environ.get("APPDATA", home / "AppData" / "Roaming")) / "Code" / "User" / "settings.json"
+        if _is_windows_host()
+        else home / ".vscode-server" / "data" / "Machine" / "settings.json"
+    )
     settings_path = (
         Path(
             settings
             or os.environ.get(
                 "CODESPACE_SETTINGS",
-                str(home / ".vscode-server" / "data" / "Machine" / "settings.json"),
+                str(default_settings),
             )
         )
         .expanduser()
@@ -418,7 +427,9 @@ def resolve_code_start_options(
         profile_name=profile_name or os.environ.get("CODESPACE_PROFILE_NAME", "Codespaces"),
         state_path=codespace_state_path(home),
         terminal_path=home / ".local" / "bin" / "codespace-terminal",
-        no_mount=no_mount,
+        # Windows keeps the Product workspace local and reaches Codespaces by
+        # SSH; its standard flow does not depend on WinFsp/SSHFS mounts.
+        no_mount=no_mount or _is_windows_host(),
         gh_timeout=gh_timeout_seconds(gh_timeout),
     )
 
@@ -511,11 +522,19 @@ def configure_vscode_codespace(options: CodeStartOptions) -> None:
     options.terminal_path.parent.mkdir(parents=True, exist_ok=True)
     options.terminal_path.write_text(codespace_terminal_script(), encoding="utf-8")
     options.terminal_path.chmod(0o755)
-    write_vscode_terminal_profile(
-        options.settings_path,
-        options.profile_name,
-        options.terminal_path,
-    )
+    if _is_windows_host():
+        write_vscode_terminal_profile(
+            options.settings_path,
+            options.profile_name,
+            Path(sys.executable),
+            arguments=[str(options.terminal_path)],
+        )
+    else:
+        write_vscode_terminal_profile(
+            options.settings_path,
+            options.profile_name,
+            options.terminal_path,
+        )
 
 
 def report_codespace_start(
@@ -525,7 +544,7 @@ def report_codespace_start(
     print(f"Codespace: {state.codespace_name}")
     print(f"SSH host:  {state.ssh_host}")
     print(f"Remote:    {state.remote_path}")
-    print(f"Mount:     {state.mount_dir}")
+    print(f"Mount:     {'not used' if options.no_mount else state.mount_dir}")
     print(f"State:     {options.state_path}")
     print(f"Terminal:  {options.terminal_path}")
     print(f"Profile:   {options.profile_name}")
@@ -550,11 +569,16 @@ def stop_code_codespace(
         or (str(state.mount_dir) if state else None)
         or str(default_codespaces_mount_dir())
     ).expanduser()
+    default_settings = (
+        Path(os.environ.get("APPDATA", home / "AppData" / "Roaming")) / "Code" / "User" / "settings.json"
+        if _is_windows_host()
+        else home / ".vscode-server" / "data" / "Machine" / "settings.json"
+    )
     settings_path = Path(
         settings
         or os.environ.get(
             "CODESPACE_SETTINGS",
-            str(home / ".vscode-server" / "data" / "Machine" / "settings.json"),
+            str(default_settings),
         )
     ).expanduser()
     selected_profile_name = profile_name or os.environ.get(
@@ -564,9 +588,13 @@ def stop_code_codespace(
 
     expected_source = f"{state.ssh_host}:{state.remote_path}" if state else None
 
-    unmount_result = unmount_codespace_code(
-        mount_dir=selected_mount_dir,
-        expected_source=expected_source,
+    unmount_result = (
+        0
+        if _is_windows_host()
+        else unmount_codespace_code(
+            mount_dir=selected_mount_dir,
+            expected_source=expected_source,
+        )
     )
     profile_result = remove_vscode_terminal_profile(settings_path, selected_profile_name)
 
@@ -678,7 +706,9 @@ def status_code_codespace(
     selected_mount_dir = Path(
         mount_dir or (str(saved_state.mount_dir) if saved_state else None) or str(default_codespaces_mount_dir())
     ).expanduser()
-    if shutil.which("mountpoint") is not None:
+    if _is_windows_host():
+        print("Mount: not used on Windows (SSH terminal profile only)")
+    elif shutil.which("mountpoint") is not None:
         mounted = subprocess.run(["mountpoint", "-q", str(selected_mount_dir)], check=False).returncode == 0
         print(f"Mount: {'mounted' if mounted else 'not mounted'} at {selected_mount_dir}")
     else:

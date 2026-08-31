@@ -60,9 +60,10 @@ class WorkspaceConnection(SettingsMapping):
 class SelectedEnvironments(SettingsMapping):
     codespace: str | None = None
     simulator: str | None = None
+    simulation_host: str | None = None
     target: str | None = None
 
-    field_names = ("codespace", "simulator", "target")
+    field_names = ("codespace", "simulator", "simulation_host", "target")
 
     @classmethod
     def from_value(cls, value: SelectedEnvironments | Mapping[str, Any]) -> Self:
@@ -71,8 +72,67 @@ class SelectedEnvironments(SettingsMapping):
         return cls(
             codespace=_string(value, "codespace"),
             simulator=_string(value, "simulator"),
+            simulation_host=_string(value, "simulation_host"),
             target=_string(value, "target"),
         )
+
+
+@dataclass(frozen=True)
+class BuildSettings(SettingsMapping):
+    image: str | None = None
+    docker_socket: bool = False
+
+    field_names = ("image", "docker_socket")
+
+    @classmethod
+    def from_value(cls, value: BuildSettings | Mapping[str, Any]) -> Self:
+        if isinstance(value, cls):
+            return value
+        raw_socket = value.get("docker_socket")
+        return cls(
+            image=_string(value, "image"),
+            docker_socket=raw_socket if isinstance(raw_socket, bool) else False,
+        )
+
+
+@dataclass(frozen=True)
+class SimulationHostSettings(SettingsMapping):
+    provider: str | None = None
+    host: str | None = None
+    private_ip: str | None = None
+    arch: str | None = None
+    repo_dir: str | None = None
+    bridge_port: int | None = None
+
+    field_names = ("provider", "host", "private_ip", "arch", "repo_dir", "bridge_port")
+
+    @classmethod
+    def from_value(cls, value: SimulationHostSettings | Mapping[str, Any]) -> Self:
+        if isinstance(value, cls):
+            return value
+        raw_port = value.get("bridge_port")
+        bridge_port = raw_port if isinstance(raw_port, int) and not isinstance(raw_port, bool) else None
+        return cls(
+            provider=_string(value, "provider"),
+            host=_string(value, "host"),
+            private_ip=_string(value, "private_ip"),
+            arch=_string(value, "arch"),
+            repo_dir=_string(value, "repo_dir"),
+            bridge_port=bridge_port,
+        )
+
+
+@dataclass(frozen=True)
+class VirtualBoxSettings(SettingsMapping):
+    vm: str | None = None
+
+    field_names = ("vm",)
+
+    @classmethod
+    def from_value(cls, value: VirtualBoxSettings | Mapping[str, Any]) -> Self:
+        if isinstance(value, cls):
+            return value
+        return cls(vm=_string(value, "vm"))
 
 
 @dataclass(frozen=True)

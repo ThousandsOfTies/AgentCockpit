@@ -43,14 +43,17 @@ GAR coreを変更したらrepository rootで`make check`を実行する。
 
 | 環境 | 役割 |
 |---|---|
-| WSL | control plane、Local BuildEnvironment、artifact store、deploy起点 |
-| Codespaces | reproducible BuildEnvironment |
-| EC2／Docker | Simulation runtimeの実行 |
+| Windows | `gar`操作面、workspace／artifact store、USB／COM／UUU、deploy起点 |
+| Local Docker | Product build hook、test、Linux toolの実行 |
+| Codespaces | reproducible cloud BuildEnvironment |
+| VirtualBox Ubuntu | local Sim Host。`gpio_sim`を含むLinux device simulation runtimeの実行 |
+| AWS Ubuntu | remote Sim Host。VirtualBoxと同じLinux runtimeのprovider variant |
 | Physical Target | 配布済みapplicationとreal deviceの実行 |
-| Windows | VS Code、browser、usbipd、local peripheral bridge |
+| WSL | GARの必須要素ではない。Docker Desktopが内部で利用する場合もGARからはDockerとして扱う |
 
-EC2やPhysical Targetで場当たり的にcompileしない。buildはsetupで選択したLocal／Codespaces
-BuildEnvironmentとProduct hookで行う。
+Sim HostやPhysical Targetで場当たり的にcompileしない。buildはsetupで選択した
+Local Docker／Codespaces BuildEnvironmentとProduct hookで行う。VirtualBoxとAWSを別simulatorと
+扱わず、`ssh_remote`に対するSim Host providerの差としてcomposition境界で吸収する。
 
 ## 標準操作
 
@@ -61,7 +64,7 @@ gar setup
 ```
 
 workspace編集後は、対象workspaceのTarget、BuildEnvironment、SimulationEnvironment、
-TargetEnvironment、SSH Host／serial設定が保持されたことを確認する。
+Sim Host provider、TargetEnvironment、SSH Host／COM設定が保持されたことを確認する。
 
 ### Simulation
 
@@ -124,7 +127,7 @@ cleanupを担当し、PnPやmedia protocolはProductが所有する。
 - dirty source／tools、legacy metadata、checksum不一致、Target identity driftを無視しない。
 - deploy完了はfile転送ではなく、healthとrunning build ID一致まで確認する。
 
-## Terminal操作
+## Terminal操作とhost native tool
 
 通常の非対話commandはbackgroundで実行する。次の場合だけ、Agent Terminal Bridgeで
 VS Code integrated terminalへ渡す。
@@ -144,11 +147,17 @@ gar terminal run \
 認証code、password、private keyをchatやlogへ出さない。人間が完了したら元のGAR commandを再実行し、
 成功を機械可読結果で確認する。
 
+Windowsでは`gar target deploy`がTarget recipeに従ってhost nativeの`uuu.exe`と
+pyserialの`COMn`を使う。ユーザーやagentが`wsl.exe`、`usbipd`、Linux版UUUを都度
+呼び分けない。`gar usb` はLinux-only USB toolが必要な旧WSL passthroughの互換経路であり、
+Windows native UUU／COMの標準経路では使わない。
+
 ## 安全境界
 
 - image flash、disk書き込み、Terraform destroy、instance削除は対象をprobeし、依頼範囲を確認する。
 - repository root、home directory、未解決variableをrecursive削除対象にしない。
 - USB BUSID、serial port、block deviceを推測して書き込まない。
+- UUUのdownload USBとdebug UARTを同一deviceとみなさない。Board、boot mode、image、COM portは人間が確認する。
 - Physical Targetへsimulation dummy deviceやPanelをinstallしない。
 - application deployでSSH鍵、host key、`/etc/gar/<app>.env`を上書きしない。
 - secret、private IP、identity pathを公開artifactやCI reportへ記録しない。
@@ -167,6 +176,8 @@ gar terminal run \
 | 文書変更 | 実CLI／sourceとの照合、local link、重複と古い参照の確認 |
 
 未実装adapterのexpected error、CIの`skipped`、file転送成功だけを完了と報告しない。
+Windows launcher／Docker build／VirtualBox controller／UUU／COMのunit test成功と、
+実Windows／Docker Desktop／VirtualBox VM／NXP BoardでのE2E確認を区別する。
 
 ## 正本文書
 

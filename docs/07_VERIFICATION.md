@@ -13,6 +13,10 @@
 - Target prepare／deploy／configure／lifecycle／preflightの契約
 - system topology、hardware contract、Golden scenario schema
 - simulation process identity、diagnostic、Bridge adapter
+- Windowsからimport可能なCLI、`.cmd` launcher smoke test、Windows process lifecycle adapter
+- Docker BuildEnvironmentのargv／mount／artifact capture契約
+- VirtualBox Sim Host providerのVM state／start／ACPI stop／SSH composition
+- host native UUU command channel、pyserial pattern verification、SIM artifactのarchitecture整合性
 - shell構文、VS Code Terminal BridgeのNode test
 
 テスト件数は実装追加で変わるため、この文書では固定しない。
@@ -21,7 +25,9 @@
 
 | 経路 | 確認内容 | 段階 |
 |---|---|---|
-| Local／Codespaces build | Product hookから用途別artifact snapshotを生成 | 自動test／実運用 |
+| Local Docker／Codespaces build | Product hookから用途別artifact snapshotを生成 | adapter自動test／従来経路の実運用 |
+| Windows native CLI | `scripts\\gar.cmd`、Python import、host-native processのOS分岐 | Windows CI smoke／unit test |
+| VirtualBox Ubuntu Linux simulation | `VBoxManage` lifecycle、SSH host composition、architecture guard | controller unit test。実VM E2Eは未実施 |
 | EC2 Graviton Linux simulation | CUSE I2C/SPI、gpio-sim、Web Bridge、application deploy | 実機会話で確認済み |
 | Raspberry Pi 5 | SSH、Raspberry Pi OS systemd recipe、boot service、real GPIO/SPI/video | 実機確認済み |
 | Luckfox Lyra Plus RK3506 | armv7 cross-build、Buildroot／BusyBox recipe、real GPIO/SPI | 実機確認済み |
@@ -41,6 +47,8 @@ network protocol、state behaviorを使う。
   physical deployやBridge-driven Golden HILを実行したとは主張しない。
 - Product child CIはnative unit testを実行する。Luckfox SDKが必要なproduction buildと、
   CI上のarmhf contract stubは区別して記録する。
+- Windows CIはCLIがimportでき`.cmd` launcherがhelpを表示できることまでを確認する。
+  Docker Desktop daemon、VirtualBox VM、COM／USB device、NXP BoardはCIに接続しない。
 
 workflow固有のsecret、runner、成果物契約は[workflow README](../.github/workflows/README.md)を参照する。
 
@@ -48,12 +56,15 @@ workflow固有のsecret、runner、成果物契約は[workflow README](../.githu
 
 | 領域 | 現在の状態 |
 |---|---|
+| Windows統合経路 | launcher、cross-platform process／serial／UUU adapterを実装。実Windows machineでのGAR E2Eは未実施 |
+| Local Docker build | Docker executorと既定imageを実装。Docker DesktopのWindows bind mount／socket mount／大規模I/O性能は未計測 |
+| VirtualBox Sim Host | provider、共通Ubuntu bootstrap、architecture guardを実装。実VMの`gpio_sim`／CUSE／Bridge E2Eは未実施 |
 | Renode MCU | setup／installerとerror-only runtimeまで。`.resc`生成と共通lifecycleは未実装 |
 | ESP32 QEMU | setupと手動runnerの足場まで。GAR runtime lifecycleは未実装 |
 | AWS SSM simulation | setup optionのみ。通常はSSH Remoteを使用 |
 | Wokwi scenario | Product所有のWokwi形式を使用。共通Bridge scenarioへの統一途中 |
 | Physical Golden HIL | read-only preflight／diagまで。自動deployと物理操作adapterは未実装 |
-| Full-image provisioning | Target manifestで選択するNXP UUU backendとUSB-C serial起動確認を実装済み。実機HILは未実施 |
+| Full-image provisioning | Target manifestで選択するhost-native NXP UUU backendとpyserial起動確認を実装済み。Windows UUU／COM実機HILは未実施 |
 | Target資産の純化 | RK3506 capabilityはProduct-neutral化済み。Linux simulation runtimeや旧RV1106資産にはGarStream由来の名称・周辺構成が残る |
 
 最後の項目は重要な設計負債である。Target Packが保持するのはBoard capability、OS、toolchain、
@@ -69,3 +80,4 @@ provisioning、lifecycleまでとし、ILI9341、KY-040、menu、TX/RX用途、�
 3. deployした場合は、稼働build IDと配置artifactのbuild IDが一致する。
 4. 実機を主張する場合は、simulation結果ではなく対象Targetで確認している。
 5. 未実装backendやskipped CIを成功扱いしない。
+6. Windows／Docker Desktop／VirtualBox／NXP実機を主張する場合は、対象machineのE2E結果を残す。

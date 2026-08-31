@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import tempfile
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from posixpath import join as posix_join
@@ -127,6 +128,14 @@ class LocalArtifactStore:
         _, source_manifest = loaded_manifest
         target_id = self._target_id(kind, source_manifest, workspace)
         provenance = provenance or collect_capture_provenance(workspace, target_id)
+        if kind in {ArtifactKind.SIM_APP, ArtifactKind.SIM_RUNTIME} and workspace.simulation_architecture:
+            provenance = replace(
+                provenance,
+                target=replace(
+                    provenance.target,
+                    architecture=workspace.simulation_architecture,
+                ),
+            )
         if provenance.target.id != target_id:
             raise GarDomainError("artifact provenanceのTarget IDがbuild manifestと一致しません")
 

@@ -2,6 +2,8 @@
 
 GARは、Runtime core、Target Pack、Build environment、Productを別repositoryとして扱う。
 この分離は配布形態の都合ではなく、依存方向を守るための設計契約である。
+実行環境の階層はWindows操作面、Docker BuildEnvironment、Ubuntu Sim Host、
+Physical Targetに分ける。この環境階層とrepository境界を混同しない。
 
 ## 全体像
 
@@ -28,7 +30,7 @@ Yurufuwa/
 
 | Repository | 所有するもの | 所有しないもの |
 |---|---|---|
-| GaplessAgentRuntime | CLI、workspace、build協調、artifact store、system／hardware契約、diagnostic | Product source、Board固有pin、OS別provisioning script |
+| GaplessAgentRuntime | CLI／OS launcher、workspace、build協調、artifact store、host／access composition、system／hardware契約、diagnostic | Product source、Board固有pin、OS別provisioning script |
 | gar-tools | Target manifest、Board capability、toolchain探索、OS／init recipe、simulation provider | Product menu、protocol、TX/RX用途、Product固有配線 |
 | gar-build-env | devcontainer、共通build依存、Product workspace生成 | Product behavior、Target deploy logic |
 | Product workspace | build hooks、Product requirements、Binding、system topology、scenario、source固定 | GAR coreのtransport、汎用Board定義 |
@@ -39,22 +41,27 @@ Yurufuwa/
 ```text
 GaplessAgentRuntime/
 ├─ scripts/
-│  ├─ gar                         # thin entrypoint
+│  ├─ gar                         # Python thin entrypoint（Windows／POSIX共通）
+│  ├─ gar.cmd                     # Windows用の同名launcher
 │  └─ gar_lib/
 │     ├─ commands/                # argparse、対話、表示、CLI adapter
 │     ├─ core/                    # workspace、config、安全な共通値
-│     ├─ build/                   # Local／Codespaces BuildEnvironment
+│     ├─ build/                   # Docker／Codespaces BuildEnvironment
 │     ├─ artifacts/               # manifest、provenance、不変snapshot
-│     ├─ access/                  # SSH、ADB、Docker、AWS等のtransport
-│     ├─ simulation/              # runtime、host、Bridge control、diagnostic
-│     ├─ target/                  # compatibility、transfer、lifecycle
+│     ├─ access/                  # SSH、ADB、Docker、AWS、VirtualBox、UUU、serialのtransport
+│     ├─ simulation/              # runtime、Sim Host provider、Bridge control、diagnostic
+│     ├─ target/                  # artifact判定、compatibility、transfer／flash、lifecycle
 │     ├─ system/                  # multi-node topologyとscenario
-│     ├─ environments/            # setup option、registry、installer
+│     ├─ environments/            # Build／Simulator／Sim Host／Targetのsetup registry
 │     └─ vscode/                  # Terminal Bridge request／status
 ├─ tests/                         # core contract tests
 ├─ docs/                          # 現行の操作・設計資料
 ├─ info/                          # 背景、位置付け、将来方針
-├─ infra/                         # simulation host IaC
+├─ infra/
+│  ├─ build/                      # Local Docker build image
+│  ├─ simulation-host/            # VirtualBox／AWS共通Ubuntu bootstrap
+│  ├─ virtualbox/                 # local Sim Hostの人間向け準備手順
+│  └─ terraform/                  # AWS Sim Host IaC
 ├─ tools/                         # MCP、VS Code extension、開発補助
 ├─ codespaces/                    # sshfsの一時mount point
 └─ .gar/                          # machine-local state（Git管理外）
@@ -80,6 +87,17 @@ Peripheral adapter ────┘
 setup optionは依存確認と選択metadataを持つ。runtime objectとして再利用せず、保存したIDから
 composition境界で具象objectを構成する。
 
+```text
+selected BuildEnvironment ─► build/docker.py ─► access/docker.py
+selected Simulator       ─► simulation/runtime/*
+selected Sim Host        ─► simulation/host/virtualbox.py | aws_ec2.py
+selected Target          ─► target/uuu.py ─► access/uuu.py + access/serial.py
+```
+
+`target/uuu.py`はどのimageを書くか、recipeのargvをどう展開するかを所有する。
+`access/uuu.py`はhost native processの起動だけを所有し、`access/serial.py`は
+Windows `COMn`とPOSIX `/dev/tty*`の差をpyserialで吸収する。
+
 ## Artifactの配置
 
 BuildEnvironmentがProduct hookを実行し、用途別snapshotを作る。
@@ -99,8 +117,10 @@ buildのmarkerとして使う。`deploy`は`build`／`fetch`を暗黙実行し�
 旧snapshotに残る`gar-artifact.json`と、既存Targetに残る`.gar-artifact.json`は読み取り互換で扱う。
 新しくcapture／deployするartifactは`artifact-info.json`と`.artifact-info.json`を生成する。
 
-Productのbuild staging directoryやCodespaces内の一時artifactは正本ではない。WSL側storeへcaptureされ、
+Productのbuild staging directoryやcontainer／Codespaces内の一時artifactは正本ではない。host側storeへcaptureされ、
 schemaとchecksumを通過したsnapshotだけがdeploy対象になる。
+同じworkspace／kindでもVirtualBox x86_64とAWS aarch64のartifactは互換ではない。
+deploy時にmetadataのarchitectureと選択中のSim Hostを照合する。
 
 ## Machine-local state
 
@@ -117,6 +137,11 @@ schemaとchecksumを通過したsnapshotだけがdeploy対象になる。
 
 秘密鍵、token、cloud credentialをartifactやsystem schemaへ入れない。SSH config Host名やBridge URLなどの
 個体差は実行時設定とする。
+
+`.gar/config.json`の役割も分離する。`selected_environments.simulator`は
+`ssh_remote`等のruntime種類、`selected_environments.simulation_host`は`virtualbox`または
+`aws_ec2`、`simulation_host.host`はSSH alias、`virtualbox.vm`はVM名／UUIDを持つ。
+旧`ec2.*`はAWS providerの互換設定として読み取る。
 
 ## Target Packの内部境界
 
@@ -161,6 +186,8 @@ ProductWorkspace/
 
 すべてが必須ではない。単一node／hardware不要のProductはsystemやhardware contractを省略できる。
 ただしbuild commandをGAR coreへ追加せず、Product hookでartifact contractへ変換する。
+Local Dockerはworkspace root全体をcontainerの`/workspace`へbind mountするため、
+hookはhost OS固有pathを埋め込まず`/workspace`からの相対構造を使う。
 
 ## 探索順と再現性
 

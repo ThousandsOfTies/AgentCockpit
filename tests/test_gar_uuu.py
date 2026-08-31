@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from scripts.gar_lib.access.channel import AccessResult
+from scripts.gar_lib.access.uuu import LocalUuuCommandChannel
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
+from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.workspace import Workspace
 from scripts.gar_lib.target.manifest import TargetManifest
 from scripts.gar_lib.target.uuu import UuuTargetEnvironment
@@ -29,6 +31,14 @@ def _artifact(root: Path) -> Artifact:
 
 
 class UuuTargetEnvironmentTests(unittest.TestCase):
+    def test_local_channel_reports_missing_windows_or_posix_executable(self) -> None:
+        with mock.patch(
+            "scripts.gar_lib.access.uuu.subprocess.run",
+            side_effect=FileNotFoundError("not found"),
+        ):
+            with self.assertRaisesRegex(GarDomainError, "UUU commandを起動できません"):
+                LocalUuuCommandChannel().run(("uuu", "-h"), cwd=Path("."))
+
     def test_deploy_expands_configured_image_command_without_a_shell(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -48,15 +58,14 @@ class UuuTargetEnvironmentTests(unittest.TestCase):
                     }
                 },
             )
-            environment = UuuTargetEnvironment(manifest)
-            completed = subprocess.CompletedProcess([], 0)
-            with mock.patch("scripts.gar_lib.target.uuu.subprocess.run", return_value=completed) as run:
-                environment.deploy(artifact)
+            command_channel = mock.Mock()
+            command_channel.run.return_value = AccessResult(("uuu",), 0)
+            environment = UuuTargetEnvironment(manifest, command_channel=command_channel)
+            environment.deploy(artifact)
 
-        run.assert_called_once_with(
+        command_channel.run.assert_called_once_with(
             ["uuu", "-b", "sd_all", str(root / "images" / "image.wic.zst")],
             cwd=root / "images",
-            check=False,
         )
 
     def test_serial_verification_uses_workspace_console_port_after_flash(self) -> None:
@@ -79,18 +88,19 @@ class UuuTargetEnvironmentTests(unittest.TestCase):
                     }
                 },
             )
-            environment = UuuTargetEnvironment(manifest, console_port="/dev/ttyCH343USB0")
-            with (
-                mock.patch(
-                    "scripts.gar_lib.target.uuu.subprocess.run",
-                    return_value=subprocess.CompletedProcess([], 0),
-                ),
-                mock.patch("scripts.gar_lib.target.uuu.wait_for_serial_pattern") as verify,
-            ):
-                environment.deploy(artifact)
+            command_channel = mock.Mock()
+            command_channel.run.return_value = AccessResult(("uuu",), 0)
+            serial_verifier = mock.Mock()
+            environment = UuuTargetEnvironment(
+                manifest,
+                console_port="COM5",
+                command_channel=command_channel,
+                serial_verifier=serial_verifier,
+            )
+            environment.deploy(artifact)
 
-        verify.assert_called_once_with(
-            "/dev/ttyCH343USB0",
+        serial_verifier.wait.assert_called_once_with(
+            "COM5",
             baud=115200,
             pattern="login:",
             timeout_seconds=5.0,

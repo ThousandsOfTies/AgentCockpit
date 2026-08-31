@@ -30,7 +30,7 @@ TARGET_ACTIONS = {
     "build": "setup 済み target の実機用 artifact をビルドします",
     "preflight": "最新artifactと接続Targetの互換性を配置前に読み取り専用で検証します",
     "deploy": "target runtime へ成果物を配置します",
-    "fetch": "build environment から artifact bundle を WSL hub へ取得します",
+    "fetch": "BuildEnvironment から artifact store へbundleを取得します",
     "status": "Target recipe経由でapplicationの稼働状態を取得します",
     "log": "Target recipe経由でapplication logを取得します",
     "diag": "Target recipe経由でhealthと稼働build IDを診断します",

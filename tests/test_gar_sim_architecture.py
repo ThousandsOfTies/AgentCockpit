@@ -12,6 +12,7 @@ from unittest import mock
 from scripts.gar_lib.api import Gar, SimulationRuntime, _workspace_hardware
 from scripts.gar_lib.artifacts.store import LocalArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
+from scripts.gar_lib.build.docker import DockerBuildEnvironment
 from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.build.local import LocalBuildEnvironment
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
@@ -35,6 +36,30 @@ def cli_args(**values: object) -> argparse.Namespace:
 
 
 class GarSimulationArchitectureTest(unittest.TestCase):
+    def test_sim_deploy_rejects_artifact_built_for_previous_host_provider(self) -> None:
+        workspace = Workspace(
+            id="ws_test",
+            name="Local/Product",
+            branch="Product",
+            connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={
+                "codespace": "local",
+                "simulator": "ssh_remote",
+                "simulation_host": "virtualbox",
+            },
+            simulation_host={"provider": "virtualbox", "host": "gar-sim-local"},
+            virtualbox={"vm": "GAR Ubuntu Sim"},
+        )
+        artifact = mock.Mock(bundle_path=Path("/tmp/artifact"))
+        artifacts = mock.Mock()
+        artifacts.latest.return_value = artifact
+        metadata = mock.Mock()
+        metadata.target.architecture = "aarch64"
+
+        with mock.patch("scripts.gar_lib.api.load_artifact_metadata", return_value=metadata):
+            with self.assertRaisesRegex(GarDomainError, "aarch64 != x86_64"):
+                Gar(workspace, artifacts).sim.app.deploy()
+
     def test_unresolved_workspace_hardware_never_uses_the_current_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cwd_hardware = Path(tmp) / "hardware"
@@ -222,7 +247,7 @@ class GarSimulationArchitectureTest(unittest.TestCase):
         self.assertEqual(ArtifactKind.SIM_APP, artifact.kind)
         run.assert_called_once_with([str(hook)], cwd=root, check=False, env=mock.ANY)
 
-    def test_esp32_target_does_not_replace_local_product_build_environment(self) -> None:
+    def test_esp32_target_does_not_replace_docker_product_build_environment(self) -> None:
         workspace = Workspace(
             id="ws_esp32",
             name="Local/ESP32Product",
@@ -238,7 +263,7 @@ class GarSimulationArchitectureTest(unittest.TestCase):
 
         environment = build_environment_for(workspace, LocalArtifactStore())
 
-        self.assertIsInstance(environment, LocalBuildEnvironment)
+        self.assertIsInstance(environment, DockerBuildEnvironment)
 
     def test_esp32_target_does_not_replace_codespaces_product_build_environment(self) -> None:
         workspace = Workspace(

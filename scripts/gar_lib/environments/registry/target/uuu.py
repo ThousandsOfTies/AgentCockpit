@@ -8,7 +8,7 @@ from scripts.gar_lib.environments.setup_option import TargetEnvironmentSetupOpti
 class UuuEnvironment(TargetEnvironmentSetupOption):
     environment_id = "uuu"
     display_name = "NXP UUU image flash"
-    description = "Target manifestが定義したUUUコマンドでLinuxイメージを書き込みます"
+    description = "Target manifestが定義したhost-native UUUでNXP full imageを書き込みます"
     display_order = 10
     required_commands = ("uuu",)
 
@@ -17,6 +17,7 @@ class UuuEnvironment(TargetEnvironmentSetupOption):
         commands = ", ".join(missing)
         return (
             f"不足: {commands}\n"
-            "NXP mfgtools (uuu) と libusb をLinuxホストへインストールしてください。"
-            " Target manifestのcommand設定にsudoを埋め込まず、必要ならudev ruleを設定してください。"
+            "WindowsではNXP mfgtoolsのuuu.exeをPATHへ追加してください。"
+            " Linuxではuuuとlibusbを導入し、必要ならudev ruleを設定してください。"
+            " Target manifestのcommand設定にsudoを埋め込まないでください。"
         )

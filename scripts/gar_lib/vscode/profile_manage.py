@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -11,14 +12,28 @@ def write_vscode_terminal_profile(
     settings_path: Path,
     profile_name: str,
     terminal_bin: Path,
+    *,
+    arguments: list[str] | None = None,
 ) -> None:
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     data = {}
     if settings_path.exists() and settings_path.stat().st_size:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
 
-    profiles = data.setdefault("terminal.integrated.profiles.linux", {})
-    profiles[profile_name] = {"path": str(terminal_bin)}
+    platform_name = "windows" if os.name == "nt" else "linux"
+    profiles = data.setdefault(f"terminal.integrated.profiles.{platform_name}", {})
+    if arguments is not None:
+        profiles[profile_name] = {
+            "path": str(terminal_bin),
+            "args": arguments,
+        }
+    elif os.name == "nt" and terminal_bin.suffix.lower() == ".cmd":
+        profiles[profile_name] = {
+            "path": os.environ.get("COMSPEC", "cmd.exe"),
+            "args": ["/d", "/c", str(terminal_bin)],
+        }
+    else:
+        profiles[profile_name] = {"path": str(terminal_bin)}
     settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
@@ -33,7 +48,8 @@ def remove_vscode_terminal_profile(settings_path: Path, profile_name: str) -> in
         print(f"gar code stop: invalid VS Code settings JSON: {settings_path}", file=sys.stderr)
         return 1
 
-    profiles = data.get("terminal.integrated.profiles.linux")
+    platform_name = "windows" if os.name == "nt" else "linux"
+    profiles = data.get(f"terminal.integrated.profiles.{platform_name}")
     if not isinstance(profiles, dict) or profile_name not in profiles:
         print(f"Profile:   not present ({profile_name})")
         return 0

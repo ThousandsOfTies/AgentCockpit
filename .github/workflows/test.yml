@@ -27,7 +27,7 @@ jobs:
 
       - name: Check shell and VS Code extension syntax
         run: |
-          bash -n tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
+          bash -n tools/forward_sim_ports.sh tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
           node --check tools/vscode-gar/extension.js
           node --test tools/vscode-gar/*.test.js
 
@@ -45,5 +45,30 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install GAR runtime dependencies
+        run: python -m pip install -r requirements-gar.txt
+
       - name: Run unittest
         run: python -m unittest discover -s tests -v
+
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install GAR runtime dependencies
+        run: python -m pip install -r requirements-gar.txt
+
+      - name: Import CLI and render Windows command help
+        shell: pwsh
+        run: |
+          python -m scripts.gar_lib --help
+          python -m scripts.gar_lib target --help
+          cmd /c scripts\gar.cmd --help
+          python -m unittest discover -s tests -p test_gar_windows_host.py -v
+          python -m unittest discover -s tests -p test_gar_uuu.py -v

@@ -1,500 +1,400 @@
 # 0から実機動作までのチュートリアル
 
-この文書は、Product workspaceをGARへ登録し、simulationで確認してからPhysical Targetへ
-deployする標準経路に加え、Windows／WSL／Docker／実機をどのように分担させるかを示す。
-個々の引数は[コマンドリファレンス](01_COMMAND_REFERENCE.md)、現行構成の環境差は
-[開発環境](03_DEVELOPMENT_ENVIRONMENT.md)と[シミュレーション](06_SIMULATION.md)を参照する。
+この文書は、WindowsをGARの操作面にし、Dockerでbuild、VirtualBoxまたはAWSの
+Ubuntu Sim Hostでsimulation、Windows nativeのUSB／COM／UUUでNXP実機へ進む標準経路を示す。
+個々のoptionは[コマンドリファレンス](01_COMMAND_REFERENCE.md)、役割分担は
+[開発環境](03_DEVELOPMENT_ENVIRONMENT.md)、simulationの詳細は[シミュレーション](06_SIMULATION.md)を参照する。
 
 ## この文書の現在地
 
-2026-08-30時点では、GAR CLIはWSL上で動作する。Windowsをユーザー向けentrypointにする構成は、
-NXP UUUとUSB-C debug UARTを扱った経験から合意した**移行目標**であり、Windows版GAR launcher、
-Windows native UUU adapter、Windows COM adapterはまだ実装されていない。
+2026-08-31時点で次のadapterと設定階層をrepositoryに実装している。
 
-この文書では状態を次のように区別する。
+- Windowsから起動できる`scripts\gar.cmd`とWindows対応Python entrypoint
+- Product hookをLinux container内で実行するDocker BuildEnvironment
+- `SimulationEnvironment=ssh_remote`と独立した`Sim Host=virtualbox|aws_ec2`
+- VirtualBox VM lifecycle adapterとVirtualBox／AWS共通Ubuntu bootstrap
+- Windows host nativeの`uuu.exe`とpyserial `COMn`によるNXP flash／boot verification
+- Windows／POSIXのprocess lifecycleとSIM artifact architecture guard
 
-| 表記 | 意味 |
-|---|---|
-| 現行 | 現在のrepositoryに実装され、WSL上の`gar`から利用できる |
-| 移行目標 | 操作方法として合意したが、adapterまたはlauncherの実装が必要 |
-| 人間作業 | 物理操作、認証、管理者権限、危険な対象の選択など、自動化しない作業 |
+一方、実Windows PCのDocker Desktop、実VirtualBox VMの`gpio_sim`、実NXP Boardの
+UUU／COMまで通すE2Eはまだ実施していない。この文書は実装済みの操作契約と、
+実machineで人間が確認すべき境界を分けて記載する。
 
-以下の既存チュートリアルの`gar`コマンドは、特記しない限り現行のWSL shellで実行する。
-移行後もコマンド名と引数は変えず、Windows launcherが実行場所を隠蔽する。
-
-## 結論: Windowsを入口、WSLをLinux実行環境にする
-
-移行目標は「Windowsですべてを実行する」ことではない。Windowsがuser／AI向けの入口と
-local peripheralを所有し、file-intensiveなLinux作業はWSLへ固定的に委譲する。
+## 全体像
 
 ```text
 Human / AI
-    │ 同じ gar コマンド
+    │ 同じ gar command
     ▼
-Windows host entrypoint                         移行目標
-    ├─ build / test / Git / rg ───────────────► WSL ext4 workspace
-    ├─ containerized Linux workload ──────────► WSL2 + Docker Desktop
-    ├─ NXP full-image flash ──────────────────► Windows native uuu.exe
-    └─ boot log / interactive console ────────► Windows COM port
+Windows host
+    ├─ Local Docker ── Product build / test / Linux tools
+    ├─ VirtualBox Ubuntu ── local Linux-device Sim Host (`gpio_sim`)
+    ├─ AWS Ubuntu ───── remote Sim Host variant
+    └─ Native USB / COM ── NXP UUU / serial console
 ```
 
-Windows hostでのroutingは「native commandがあれば使い、なければfallbackする」という動的判定に
-しない。capabilityごとに実行場所を固定し、user／AIには同じ`gar` interfaceだけを公開する。
+WSLはGARの必須構成要素ではない。Docker Desktopが内部でWSL2を使う場合も、
+ユーザーとGARが見るのはDocker Engineである。WindowsにSSH serverを立てたり、
+`wsl -c "make all"`とhost commandを手で呼び分けたりしない。
 
-| 操作 | Windows hostでの固定先 | 理由 |
+VirtualBoxとAWSは別のsimulatorではない。Ubuntu上の同じLinux device runtimeを実行し、
+ローカルVMかremote VMかというSim Host providerの差だけをGARが吸収する。
+
+## 人間の作業一覧
+
+| 時点 | 人間が行うこと | 理由 |
 |---|---|---|
-| Product build、test、Git、source検索 | WSL | POSIX semanticsとWSL ext4上のfile performanceを維持する |
-| Linux container build／simulation | WSL2 backend | Linux path、bind mount、inotifyを維持する |
-| NXP UUU flash | Windows | USBをWindowsが直接所有し、usbipd attach／detachを不要にする |
-| USB-C debug UART | Windows | `COMn`を直接利用し、USB device所有権の移動を避ける |
-| Linux専用toolがUSBを直接必要とする場合 | WSL + usbipd | native Windows adapterがない場合だけの明示的な例外 |
+| Windows初回準備 | Python 3、Git、Docker Desktop、VirtualBox、OpenSSH Clientを正規配布元から導入 | license、UAC、OS再起動がある |
+| NXP初回準備 | NXP UUU、download USB driver、debug UART driverを導入 | vendorとdeviceの信頼判断が必要 |
+| VirtualBox初回準備 | Ubuntu VM、network、SSH key／host key、bootstrap、`gpio_sim`を準備 | VM／kernelはsoftwareから推測できない |
+| AWS初回準備 | login、region、instance type、key、課金上限を選ぶ | credentialと課金をGARが代行決定しない |
+| `gar setup` | Product、Target、Build、Simulator、Sim Host、接続先を選ぶ | どの製品／machineを操作するかの決定 |
+| 実機作業 | 配線、電圧、boot switch、USB、COM、storageを確認 | 誤接続／誤flashを防ぐ |
+| 破壊的操作 | full-image flash、Terraform destroyの対象と時点を承認 | data消去や外部resource変更がある |
+| 受入れ | display、LED、音、機構、発熱などを確認 | fixtureのない物理観測は自動化できない |
 
-Windows SSH serverを同一host内のtransportとして追加しない。WindowsからWSL commandを起動する
-境界には`wsl.exe`相当のprocess adapterを使い、SSHはremote machineへの接続に限定する。
-会話中の`gar-host.exe`はこの薄いWindows entrypointを説明するための仮称であり、実装済みbinary名でも、
-常駐SSH serverでもない。公開command名はOSにかかわらず`gar`のままにする。
+一度選んだVM名、SSH alias、COM portはmachine-local設定へ保存する。ただしUSB／COMは
+差し直しで変わり得るので、flash直前に人間が再確認する。
 
-### OS差を吸収する境界
+## 0. Windows hostを準備する
 
-user／AIがOSごとのcommand名を選ばないことが目的である。Product hookやTarget recipeへ
-`if Windows`／`if WSL`を散らさず、host adapterがcapabilityを固定routingする。
+repositoryをWindows側の作業領域へcloneする。新規構成ではWSL filesystemを
+Windowsへsshfs／junctionでmountする必要はない。Product workspaceもWindows側に置き、
+build時はDockerがbind mountする。
 
-| user-facing host | 移行目標の実行model | 状態 |
-|---|---|---|
-| Windows | Windows entrypoint + WSL Linux executor + Windows peripheral adapter | launcher／UUU／COMは未実装 |
-| Linux | 現行GAR core、Linux toolchain、native deviceを直接利用 | 現行の基本経路 |
-| macOS | 同名entrypointからnative toolまたはcontainer backendを利用 | host adapter、実機経路とも未設計・未検証 |
-
-Codespaces、EC2、Physical Targetはuser-facing host OSの追加種類ではなく、GARが操作するremote
-Build／Simulation／Target environmentとして扱う。
-
-## この結論に至った経緯
-
-| 検討した構成 | 分かったこと | 判断 |
-|---|---|---|
-| WSL常駐、時々Docker | Linux開発は自然だが、UUU／serialのたびにusbipd操作が必要 | 実機所有者としては不向き |
-| WSLからWindows SSH serverへ接続 | Windows native toolは呼べるが、同一hostに認証・daemon・path変換を追加する | 採用しない |
-| WSLからWindows executableを個別に直接実行 | ADBでは有効だが、commandごとの呼び分けがuser interfaceへ漏れる | GAR adapter内に閉じ込める |
-| Windowsですべてbuild／検索 | USBは容易だが、Linux build、GNU互換、Defender、cross-filesystem I/Oが問題 | source処理はWSLへ残す |
-| Windows + Docker Desktop | Linux containerは利用できるが、sourceをNTFSへ移す理由にはならない | WSL2 backendとして利用可能 |
-| WindowsからWSL filesystemを参照 | `\\wsl.localhost`で参照でき、Yurufuwa作業領域rootの短いaliasも作れる | device toolのartifact参照に使う |
-
-このため、レベルシフトするのは**操作の起点**であり、Product sourceやbuild directoryの保存先ではない。
-Docker Desktop上で、現在のsimulationが要求するprivileged device、host cgroup、`/sys` mount等が
-Linux hostと同等に動くことはまだ検証していない。Docker Desktopの導入だけで既存buildやsimulationが
-自動的に移行するとみなさず、Product hook／environmentごとに検証する。
-
-## Yurufuwa作業領域をWindows側へ見せる
-
-artifactや個別Projectへのlinkを張り替えるのではなく、複数Projectを含むYurufuwa作業領域rootへ
-不変のlinkを一本だけ作る。一般形と現在のPCでの対応は次のとおりである。
-
-```text
-C:\GAR\Yurufuwa
-    → \\wsl.localhost\<Distro>\<WSL-workspace-root>
-
-現在のPC:
-C:\GAR\Yurufuwa
-    → \\wsl.localhost\Ubuntu-26.04\home\user\Yurufuwa
-```
-
-Windowsのdirectory junctionはUNC target用ではないため、directory symbolic linkを使う。
-2026-08-28のこのmachineでの試験では通常権限での作成が拒否されたため、次は管理者PowerShellで
-一度だけ実行する。
+PowerShellで非破壊的な確認を行う。
 
 ```powershell
-New-Item -ItemType Directory -Force C:\GAR
-New-Item -ItemType SymbolicLink `
-  -Path C:\GAR\Yurufuwa `
-  -Target '\\wsl.localhost\Ubuntu-26.04\home\user\Yurufuwa'
-Test-Path C:\GAR\Yurufuwa\GAR\GaplessAgentRuntime
+python --version
+git --version
+docker version
+VBoxManage --version
+ssh -V
+uuu.exe -h
+Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Name
 ```
 
-配下のProjectに追加linkは作らない。Project切替はYurufuwa配下のdirectory移動または
-GARの`--workspace`選択で行う。
+`uuu.exe -h`とserial一覧はtool／portの存在確認だけで、imageを書き込まない。
+Docker Desktopのdaemon起動、workspaceのfile sharing、VirtualBoxのnetworkは人間が確認する。
 
-```text
-C:\GAR\Yurufuwa\GAR\GaplessAgentRuntime
-C:\GAR\Yurufuwa\GarServoPet
-C:\GAR\Yurufuwa\GarStreamTx
+## 1. GARを起動する
+
+Windowsでrepository rootから実行する。
+
+```powershell
+scripts\gar.cmd --help
+scripts\gar.cmd setup
 ```
 
-linkはpathを短くするnamespace bridgeであり、WSL filesystemをNTFSへ変換しない。Windows toolで
-source tree全体を再帰走査せず、Windows native UUUがbuild imageを読むなど、境界を越える操作を
-限定する。WSL側では`/mnt/c/GAR/Yurufuwa`を逆向きに辿らず、元の
-`/home/user/Yurufuwa`を使う。
+launcherはrepository内の`.venv\Scripts\python.exe`とGAR用のPython依存を必要に応じて用意する。
+PATHに`scripts`を追加した後は、以下を`gar ...`と表記する。Linux／macOSのhostでは
+`scripts/gar ...`を使う。公開commandと引数は同じである。
 
-## 検索commandの方針
-
-`findstr`は単純なWindows text filterには使えるが、`grep`互換のproject検索interfaceにはしない。
-正規表現、文字code、除外規則、再帰検索の差をuser／AIへ露出させないため、source treeの検索は
-WSL上の`rg`（ripgrep）へ固定する。Windows版GNU toolを導入する必要はない。
-
-現行ではWSL shellから直接`rg`を使う。`gar grep`／`gar search`は未実装であり、実装するまでは
-command referenceに存在するものとして扱わない。
-
-## 人間が担当する作業
-
-反復可能なbuild、deploy、diagnosticはGARへ収容する。一方、次は人間の判断または操作を残す。
-
-| 時点 | 人間が行うこと | GAR／AIへ任せない理由 |
-|---|---|---|
-| PC初回準備 | WSL2とdistributionを有効化し、必要ならDocker DesktopのWSL integrationを有効化 | OS機能、license、再起動を伴う |
-| 現行UUU経路の準備 | Windowsへusbipd-win、WSLへLinux版UUU／libusbを導入し、udev／groupでserial permissionを設定する | 現行backendはWSLのUSBとPOSIX serialを使う |
-| 現行UUU接続 | 管理者権限で対象deviceを一度`usbipd bind`し、download USBとdebug UARTを明示的にattachする | USB所有権の移動と対象deviceの識別が必要 |
-| 移行先Windows tool準備 | NXP公式`uuu.exe`、対象USB／UART driver、serial terminalを導入する | driver導入と配布元の確認が必要 |
-| Project登録 | Yurufuwa作業領域rootのWindows link作成を管理者権限で承認し、link先を確認する | UACとlocal filesystem変更を伴う |
-| 実機経路の初回検証 | adapter実装後、`uuu.exe`がproject link越しのimageを読めることと、COM adapterが期待logを読めることを確認する | path aliasはWin32 tool互換性を保証しない |
-| `gar setup` | Product、Target Pack、Build／Simulation／Target environment、machine-local接続先を選ぶ | 製品と接続対象の意味を決める作業 |
-| Hardware準備 | 配線、電圧、boot switch、download USB、debug UART、電源を資料どおり接続する | 物理世界をsoftwareから推測できない |
-| Target識別 | USB device、COM port、対象storage、接続台数を目視で確定する | 誤対象へのflashを防ぐ |
-| 認証 | cloud login、GitHub device login、host key、secret／runner登録を承認する | credentialをGARへ保存しない |
-| 破壊的操作 | full-image flash、infra destroy等の対象と実行時点を承認する | data消去や外部resource変更を伴う |
-| 実機受入れ | LED、display、音、機構、発熱などmachine-readableでない結果を確認する | sensor／fixtureがない観測は自動化できない |
-
-一度人間が選んだmachine-local情報は設定へ保存し、日常操作のたびに再入力させない。ただしUSBの
-bus IDやCOM portは差し直しで変わり得るため、対象を自動推測してflashしない。
-
-## 技術的な根拠
-
-- [Microsoft: WSLからUSB deviceへ接続するにはusbipd-winが必要](https://learn.microsoft.com/en-us/windows/wsl/connect-usb)
-- [Microsoft: Linux toolで扱うprojectはWSL filesystemへ置く](https://learn.microsoft.com/en-us/windows/wsl/filesystems)
-- [Docker: bind mountするsourceはLinux filesystemへ置く](https://docs.docker.com/desktop/features/wsl/best-practices/)
-- [NXP mfgtools: UUUはWindows binaryを提供](https://github.com/nxp-imx/mfgtools)
-
-## ゴール
-
-```text
-Product workspace
-  → build artifact
-  → simulation deploy / diag
-  → Physical Target
-      ├─ recipe-backed Linux: preflight → deploy → diag
-      └─ NXP UUU full image: 人間がboot／USB確認 → deploy内でflash／serialVerify
-```
-
-複数node製品では、最後に`gar system test`でE2E scenarioを実行する。
-
-## 前提
-
-- 現行CLIを使う場合はWSL2からrepositoryを操作できる。
-- 移行目標ではWindowsを入口にしても、Product sourceとbuild directoryはWSL filesystemへ置く。
-- Python 3、Git、対象environmentに必要なCLIを導入できる。
-- Product workspaceにbuild hookとsourceが存在する。
-- Target Packは`gar-tools`にあり、Product固有hardware bindingはProduct workspaceにある。
-- 実機配線はProductのbinding／配線資料と、Target Packのpin／電圧資料を突き合わせて行う。
-
-GAR本体はProduct固有の配線図を持たない。Board capabilityは`gar-tools/targets/<target-id>/`、
-実際の部品と配線はProduct workspaceを正本とする。
-
-## 1. GARを初期化する
+GAR core自体の開発環境では従来の次の手順も使える。
 
 ```bash
-cd /path/to/GaplessAgentRuntime
 make init
 make start
 ```
 
-`make init`はlocal venv、`gar` entrypoint、VS Code Terminal Bridge、MCP設定を用意する。
-日常操作は`make`ではなく`gar`を使用する。
-
 ## 2. Workspaceとenvironmentを設定する
 
-```bash
+```powershell
 gar setup
 ```
 
-対話では次を選択・入力する。
+対話で次を選ぶ。
 
 1. Product workspaceのpathと表示名
 2. Target Pack
-3. BuildEnvironment（LocalまたはGitHub Codespaces）
-4. SimulationEnvironment
-5. TargetEnvironment
-6. SSH config Host、serial port等のmachine-local接続情報
+3. BuildEnvironment: 通常は`Local Docker`、必要なら`GitHub Codespaces`
+4. SimulationEnvironment: Linux device simulationなら`SSH Remote`
+5. Sim Host: localなら`Local Ubuntu (VirtualBox)`、remoteなら`Remote Ubuntu (AWS EC2)`
+6. TargetEnvironment: SSH／ADB／esptool／UUU等
+7. VirtualBox VM名、SSH config Host alias、COM port等のmachine-local値
 
-設定はGaplessAgentRuntime直下の`.gar/config.json`へ保存される。秘密鍵そのものやProductの
-runtime secretは保存しない。登録後はworkspace名を確認する。
-
-```bash
+```powershell
 gar setup --no-install
 ```
 
-`--no-install`は不足commandを表示するだけで、導入処理を実行しない。
+`--no-install`は不足commandを表示するだけで、導入を実行しない。設定は
+GaplessAgentRuntime直下の`.gar/config.json`に保存する。秘密鍵やProduct runtime secretは保存しない。
 
-## 3. Hardware contractを検証する
+Linux device simulationの例では概念上次の関係になる。
+
+```json
+{
+  "selected_environments": {
+    "codespace": "local",
+    "simulator": "ssh_remote",
+    "simulation_host": "virtualbox",
+    "target": "uuu"
+  },
+  "simulation_host": {
+    "provider": "virtualbox",
+    "host": "gar-sim-local",
+    "arch": "x86_64"
+  },
+  "virtualbox": {
+    "vm": "GAR Ubuntu Sim"
+  },
+  "target": {
+    "serial": "COM5"
+  }
+}
+```
+
+`codespace: "local"`は互換IDで、UI上の意味は`Local Docker`である。
+
+## 3. VirtualBox local Sim Hostを準備する
+
+AWSを使う場合はこの節を飛ばし、`gar sim infra`でAWS providerを準備する。
+VirtualBoxの初回作業は次のとおりである。
+
+1. Ubuntu VMを作り、host-only networkまたはNAT port forwardでWindowsからSSH可能にする。
+2. `infra/simulation-host/ubuntu-bootstrap.sh`をVM内でroot権限で実行する。
+3. `sudo modprobe gpio-sim && test -d /sys/kernel/config`が成功することを確認する。
+4. Windowsの`%USERPROFILE%\.ssh\config`へ固定aliasとkeyを登録する。
+5. 初回`ssh gar-sim-local`でhost keyと接続先を人間が確認する。
+
+```sshconfig
+Host gar-sim-local
+    HostName 192.168.56.10
+    User gar
+    IdentityFile C:/Users/USER/.ssh/gar-sim-local
+```
+
+```powershell
+VBoxManage showvminfo "GAR Ubuntu Sim" --machinereadable
+ssh gar-sim-local "uname -m; sudo modprobe gpio-sim; test -d /sys/kernel/config"
+gar sim host status --workspace Local/Product
+```
+
+詳細は[`infra/virtualbox/README.md`](../infra/virtualbox/README.md)を参照する。
+
+## 4. Hardware contractを検証する
 
 Productにhardware contractがある場合、実機へ触れる前にoffline検証する。
 
-```bash
+```powershell
 gar hw validate --workspace Local/Product --json
 ```
 
-検証対象は次の三つである。
+検証対象はProduct所有の`requirements.json`、Target Pack所有の`capabilities.json`、
+Product×Target所有のbindingである。ここではschema、device／driver、電圧、GPIO／SPI競合等を
+検証する。実Target上のdevice存在は後段の`preflight`／`diag`で確認する。
 
-- Product所有の`requirements.json`
-- Target Pack所有の`capabilities.json`
-- Product×Target所有のbinding
+## 5. Simulation artifactをDockerでbuildする
 
-ここではschema、device、driver、電圧、GPIO／SPI競合、速度、video FPS等を確認する。
-実Target上のdevice存在確認は後段の`preflight`／`diag`で行う。
-
-## 4. Simulation artifactをbuildする
-
-```bash
+```powershell
 gar sim runtime build --workspace Local/Product
 gar sim app build --workspace Local/Product
 ```
 
-選択したBuildEnvironmentがProduct hookを実行し、WSL側artifact storeへsnapshotを作る。
+Local DockerはProduct workspaceを`/workspace`へbind mountし、container内のBashで次を実行する。
+
+- `scripts/product-sim-env-build.sh`
+- `scripts/product-sim-build.sh`
+
+既定の`gar-build-env:ubuntu-24.04`がなければ`infra/build/`からbuildする。Product hookが
+Docker daemonを使わない場合は`build.docker_socket=false`にし、host daemonへの権限を渡さない。
+
+成果物はhost側storeの別snapshotへcaptureする。
 
 ```text
 .gar/artifacts/<workspace-id>/sim_runtime/<build-id>/
 .gar/artifacts/<workspace-id>/sim_app/<build-id>/
 ```
 
-buildとdeployは別操作である。deployはbuildやfetchを暗黙に実行しない。
+buildとdeployは別操作である。deployはbuildやfetchを暗黙実行しない。
 
-Codespacesを明示的に起動・接続する必要がある場合は次を使う。
+## 6. Simulationを起動する
 
-```bash
-gar code boot --workspace Local/Product
-gar code start --workspace Local/Product
-gar code status --workspace Local/Product
-```
+VirtualBoxとAWSでcommandは同じである。
 
-## 5. Simulationを起動する
-
-host lifecycleを持つenvironmentでは先にhostを起動する。
-
-```bash
+```powershell
 gar sim host start --workspace Local/Product
 gar sim host status --workspace Local/Product
-```
-
-runtimeとapplicationを配置する。
-
-```bash
 gar sim runtime deploy --workspace Local/Product
 gar sim app deploy --workspace Local/Product
 gar sim runtime start --workspace Local/Product
 gar sim runtime diag --workspace Local/Product --json
 ```
 
-`diag`の`ok`だけでなく、service、device、Bridge、application health、build IDを確認する。
-仮想I/O操作はBridge経由で行う。
+VirtualBoxの場合、`host start`は`VBoxManage startvm ... --type headless`を使う。AWSの場合は
+instanceを起動し、SSH configのaddressを更新する。runtime／applicationの配置はどちらも
+共通のSSH／SCP経路である。
 
-```bash
+`diag`の`ok`だけでなく、service、device node、Bridge、application health、build IDを確認する。
+
+```powershell
 gar sim io press --workspace Local/Product --device button --line 17
 gar sim runtime log --workspace Local/Product
 ```
 
-使用可能なdevice／引数はTarget Packと`gar sim io --help`を参照する。
+### Sim Hostを切り替えた場合
 
-## 6. 複数node systemを検証する
+VirtualBoxの既定はx86_64、AWS Gravitonの既定はaarch64である。`gar setup`でproviderを
+切り替えたら、SIM_RUNTIMEとSIM_APPの両方を再buildする。異なるarchitectureの
+最新snapshotをdeployしようとするとGARは拒否する。
 
-Productに`gar-system.json`がある場合は、nodeを個別に操作せずsystem単位で実行できる。
+## 7. 複数node systemを検証する
 
-```bash
-gar system build --file /path/to/gar-system.json --json
-gar system deploy --file /path/to/gar-system.json --json
-gar system start --file /path/to/gar-system.json --json
-gar system diag --file /path/to/gar-system.json --json
-gar system test \
-  --file /path/to/gar-system.json \
-  --scenario /path/to/scenario.json \
-  --bridge tx=http://127.0.0.1:8081 \
-  --bridge rx=http://127.0.0.1:8080 \
+```powershell
+gar system build --file C:\path\to\gar-system.json --json
+gar system deploy --file C:\path\to\gar-system.json --json
+gar system start --file C:\path\to\gar-system.json --json
+gar system diag --file C:\path\to\gar-system.json --json
+gar system test `
+  --file C:\path\to\gar-system.json `
+  --scenario C:\path\to\scenario.json `
+  --bridge tx=http://127.0.0.1:8081 `
+  --bridge rx=http://127.0.0.1:8080 `
   --json
 ```
 
 Bridge URLはmachine-local入力なので、system schemaやartifactへ埋め込まない。
 
-## 7. Recipe-backed Linux Targetを準備する
+## 8. Recipe-backed Linux Targetを準備する
 
-SSH／file-transfer型Targetでは、初回またはTarget recipe更新時にだけ実行する。
+SSH／file-transfer型Targetでは、初回またはTarget recipe更新時だけ実行する。
 
-```bash
+```powershell
 gar target prepare --workspace Local/Product
 ```
 
-`prepare`の内容はTarget Packが所有する。Raspberry Pi OSではsystemdと限定sudo、RK3506
-BuildrootではBusyBox initとroot helperを設定する。GAR coreはdistribution名で分岐しない。
+`prepare`の内容はTarget Packが所有する。NXP UUUはapplication lifecycleではなくfull-image
+provisioningなので`target prepare`と`target configure`を実行しない。
 
-UUUはapplication lifecycleではなくfull-image provisioningであるため、この節の`prepare`と
-`configure`を実行しない。現行UUU backendの`target prepare`は意図的にerrorを返す。
+永続的なProduct設定が必要なrecipe-backed SSH Targetでは明示的に実行する。
 
-永続的なProduct設定が必要なら、deployとは分けて明示する。
-
-```bash
-gar target configure \
-  --workspace Local/Product \
-  --app product-app \
-  --file /path/to/product-app.env \
+```powershell
+gar target configure `
+  --workspace Local/Product `
+  --app product-app `
+  --file C:\path\to\product-app.env `
   --json
 ```
 
-通常のapplication deployは`/etc/gar/<app>.env`、SSH鍵、host keyを上書きしない。
+## 9. Target artifactをbuildする
 
-## 8. Target artifactをbuildする
-
-```bash
+```powershell
 gar target build --workspace Local/Product
 ```
 
-buildはrecipe-backed Linux TargetとUUU Targetに共通である。Product hookが実機用artifactを作り、
-GAR artifact storeへsnapshot化する。
+Local Dockerの`product-target-build.sh`が実機用artifactを作り、host側storeへsnapshot化する。
 
-### Recipe-backed Linux Targetを事前検証する
+Recipe-backed Linux Targetでは配置前にread-only検証を行う。
 
-```bash
+```powershell
 gar target preflight --workspace Local/Product --json
 ```
 
-`preflight`はLinux file-transfer Target専用である。artifactを転送せず、次を読み取り専用で照合する。
+checksum／provenance、Target ID、architecture／ABI／libc、recipe／tools identityの不一致を
+無視しない。UUU Targetはcompatibility probeを持たないので`preflight`非対応である。
 
-- artifact checksumとprovenance
-- Target ID、architecture、ABI、libc、toolchain triple
-- active gar-toolsと適用済みrecipeのidentity
-- deploy／configure／lifecycle capability
+## 10. Recipe-backed Linux Targetへdeployする
 
-不一致を無視してdeployしない。source、gar-tools、recipeのどれを更新すべきか診断結果から判断する。
-UUU Targetはcompatibility probeを持たないため、現行の`target preflight`には対応しない。
-
-## 9. Recipe-backed Linux Targetへdeployして収束を確認する
-
-```bash
+```powershell
 gar target deploy --workspace Local/Product
 gar target status --workspace Local/Product --json
 gar target diag --workspace Local/Product --json
 gar target log --workspace Local/Product
 ```
 
-deploy成功の基準は転送完了ではない。applicationがhealthを満たし、running build IDが
+deploy成功の基準はfile転送完了ではない。application healthとrunning build IDが
 配置artifactのbuild IDと一致することを確認する。
 
-## 10. NXP UUU Targetへfull imageを書き込む
+## 11. NXP UUU Targetへfull imageを書き込む
 
-FRDM-IMX91Sの現行UUU backendは、WSL上のGAR processからLinux版`uuu`を起動し、起動確認も
-POSIX serial device（`/dev/tty*`）で行う。この経路ではdownload USBとdebug UARTをWSLへ
-attachする必要がある。
+Windows nativeの標準経路では、GAR processが同じWindows hostのPATHから`uuu.exe`を起動し、
+`target.serial` の`COMn`をpyserialで開く。WSL、Linux版UUU、usbipd attach／detachは必要ない。
 
-UUU Targetで利用するGAR lifecycleは`target build`と`target deploy`に限定される。`target prepare`、
-`configure`、`preflight`、`status`、`log`、`diag`は利用できず、application healthやrunning build IDの
-収束を報告しない。
+UUU Targetが利用するGAR lifecycleは`target build` → 人間確認 → `target deploy`である。
+`prepare`、`configure`、`preflight`、`status`、`log`、`diag`はapplication lifecycleではないため使わない。
 
-### 10.1. Imageをbuildする
+### 11.1 Imageをbuildする
 
-```bash
+```powershell
 gar target build --workspace Local/Product
 ```
 
-### 10.2. 人間がTargetと物理状態を確認する
+### 11.2 人間が書き込み対象を確認する
 
-deploy commandを実行する前に、次を順に確認する。
-
-1. Target Pack、Board manual、Product配線資料に記載されたdownload USBとdebug UARTを取り違えていない。
+1. Target Pack、Board manual、Product配線資料のdownload USBとdebug UARTを取り違えていない。
 2. 対象Board、書込みstorage、image build IDが正しい。
 3. boot switchをSerial Downloader modeへ切り替えた。
-4. serial terminal等が確認対象の`/dev/tty*`またはCOM portを占有していない。
-5. full-image書込みによる既存data消去を承認した。
+4. UUUがdownload USBを認識している。
+5. 設定済みCOM portがdebug UARTであり、serial terminalが占有していない。
+6. full-image書き込みで既存dataを失う可能性を承認した。
 
-### 10.3. 現行WSL backendでは二つのUSB deviceをattachする
+確認用のread-only command例:
 
-10.3と10.4は現行WSL backendの経路である。Windows native adapterの実装後は、この二節を
-10.5の経路へ置き換える。
-
-`gar usb`が記憶するbus IDは一件だけなので、自動検出に頼らず、人間が`gar usb list`でdownload USBと
-debug UARTを識別して各commandへ明示する。
-
-```bash
-gar usb list
-gar usb bind --busid <download-usb-busid>
-gar usb bind --busid <debug-uart-busid>
-gar usb attach --busid <download-usb-busid>
-gar usb attach --busid <debug-uart-busid>
-gar usb status --busid <download-usb-busid>
-gar usb status --busid <debug-uart-busid>
+```powershell
+uuu.exe -lsusb
+Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Name
 ```
 
-`bind`が管理者権限不足で失敗した場合は、表示された二つのbus IDを推測せず、Windows管理者
-PowerShellでそれぞれ`usbipd bind --busid <busid>`する。bind後のattachは通常権限で実行する。
-
-### 10.4. Imageを書き込む
-
-物理状態とUSB attachを確認した後に実行する。
-
-```bash
-gar target deploy --workspace Local/Product
-```
-
-`target deploy`はartifact manifestのimageを検証してUUUを実行し、Target Packに`serialVerify`が
-あれば同じdeploy内でboot logのpatternを待つ。
-
-### 10.5. Windows native経路への移行目標
-
-移行後もuser／AIが実行するcommandは変えない。
-
-**移行目標（未実装）のPowerShell interface:**
+### 11.3 GARからflashする
 
 ```powershell
 gar target deploy --workspace Local/Product
 ```
 
-ただしWindows launcherのadapterが、artifact pathをYurufuwa作業領域link経由のWindows pathへ変換し、
-Windows native `uuu.exe`とWindows COM adapterを起動する。native UUU／COM adapterが実装され、
-実機で検証されるまでは、このPowerShell例を利用可能な現行commandとして扱わない。この経路では
-download USBとdebug UARTをWindowsが所有するため、10.3のusbipd操作は行わない。
+GARはTarget Packの`provisioning.uuu.command`をargvとして展開し、shellを経由せず
+`uuu.exe`を起動する。`serialVerify`が定義されている場合は、書き込み後に
+COM portで期待起動patternを待つ。このpattern検出はapplication health／running build IDの確認とは異なる。
 
-### 10.6. 書込み後に人間が行うこと
+### 11.4 書き込み後の人間作業
 
-1. deployの終了codeと`serialVerify`結果を保存する。
-2. boot switchを通常起動に必要なmodeへ戻す。
-3. Board manualどおりに電源を再投入する。
-4. serial boot logと、必要ならdisplay／LED／発熱等を確認する。
+1. 電源を切り、boot switchを通常bootへ戻す。
+2. flash toolとserial terminalがdeviceを開いたままでないことを確認する。
+3. 再起動後のCOM log、LED／display／network等のProduct behaviorを確認する。
+4. E2Eが未検証の段階ではUUU exit codeだけを成功報告にしない。
 
-## 11. Linux toolがUSB Targetを直接必要とする場合
+## 12. `gar usb`を使うlegacy compatibility経路
 
-NXP UUU以外でも、Linux専用vendor toolなどWSL process自身がUSB deviceを必要とする場合に限り、
-対象を確認してからusbipdでattachする。複数deviceの場合は、それぞれのbus IDを明示する。
+Linux-only USB toolがUSB device nodeを直接必要とする旧workspaceだけ、WSL + usbipdを明示的に使う。
 
-```bash
+```powershell
 gar usb list
 gar usb bind --busid <busid>
 gar usb attach --busid <busid>
 gar usb status --busid <busid>
+gar usb detach --busid <busid>
 ```
 
-USB attachとimage flashは物理状態を変更するため、対象deviceを推測して実行しない。
-Windows native UUU／COMへ移行したTargetでは、この手順を標準経路にしない。`gar usb`は
-Linux専用toolのための互換・例外経路として残す。
+USB所有権がWindowsからWSLへ移るので、対象BUSIDを人間が識別する。Windows native
+UUU／COMの標準経路ではこのcommandを使わない。
 
-## 12. 終了
+## 13. 終了とresource回収
 
-```bash
+```powershell
 gar sim runtime stop --workspace Local/Product
 gar sim host stop --workspace Local/Product
-gar code stop --workspace Local/Product
-gar code shutdown --workspace Local/Product
 ```
 
-Physical Targetの停止はBoard固有であり、GARのapplication lifecycleと電源操作を混同しない。
+VirtualBoxはACPI shutdown後にVM stateを確認する。AWSはinstance停止後もstorage等の課金が
+残り得る。infraそのものを不要と判断した場合だけ、対象を確認して次を実行する。
+
+```powershell
+gar sim infra destroy
+```
 
 ## よくある失敗
 
-| 症状 | 最初に確認すること |
+| 症状 | 確認する境界 |
 |---|---|
-| workspaceを選べない | `gar setup`の登録pathと現在directory |
-| artifactがない | 対応する`build`または`fetch`を実行したか |
-| SSH接続に失敗 | `ssh <config-host> true`、host key、認証session |
-| `preflight`がidentity drift | source／gar-toolsを同期して再build、recipe更新なら再prepare |
-| deploy後も古い挙動 | `gar target diag --json`のexpected／running build ID |
-| simulation deviceがない | `gar sim runtime diag --json`のservice／device状態 |
-| scenarioが失敗 | node health、Bridge URL、metrics freshness、cleanup結果 |
-| 実機I/Oがない | Product binding、pinmux、kernel driver、電源、物理配線 |
-| Windows project pathを開けない | WSL distribution名、`\\wsl.localhost`の到達性、directory symbolic linkのtarget |
-| project検索が遅い | Windows processでWSL treeを走査していないか。WSL上の`rg`を使う |
-| Windows native UUU／COMへrouteされない | adapterは移行目標で未実装。現行UUUはLinux／WSL backendである |
-| UUUがimageを開けない | project link先、artifact実体、UUUのWSL共有path対応を確認し、未検証を成功扱いしない |
+| `docker` commandがない／daemonへ到達できない | Docker Desktopの導入、起動、context、file sharing |
+| Product hookが見つからない | workspace path、`scripts/product-*.sh`、containerの`/workspace` |
+| Docker buildが遅い | Windows bind mount、Defender、小file数、Codespaces利用の比較 |
+| VirtualBox hostが起動しない | VM名／UUID、`VBoxManage showvminfo`、VirtualBox service |
+| SSHでVMへ到達できない | host-only／NAT network、SSH alias、key、host key |
+| `/dev/gpiochip*`がない | Ubuntu kernel、`linux-modules-extra`、`modprobe gpio-sim`、runtime deploy |
+| `simulation artifact architecture ...` | Sim Host切替後にSIM_RUNTIME／SIM_APPを再build |
+| `uuu.exe`がない | Windows PATH、NXP配布package、`Get-Command uuu.exe` |
+| UUUがBoardを見つけない | download USB／driver、Serial Downloader mode、cable／電源 |
+| serial verificationがtimeout | `target.serial`のCOM、baud、port占有、debug UARTとdownload USBの取り違え |
+| `gar usb`が必要に見える | 選択TargetがWindows native UUU／COMかlegacy WSL backendかを確認 |
 
-検証済み範囲と未実装backendは[検証状態](07_VERIFICATION.md)を参照する。
+実装済みと実機検証済みを混同しない。[検証状態](07_VERIFICATION.md)が現在地の正本である。

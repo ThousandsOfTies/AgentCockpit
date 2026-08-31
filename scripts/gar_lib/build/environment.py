@@ -6,6 +6,7 @@ from typing import Protocol
 
 from scripts.gar_lib.artifacts.store import BuildArtifactStore
 from scripts.gar_lib.build.codespaces import CodespacesBuildEnvironment
+from scripts.gar_lib.build.docker import DockerBuildEnvironment
 from scripts.gar_lib.build.local import LocalBuildEnvironment
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
@@ -24,9 +25,11 @@ def build_environment_for(workspace: Workspace, artifacts: BuildArtifactStore) -
     """成果物をビルドするオブジェクトを作る。"""
 
     backend = workspace.selected_environments.codespace
-    if backend not in ("local", "github_codespaces"):
+    if backend not in ("local", "docker", "native", "github_codespaces"):
         raise GarDomainError(f"build environment はまだ未対応です: {backend or '(未設定)'}")
 
     if backend == "github_codespaces":
         return CodespacesBuildEnvironment(artifacts)
-    return LocalBuildEnvironment(artifacts)
+    if backend == "native":
+        return LocalBuildEnvironment(artifacts)
+    return DockerBuildEnvironment(artifacts)

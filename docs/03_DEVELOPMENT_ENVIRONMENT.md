@@ -1,29 +1,55 @@
 # 開発環境の役割
 
-GARは、すべてを一台へ詰め込まず、環境の役割を固定して同じ`gar`操作面から利用する。
+GARは環境ごとに手順を切り替えず、同じ`gar ...`の背後で実行場所を分ける。
+基本構成は次のとおりである。
 
 | 環境 | 役割 | 置かないもの |
 |---|---|---|
-| VS Code + WSL2 | control plane、local build、artifact store、deploy起点 | 恒久的な実機設定の直書き |
-| GitHub Codespaces | 再現可能なcloud build | physical deviceアクセス、runtime secret |
-| Simulation host | 配布済みapplicationと仮想deviceの実行 | 場当たり的なcompile／source修正 |
+| Windows host | ユーザー／AIの操作面、workspace／artifact store、USB／COM／UUU | Linux build依存、`gpio_sim` runtime |
+| Local Docker | Product build hook、test、Linux tool | 実機USBとserial所有権、恒久的なsimulation state |
+| GitHub Codespaces | 固定devcontainerによるcloud BuildEnvironment | physical device access、runtime secret |
+| VirtualBox Ubuntu | local Sim Host。Linux device runtimeと`gpio_sim`の実行 | Product build、Windows peripheral tool |
+| AWS Ubuntu | remote Sim Host。VirtualBoxと同じruntimeのremote provider | 場当たり的compile／source修正 |
 | Physical Target | 配布済みapplicationとreal deviceの実行 | BuildEnvironment、simulation provider |
-| Windows host | VS Code UI、browser、usbipd、必要なlocal peripheral bridge | GAR domain logic |
 
-## WSL2をcontrol planeにする
+```text
+Human / AI
+    │ gar ...
+    ▼
+Windows host
+    ├─ build / test / Linux tools ─► Docker
+    ├─ local Linux simulation ───► VirtualBox Ubuntu
+    ├─ remote Linux simulation ──► AWS Ubuntu
+    └─ flash / console ───────► native USB / COM / UUU
+```
 
-WSL2は次を所有する。
+## Windowsを操作面にする
 
-- `gar` CLI
-- `.gar/config.json`
+Windowsは次を所有する。
+
+- `gar` CLIと`.gar/config.json`
 - immutable artifact store
-- SSH config aliasを使ったremote接続
-- Codespacesとの接続
-- Simulation／Targetへのdeployと診断
-- system topologyのorchestration
+- Docker、VirtualBox、SSH／SCPへのcontrol
+- VS Code、browser、Agent Terminal Bridge
+- Windowsが直接所有するUSB deviceとCOM port
+- NXP `uuu.exe`、Windows ADB、vendor tool
 
-IP addressやprivate key pathをProduct sourceやartifactへ埋め込まず、SSH config Host名を
-machine-local設定として保存する。
+WindowsかLinuxかをユーザーが都度判定しない。たとえばProduct buildはDocker adapter、
+NXP full-image flashはUUU adapter、boot logはpyserial adapterが実行場所を固定する。
+コマンドはどのhost OSでも`gar target deploy`のままである。
+
+WindowsにSSH serverを立てて同一PC内を往復する構成は取らない。SSHは
+VirtualBox／AWS／Physical Targetなど、別OSのruntimeへ到達するtransportとして使う。
+
+## WSLの位置づけ
+
+WSLはGARのcontrol plane、build environment、simulation environmentのいずれでもなく、
+必須の構成要素ではない。Docker DesktopがLinux containerを動かす内部実装として
+WSL2を使うことはあるが、GARからはDocker Engineというcapabilityだけを見る。
+
+Linux-only USB toolを一時的に使う旧経路ではWSL + usbipdを使える。そのための
+`gar usb` commandは互換性のために残すが、Windows native UUU／COMの標準経路では
+使わない。
 
 ## BuildEnvironment
 
@@ -33,17 +59,31 @@ BuildEnvironmentはProduct hookを実行し、GAR artifact contractへ変換す�
 Product source + fixed gar-tools
   → product-*-build.sh
   → staging artifact.json
-  → WSL LocalArtifactStore.capture()
+  → LocalArtifactStore.capture()
 ```
 
-### Local
+### Local Docker
 
-local toolchainで再現できるProductはWSL上でbuildする。Localであることは「手作業でcompileする」
-意味ではなく、Product hookを`LocalBuildEnvironment`が実行するという意味である。
+`gar setup`の`Local Docker`は、Product workspaceを`/workspace`へbind mountし、
+Linux container内のBashでProduct hookを実行する。旧`local`設定IDは互換のため残るが、
+意味はhost native buildではなくLocal Dockerである。
+
+- 既定image: `gar-build-env:ubuntu-24.04`
+- 既定context: `infra/build/`
+- workspace内script: `scripts/product-*.sh`
+- 必要なProductだけDocker socketをmountできる
+
+Docker socketのmountはhost daemonへの強い権限である。Product hookがDockerを呼ばない場合は
+`.gar/config.json`の`build.docker_socket`を`false`にする。imageを固定する場合は
+`build.image`を設定する。
+
+Windows DefenderやNTFSの影響を受ける大量の小file処理は、GNU toolをWindowsへ
+都度移植するのではなくcontainer内のLinux toolに寄せる。ただしWindows bind mount自体の
+I/O性能はProductごとに計測し、大規模buildではCodespaces等も比較する。
 
 ### GitHub Codespaces
 
-大きいSDK、cross toolchain、devcontainerで固定した依存が必要なProductはCodespacesを利用する。
+大きなSDK、cross toolchain、devcontainerで固定した依存が必要なProductはCodespacesを利用する。
 
 ```bash
 gar code boot --workspace Local/Product
@@ -51,86 +91,87 @@ gar code start --workspace Local/Product
 gar code status --workspace Local/Product
 ```
 
-`gar code start`のsshfs mountは一時的な視界であり、sourceやartifactの正本ではない。
-build結果はGARが取得し、WSL側artifact storeへsnapshot化する。
+sshfs mountは一時的な視界であり、sourceやartifactの正本ではない。build結果は
+GARがartifact storeへsnapshot化する。
 
-Codespaces上でsourceを直接編集する必要がある場合も、どのrepository／branchが正本かを先に確認する。
+## SimulationEnvironmentとSim Host
 
-## Simulation host
+SimulationEnvironmentはruntimeの種類、Sim Hostはそれruntimeを載せるmachine providerである。
+Linux device simulationではこの二つを分ける。
 
-Simulation hostはBuildEnvironmentではない。runtimeとapplicationを実行するだけである。
-
-```bash
-gar sim host start --workspace Local/Product
-gar sim runtime deploy --workspace Local/Product
-gar sim app deploy --workspace Local/Product
-gar sim runtime start --workspace Local/Product
-gar sim runtime diag --workspace Local/Product --json
+```text
+SimulationEnvironment: ssh_remote / Linux systemd runtime
+                         │
+                         ├─ Sim Host: virtualbox  (local Ubuntu, x86_64既定)
+                         └─ Sim Host: aws_ec2     (remote Ubuntu, aarch64既定)
 ```
 
-EC2 GravitonはLinux ARM64 referenceであるが、GARは`ssh_remote`というcapabilityとして扱う。
-個別instance名やIPへ依存しない。
+VirtualBoxとAWSは別シミュレータではない。共通のSSH／SCP、Ubuntu bootstrap、
+Linux systemd runtimeを使い、hostの起動／停止とaddress解決だけをprovider adapterが担う。
 
-Local Docker、Wokwi、MuJoCoはlocal process／containerなので、EC2用port forwardやSSH hostへ
-fallbackしない。
+VirtualBoxはWSLで使えなかった`gpio_sim`を含むlocal simulationの標準である。
+AWSはcloud認証、課金、remote accessが必要な場合のvariantである。
 
-## Physical Target
+## Physical TargetとWindows native peripheral
 
-Physical TargetもBuildEnvironmentではない。Target固有toolchainはProduct hookとTarget Packが管理し、
-実機上での臨時compileを標準手順にしない。
+Physical TargetはBuildEnvironmentではない。Target固有toolchainはProduct hookとTarget Packが管理し、
+実機上の臨時compileを標準手順にしない。
 
-```bash
-gar target prepare --workspace Local/Product
-gar target build --workspace Local/Product
-gar target preflight --workspace Local/Product --json
-gar target deploy --workspace Local/Product
-gar target diag --workspace Local/Product --json
+Raspberry Pi OSはSSH／systemd、RK3506 BuildrootはSSH／BusyBox、ESP32はesptool、NXPはUUUと
+transportが異なるが、入口は`gar target ...`で統一する。
+
+NXP UUU backendはWindows hostのPATHにある`uuu` / `uuu.exe`をshell経由でなく起動する。
+Target Packの`serialVerify`がある場合はpyserialで`COM5`などを開き、起動patternを確認する。
+download USBとdebug UARTは別deviceであり、人間が取り違えを防ぐ。
+
+## Machine-localな設定
+
+VM名、IP address、SSH alias、COM port、credential pathはProduct sourceへ埋め込まない。
+`.gar/config.json`とOSのSSH configに保存する。例:
+
+```json
+{
+  "selected_environments": {
+    "codespace": "local",
+    "simulator": "ssh_remote",
+    "simulation_host": "virtualbox",
+    "target": "uuu"
+  },
+  "build": {
+    "image": "gar-build-env:ubuntu-24.04",
+    "docker_socket": false
+  },
+  "simulation_host": {
+    "provider": "virtualbox",
+    "host": "gar-sim-local",
+    "arch": "x86_64",
+    "private_ip": "192.168.56.10",
+    "bridge_port": 8080
+  },
+  "virtualbox": {
+    "vm": "GAR Ubuntu Sim"
+  },
+  "target": {
+    "serial": "COM5"
+  }
+}
 ```
 
-Raspberry Pi OSはSSH／systemd、RK3506 BuildrootはSSH／BusyBoxという違いがあるが、上位CLIは同じである。
-実処理はTarget Packのprovisioning／lifecycle recipeへ委譲する。
+`codespace: "local"`は旧schemaとの互換IDで、UIでは`Local Docker`と表示する。
+この断片は説明用であり、実際は`gar setup`がworkspace entry内へ保存する。
 
-## Windowsの役割
+## 人間が担当する作業
 
-Windows nativeは、次のhost capabilityが必要なときだけ使う。
+| 環境 | 人間が一度または実行前に行うこと |
+|---|---|
+| Windows | Python、Docker Desktop、VirtualBox、OpenSSH Client、UUU／USB／UART driverの入手とlicense／UACの承認 |
+| Docker | daemonの起動、Product workspaceのfile sharing、socket mount権限の判断 |
+| VirtualBox | Ubuntu VM作成、network、SSH key／host key、bootstrap、`gpio_sim`の実確認 |
+| AWS | login、region／instance／課金の選択、secretとSSHの登録 |
+| Physical Target | Board、配線、電圧、boot mode、USB／COM、書込みstorage、data消去の承認 |
 
-- VS Code integrated terminal
-- Edge等のbrowser
-- `usbipd-win`によるUSB device共有
-- COM portやBluetooth等、WSLから直接扱いにくいlocal peripheral
-- Windows側でしか利用できないvendor tool
-
-Windows PowerShell helperへGAR workflowを重複実装しない。Windows固有操作は薄いadapterにし、
-状態と結果をWSLのGARへ返す。
-
-## USBとserial
-
-Windowsに接続されたUSB deviceをWSL Target backendから使う場合:
-
-```bash
-gar usb list
-gar usb attach --busid <busid>
-gar usb status
-```
-
-ESP32等のserial portはworkspace設定へ保存する。Windowsの`COM3`とLinuxの`/dev/tty*`を
-Product codeへ埋め込まず、選択backendが解決する。
-
-Full-image flashでは、USB attachとTargetのrecovery／boot modeは別の状態である。GARは
-transport、protocol、対象storage、verifyを区別し、単に「USB-C接続」と表現しない。
-
-## 認証と人間入力
-
-次はbackground processで無理に処理しない。
-
-- cloud login
-- sudo password
-- GitHub device authentication
-- host keyの初回確認
-- secret／runner／protected environment登録
-- image flash等の不可逆操作
-
-必要な場合、Agent Terminal Bridgeで人間が見えるterminalへ渡し、完了後に元の`gar` commandを再実行する。
+人間が一度選んだmachine-local値は設定へ保存するが、USB／COMは差し直しで
+変わり得る。破壊的なflashの直前には再確認する。
 
 ## Product workspaceの置き方
 
@@ -147,13 +188,19 @@ Yurufuwa/
    └─ sources/
 ```
 
-詳細は[リポジトリ配置](08_REPOSITORY_LAYOUT.md)を参照する。
+Windowsがworkspaceを正本として持つ新規構成では、WSL filesystemをWindowsへ
+mountするためのjunction／sshfsは不要である。旧WSL workspaceを移行せず参照する場合は
+`\\wsl.localhost\...`を一時的に使えるが、新しいGARの階層には含めない。
 
 ## 判断基準
 
-- build dependencyの再現性がProductに必要ならCodespaces／devcontainerへ置く。
-- 実行中のdeviceやnetwork状態はSimulation／Targetへ置く。
+- Linux build dependencyはLocal DockerまたはCodespacesへ置く。
+- `gpio_sim`とLinux kernel device stateはVirtualBox／AWS Sim Hostへ置く。
 - machine-local接続情報は`.gar/config.json`とSSH configへ置く。
 - Product behaviorと配線はProductへ置く。
 - Board／OS／toolchain／provisioningはTarget Packへ置く。
+- Windows固有のUSB／COM処理は`access/`の薄いadapterに閉じる。
 - 同じ手操作を繰り返したら、適切なGAR commandまたはrecipeへ収容する。
+
+Windows／Docker Desktop／VirtualBox／NXP実機のE2E確認状態は
+[検証状態](07_VERIFICATION.md)を正本とする。

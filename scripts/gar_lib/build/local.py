@@ -1,4 +1,4 @@
-"""Build product artifacts in the selected local development environment."""
+"""Legacy native build backend for explicit Linux-host compatibility."""
 
 from __future__ import annotations
 
@@ -48,5 +48,5 @@ class LocalBuildEnvironment:
         self.artifacts.remove(kind, workspace)
 
     def fetch(self, kind: ArtifactKind, workspace: Workspace) -> Artifact:
-        # local build の成果物は既に WSL 側（workspace.local_root）にあるため取得は不要。
+        # native build output is already present below workspace.local_root.
         return self.artifacts.latest(kind, workspace)

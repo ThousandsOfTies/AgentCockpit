@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import platform
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from scripts.gar_lib.core.artifact import ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
-from scripts.gar_lib.core.workspace import Workspace
+from scripts.gar_lib.core.workspace import Workspace, native_linux_architecture
 
 # simulation host のアーキテクチャ既定値。設定で上書きできる。
-DEFAULT_REMOTE_SIM_ARCH = "aarch64"
 
 
 @dataclass(frozen=True)
@@ -23,7 +21,7 @@ class BuildSpec:
 def compiler_for_architecture(arch: str) -> str:
     """simulation host のアーキテクチャに対応するCコンパイラを返す。"""
 
-    if arch == platform.machine():
+    if arch == native_linux_architecture():
         return "gcc"
     return f"{arch}-linux-gnu-gcc"
 
@@ -32,11 +30,8 @@ def simulation_build_variables(workspace: Workspace) -> dict[str, str]:
     """artifactを動かすsimulation hostのアーキテクチャをbuild hookへ伝える。"""
 
     simulator = workspace.selected_environments.simulator
-    if simulator == "local_docker":
-        arch = workspace.docker.arch or platform.machine()
-    elif simulator == "ssh_remote":
-        arch = workspace.ec2.arch or DEFAULT_REMOTE_SIM_ARCH
-    else:
+    arch = workspace.simulation_architecture
+    if arch is None:
         return {}
 
     return {

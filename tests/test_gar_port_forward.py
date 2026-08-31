@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
-from tools import forward_ec2_ports
+from tools import forward_sim_ports as forward_ec2_ports
 
 
 def state_for(config: forward_ec2_ports.PortForwardConfig) -> forward_ec2_ports.PortForwardState:
@@ -23,6 +23,22 @@ def state_for(config: forward_ec2_ports.PortForwardConfig) -> forward_ec2_ports.
 
 
 class PortForwardStateTest(unittest.TestCase):
+    def test_legacy_ec2_state_is_migrated_to_generic_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            legacy = forward_ec2_ports.PortForwardStateStore(root / "ec2-port-forward.json")
+            current = forward_ec2_ports.PortForwardStateStore(root / "sim-port-forward.json")
+            expected = state_for(forward_ec2_ports.PortForwardConfig("host-a", 8080))
+            legacy.save(expected)
+
+            forward_ec2_ports.migrate_legacy_state_file(
+                legacy_state_path=legacy.state_path,
+                store=current,
+            )
+
+            self.assertEqual(expected, current.load())
+            self.assertFalse(legacy.state_path.exists())
+
     def test_ssh_command_forwards_panel_http_and_websocket_on_one_port(self) -> None:
         command = forward_ec2_ports.PortForwardConfig("host-a", 8080).ssh_command(
             "/usr/bin/ssh",
@@ -86,6 +102,16 @@ class PortForwardStateTest(unittest.TestCase):
             args = forward_ec2_ports.build_parser().parse_args([])
 
         self.assertEqual("configured-host", args.host)
+
+    def test_parser_prefers_generic_sim_host_environment(self) -> None:
+        with mock.patch.dict(
+            forward_ec2_ports.os.environ,
+            {"GAR_SIM_HOST": "local-sim", "EC2": "legacy-aws"},
+            clear=True,
+        ):
+            args = forward_ec2_ports.build_parser().parse_args([])
+
+        self.assertEqual("local-sim", args.host)
 
     def test_command_identity_allows_only_executable_path_to_differ(self) -> None:
         expected = ("/usr/bin/ssh", "-N", "example-host")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import shutil
@@ -14,6 +13,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+if os.name == "nt":
+    import msvcrt
+
+    import psutil
+else:
+    import fcntl
 
 
 @dataclass(frozen=True)
@@ -102,11 +108,24 @@ class ProcessStateStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with lock_path.open("a+b") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            if os.name == "nt":
+                lock_file.seek(0)
+                if lock_file.read(1) == b"":
+                    lock_file.write(b"\0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 class LocalProcessChannel:
@@ -128,12 +147,17 @@ class LocalProcessChannel:
     ) -> ManagedProcess:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("ab") as log:
+            process_options: dict[str, object] = {}
+            if os.name == "nt":
+                process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                process_options["start_new_session"] = True
             process = subprocess.Popen(
                 argv,
                 cwd=cwd,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,
+                **process_options,
             )
         return ManagedProcess(
             process.pid,
@@ -160,6 +184,15 @@ class LocalProcessChannel:
 
         if not self.owns(process):
             return False
+        if os.name == "nt":
+            try:
+                owned = psutil.Process(process.pid)
+                for child in owned.children(recursive=True):
+                    child.terminate()
+                owned.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return False
+            return True
         try:
             if os.getpgid(process.pid) != process.pid:
                 return False
@@ -170,6 +203,12 @@ class LocalProcessChannel:
 
     @staticmethod
     def _is_running(pid: int) -> bool:
+        if os.name == "nt":
+            try:
+                process = psutil.Process(pid)
+                return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return False
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
@@ -180,6 +219,12 @@ class LocalProcessChannel:
 
     @staticmethod
     def _argv(pid: int) -> tuple[str, ...] | None:
+        if os.name == "nt":
+            try:
+                values = psutil.Process(pid).cmdline()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return None
+            return tuple(values) if values else None
         try:
             raw = Path(f"/proc/{pid}/cmdline").read_bytes()
         except OSError:
@@ -190,6 +235,12 @@ class LocalProcessChannel:
     @staticmethod
     def _start_time_ticks(pid: int) -> int | None:
         """Read Linux procfs field 22 without being confused by spaces in comm."""
+
+        if os.name == "nt":
+            try:
+                return int(psutil.Process(pid).create_time() * 1_000_000_000)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return None
 
         try:
             stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")

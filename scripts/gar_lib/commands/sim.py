@@ -175,7 +175,7 @@ def add_sim_parser(
 
     sim_host_parser = sim_subparsers.add_parser(
         "host",
-        help="simulation を載せる host（container / EC2 など）を操作します",
+        help="simulationを載せるhost（VirtualBox / AWS / container）を操作します",
     )
     sim_host_parser.set_defaults(help_target="sim_host")
     sim_host_subparsers = sim_host_parser.add_subparsers(dest="action", metavar="action")

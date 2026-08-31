@@ -15,7 +15,8 @@ GAR_DEV_REQUIREMENTS = requirements-dev.txt
 PYTHON = .venv/bin/python
 RUFF = .venv/bin/ruff
 
-SSH_DST = $(if $(KEY),ubuntu@$(EC2),$(EC2))
+SIM_HOST ?= $(EC2)
+SSH_DST = $(if $(KEY),ubuntu@$(SIM_HOST),$(SIM_HOST))
 SSH     = ssh $(if $(KEY),-i $(KEY),)
 SCP     = scp $(if $(KEY),-i $(KEY),)
 
@@ -26,7 +27,7 @@ help:
 	@echo "  make init          Create the venv and install local VS Code/MCP integration"
 	@echo "  make start         Enter an interactive shell with gar completion"
 	@echo "  make check         Run lint, tests, and syntax checks"
-	@echo "  make port-forward  Start the selected EC2 hardware-panel port forward"
+	@echo "  make port-forward  Start the selected Simulation Host panel port forward"
 
 check:
 	@test -x $(PYTHON) || { echo "Run 'make init' first."; exit 1; }
@@ -34,7 +35,7 @@ check:
 	$(RUFF) check scripts tests tools/*.py tools/gar-mcp/server.py
 	$(RUFF) format --check scripts tests tools/*.py tools/gar-mcp/server.py
 	$(PYTHON) -m unittest discover -s tests -v
-	bash -n tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
+	bash -n tools/forward_sim_ports.sh tools/forward_ec2_ports.sh tools/setup_codespace_wsl.sh scripts/create-product-devspace.sh
 	node --check tools/vscode-gar/extension.js
 	node --test tools/vscode-gar/*.test.js
 
@@ -82,22 +83,22 @@ start:
 	@bash -c 'TMP_RC=$$(mktemp); echo "source ~/.bashrc" > $$TMP_RC; echo "source $(CURDIR)/.venv/bin/activate" >> $$TMP_RC; echo "source <($(CURDIR)/.venv/bin/gar completion bash)" >> $$TMP_RC; echo "rm -f $$TMP_RC" >> $$TMP_RC; exec bash --rcfile $$TMP_RC -i'
 
 port-forward:
-ifndef EC2
-	$(error EC2 変数を指定してください: make port-forward EC2=your-ssh-host)
+ifndef SIM_HOST
+	$(error SIM_HOST 変数を指定してください: make port-forward SIM_HOST=your-ssh-host)
 endif
-	tools/forward_ec2_ports.sh --host $(EC2)
+	tools/forward_sim_ports.sh --host $(SIM_HOST)
 
 port-forward-stop:
-ifndef EC2
-	$(error EC2 変数を指定してください: make port-forward-stop EC2=your-ssh-host)
+ifndef SIM_HOST
+	$(error SIM_HOST 変数を指定してください: make port-forward-stop SIM_HOST=your-ssh-host)
 endif
-	tools/forward_ec2_ports.sh --host $(EC2) --stop
+	tools/forward_sim_ports.sh --host $(SIM_HOST) --stop
 
 port-forward-status:
-ifndef EC2
-	$(error EC2 変数を指定してください: make port-forward-status EC2=your-ssh-host)
+ifndef SIM_HOST
+	$(error SIM_HOST 変数を指定してください: make port-forward-status SIM_HOST=your-ssh-host)
 endif
-	tools/forward_ec2_ports.sh --host $(EC2) --status
+	tools/forward_sim_ports.sh --host $(SIM_HOST) --status
 
 sim-test:
 ifndef WORKSPACE
@@ -111,8 +112,8 @@ endif
 	scripts/gar sim runtime log --workspace $(WORKSPACE)
 
 sim-scenario:
-ifndef EC2
-	$(error EC2 変数を指定してください: make sim-scenario EC2=your-ssh-host SCENARIO=$(APP_REPO)/scenarios/sensor_demo_rfid.json)
+ifndef SIM_HOST
+	$(error SIM_HOST 変数を指定してください: make sim-scenario SIM_HOST=your-ssh-host SCENARIO=$(APP_REPO)/scenarios/sensor_demo_rfid.json)
 endif
 	$(SSH) $(SSH_DST) 'mkdir -p ~/gar-scenarios'
 	$(SCP) scripts/run_scenario.py scripts/gar_lib/simulation/hardware/io_actions.py $(SCENARIO) $(SSH_DST):~/gar-scenarios/

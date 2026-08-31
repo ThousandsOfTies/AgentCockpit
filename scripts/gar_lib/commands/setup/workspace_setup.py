@@ -226,7 +226,7 @@ def prompt_workspace_entry(
     if selected_type is None:
         print("  プロダクトのソースがある場所を選択してください:")
         print("    1. GitHub Codespaces")
-        print("    2. このPC / WSL")
+        print("    2. このPC")
         print("    3. 別のPC・サーバー (SSH)")
         selected = safe_input("  ソースの場所 [2]: ", default_on_eof="").strip() or "2"
         selected_type = {"1": "codespaces", "2": "local", "3": "network"}.get(selected)

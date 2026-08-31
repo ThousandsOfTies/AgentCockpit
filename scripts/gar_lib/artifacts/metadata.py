@@ -154,7 +154,8 @@ def write_artifact_metadata(bundle_root: Path, metadata: ArtifactMetadata) -> No
     fd, temporary = tempfile.mkstemp(prefix=".artifact-info-", suffix=".json", dir=bundle_root)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as output:
-            os.fchmod(output.fileno(), 0o644)
+            if hasattr(os, "fchmod"):
+                os.fchmod(output.fileno(), 0o644)
             output.write(descriptor)
             output.flush()
             os.fsync(output.fileno())

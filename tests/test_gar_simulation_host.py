@@ -15,9 +15,100 @@ from scripts.gar_lib.simulation.composition import (
 )
 from scripts.gar_lib.simulation.host.aws_ec2 import AwsEc2SimulationHostController
 from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.simulation.host.virtualbox import VirtualBoxSimulationHostController
 
 
 class GarSimulationHostTest(unittest.TestCase):
+    def test_virtualbox_controller_starts_powered_off_vm_and_reports_running_state(self) -> None:
+        virtualbox = mock.Mock()
+        virtualbox.run.side_effect = [
+            AccessResult(
+                ("VBoxManage",),
+                0,
+                'VMState="poweroff"\nVMStateChangeTime="2026-08-31T00:00:00Z"\n',
+            ),
+            AccessResult(("VBoxManage",), 0),
+            AccessResult(("VBoxManage",), 0, 'VMState="running"\n'),
+        ]
+        controller = VirtualBoxSimulationHostController(
+            vm="GAR Ubuntu Sim",
+            host="gar-sim-local",
+            virtualbox=virtualbox,
+            repository_channel=mock.Mock(),
+        )
+
+        result = controller.start()
+
+        self.assertTrue(result.state.running)
+        self.assertEqual("virtualbox", result.state.backend)
+        self.assertEqual("GAR Ubuntu Sim", result.state.id)
+        self.assertFalse(result.address_updated)
+        self.assertEqual(
+            [
+                mock.call(("showvminfo", "GAR Ubuntu Sim", "--machinereadable")),
+                mock.call(("startvm", "GAR Ubuntu Sim", "--type", "headless")),
+                mock.call(("showvminfo", "GAR Ubuntu Sim", "--machinereadable")),
+            ],
+            virtualbox.run.call_args_list,
+        )
+
+    def test_virtualbox_controller_updates_repository_over_shared_ssh_channel(self) -> None:
+        virtualbox = mock.Mock()
+        virtualbox.run.return_value = AccessResult(("VBoxManage",), 0, 'VMState="running"\n')
+        repository = mock.Mock()
+        repository.run.return_value = AccessResult(("ssh",), 0)
+        controller = VirtualBoxSimulationHostController(
+            vm="GAR Ubuntu Sim",
+            host="gar-sim-local",
+            virtualbox=virtualbox,
+            repository_channel=repository,
+            repository_path="/srv/simulation repo",
+        )
+
+        result = controller.start(update_repository=True)
+
+        self.assertTrue(result.repository_updated)
+        repository.run.assert_called_once_with("cd '/srv/simulation repo' && git pull --ff-only")
+
+    def test_virtualbox_controller_requests_acpi_shutdown_for_running_vm(self) -> None:
+        virtualbox = mock.Mock()
+        virtualbox.run.side_effect = [
+            AccessResult(("VBoxManage",), 0, 'VMState="running"\n'),
+            AccessResult(("VBoxManage",), 0),
+        ]
+        controller = VirtualBoxSimulationHostController(
+            vm="GAR Ubuntu Sim",
+            host="gar-sim-local",
+            virtualbox=virtualbox,
+            repository_channel=mock.Mock(),
+        )
+
+        controller.stop()
+
+        virtualbox.run.assert_called_with(("controlvm", "GAR Ubuntu Sim", "acpipowerbutton"))
+
+    def test_virtualbox_controller_resumes_paused_vm(self) -> None:
+        virtualbox = mock.Mock()
+        virtualbox.run.side_effect = [
+            AccessResult(("VBoxManage",), 0, 'VMState="paused"\n'),
+            AccessResult(("VBoxManage",), 0),
+            AccessResult(("VBoxManage",), 0, 'VMState="running"\n'),
+        ]
+        controller = VirtualBoxSimulationHostController(
+            vm="GAR Ubuntu Sim",
+            host="gar-sim-local",
+            virtualbox=virtualbox,
+            repository_channel=mock.Mock(),
+        )
+
+        result = controller.start()
+
+        self.assertTrue(result.state.running)
+        self.assertEqual(
+            mock.call(("controlvm", "GAR Ubuntu Sim", "resume")),
+            virtualbox.run.call_args_list[1],
+        )
+
     def test_aws_channel_classifies_expired_session_without_host_decisions(self) -> None:
         completed = mock.Mock(
             returncode=255,
@@ -141,6 +232,51 @@ class GarSimulationHostTest(unittest.TestCase):
 
         self.assertIsInstance(controller, AwsEc2SimulationHostController)
         self.assertEqual("i-test", controller.instance_id)
+
+    def test_resolver_builds_virtualbox_controller_from_generic_sim_host_settings(self) -> None:
+        workspace = Workspace(
+            id="ws",
+            name="Local/Product",
+            branch="Product",
+            connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={
+                "simulator": "ssh_remote",
+                "simulation_host": "virtualbox",
+            },
+            simulation_host={
+                "provider": "virtualbox",
+                "host": "gar-sim-local",
+                "repo_dir": "/srv/gar",
+            },
+            virtualbox={"vm": "GAR Ubuntu Sim"},
+        )
+
+        controller = simulation_host_for(workspace)
+        environment = simulation_environment_for(workspace)
+
+        self.assertIsInstance(controller, VirtualBoxSimulationHostController)
+        self.assertEqual("GAR Ubuntu Sim", controller.vm)
+        self.assertEqual("gar-sim-local", controller.host)
+        self.assertEqual("/srv/gar", controller.repository_path)
+        self.assertEqual("gar-sim-local", environment.session_host)
+
+    def test_virtualbox_resolver_does_not_fall_back_to_stale_ec2_alias(self) -> None:
+        workspace = Workspace(
+            id="ws",
+            name="Local/Product",
+            branch="Product",
+            connection={"type": "local", "path": "/tmp/product"},
+            selected_environments={
+                "simulator": "ssh_remote",
+                "simulation_host": "virtualbox",
+            },
+            simulation_host={"provider": "aws_ec2", "host": "stale-aws"},
+            virtualbox={"vm": "GAR Ubuntu Sim"},
+            ec2={"host": "legacy-aws"},
+        )
+
+        with self.assertRaisesRegex(GarDomainError, "SSH alias"):
+            simulation_environment_for(workspace)
 
     def test_ssh_runtime_exposes_an_explicit_session_host(self) -> None:
         workspace = Workspace(

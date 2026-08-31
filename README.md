@@ -1,23 +1,26 @@
 # Gapless Agent Runtime
 
-**コーディングからシミュレーション、実機稼働までを、AIエージェントが同じ操作面で進めるための組み込み開発基盤。**
+**Gapless Agent Runtime（GAR）は、コーディングからシミュレーション、実機稼働までを、AIエージェントが同じ操作面で進めるための組み込み開発基盤です。**
 
-Gapless Agent Runtime（GAR）は、Build環境、Simulation環境、Physical Targetを
-`gar` CLIから操作し、成果物、診断結果、実行手順を環境間で受け渡します。人間が担当するのは
-製品要件、物理作業、認証、危険な操作の承認であり、反復可能なbuild／deploy／observeは
-AIとCIが担える形にします。
+Gapless Agent Runtime（GAR）を用いることで、**ユーザーとAI** が、Build、Simulation、Target操作をその捜査対象の環境にかかわらず統一的に操作することができるようになります。
 
 ```text
 Product source
     │ product build hook
     ▼
-BuildEnvironment（Local / Codespaces）
+Docker BuildEnvironment / Codespaces
     │ schema-v2 artifact snapshot
     ▼
-WSL control plane
-    ├─ SimulationEnvironment ── Bridge / metrics / scenario
-    └─ TargetEnvironment     ── preflight / deploy / lifecycle / diag
+Windows control surface (`gar`)
+    ├─ Sim Host ── VirtualBox Ubuntu (local) / AWS Ubuntu (remote)
+    │                  └─ gpio-sim / Bridge / metrics / scenario
+    └─ Physical Target ── SSH / ADB / esptool / native UUU + COM
 ```
+
+Windowsは入口とUSB／serialの所有者、DockerはLinux build／test／toolの実行場所、UbuntuはLinux device simulationのSim Hostです。ローカルはVirtualBox、remoteはAWSという
+provider差だけを`gar setup`で選び、日常操作はOSにかかわらず同じ`gar ...`を使います。
+WSLはGARの必須構成要素ではありません。Docker Desktopが内部実装でWSL2を利用する場合も、
+GARからはDocker Engineとして扱います。
 
 ## 実装の中心
 
@@ -34,22 +37,27 @@ WSL control plane
 
 | 役割 | 実装・確認対象 |
 |---|---|
-| Control plane | VS Code + WSL2 |
-| Build | Local、GitHub Codespaces |
-| Linux simulation | Local Docker、AWS EC2 Graviton + CUSE／gpio-sim／Web Bridge |
+| Control surface | Windows + VS Code + `gar` |
+| Build | Local Docker、GitHub Codespaces |
+| Local Linux simulation | VirtualBox Ubuntu Sim Host + CUSE／gpio-sim／Web Bridge |
+| Remote Linux simulation | AWS EC2 Ubuntu Sim Host + CUSE／gpio-sim／Web Bridge |
 | Physical Target | Raspberry Pi 5／Raspberry Pi OS、Luckfox Lyra Plus RK3506／Buildroot |
-| Firmware flash | ESP32 + esptool backend |
+| Firmware flash | ESP32 + esptool、NXP + Windows native UUU／COM backend |
 | Multi-node reference | GarStreamTx/Rx topology + Golden scenario |
 
 確認済み範囲と未実装部分は[検証状態](docs/07_VERIFICATION.md)を正本とします。
 
 ## 最初の起動
 
-```bash
-make init
-make start
-gar setup
+Windowsではrepository rootから次を実行します。launcherが`.venv`とGAR用Python依存を
+用意します。
+
+```powershell
+scripts\gar.cmd setup
 ```
+
+Linux／macOSのhostで同じCLIを利用する場合は`scripts/gar setup`です。
+GAR core自体を開発するLinux環境では、従来どおり`make init` / `make start`を使えます。
 
 Product workspaceには、少なくとも次を置きます。
 
@@ -119,7 +127,7 @@ gar system test --file /path/to/gar-system.json --scenario /path/to/scenario.jso
 - [0から実機まで](docs/00_ZERO_TO_TARGET_TUTORIAL.md) — 初期化、simulation、Target deployの一本道。
 - [コマンドリファレンス](docs/01_COMMAND_REFERENCE.md) — `gar` CLIの全操作。
 - [アーキテクチャ](docs/02_ARCHITECTURE.md) — artifact、system、hardware、Target lifecycleの契約。
-- [開発環境](docs/03_DEVELOPMENT_ENVIRONMENT.md) — WSL、Local、Codespaces、Windowsの役割。
+- [開発環境](docs/03_DEVELOPMENT_ENVIRONMENT.md) — Windows、Docker、Sim Host、Codespacesの役割。
 - [Agent Terminal Bridge](docs/04_AGENT_TERMINAL_BRIDGE.md) — 人間入力が必要なterminal操作の橋渡し。
 - [シミュレーション](docs/06_SIMULATION.md) — backend、Bridge、runtime、scenario。
 - [検証状態](docs/07_VERIFICATION.md) — 検証済み範囲と既知の制約。

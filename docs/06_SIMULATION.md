@@ -1,8 +1,33 @@
 # シミュレーション環境
 
-GARのSimulationEnvironmentは、実装の異なるsimulatorを、共通のartifact、lifecycle、Bridge、
+GARのSimulationEnvironmentは、実装の異なるsimulatorを共通のartifact、lifecycle、Bridge、
 diagnostic契約へ接続する。Product固有の操作や状態遷移はGARへ実装せず、Productが所有する
 scenarioから共通control planeを利用する。
+
+## 階層
+
+Linux device simulationでは、runtimeとhost providerを分ける。
+
+```text
+BuildEnvironment (Local Docker / Codespaces)
+    ├─ SIM_RUNTIME artifact
+    └─ SIM_APP artifact
+              │ deploy over SSH/SCP
+              ▼
+SimulationEnvironment: ssh_remote / Linux systemd runtime
+              │
+              ├─ Sim Host: VirtualBox Ubuntu (local)
+              └─ Sim Host: AWS Ubuntu        (remote)
+```
+
+VirtualBoxとAWSは異なるsimulatorではない。共通のUbuntu bootstrap、Linux device runtime、
+SSH／SCP、Bridge契約を使う。providerの差はVM lifecycle、address解決、architectureだけである。
+
+- VirtualBox: localの`VBoxManage`でVMを起動／停止。Ubuntu x86_64が既定。
+- AWS EC2: AWS APIでinstanceを起動／停止しSSH addressを更新。Graviton aarch64が既定。
+
+architectureが異なるため、Sim Hostを切り替えた後は対応するSIM artifactを再buildする。
+GARはartifact metadataと選択中のSim Host architectureが不一致なdeployを拒否する。
 
 ## 共通契約
 
@@ -10,39 +35,39 @@ scenarioから共通control planeを利用する。
 SIM_RUNTIME artifact ── deploy ── runtime provider / Bridge
 SIM_APP artifact     ── deploy ── Product application
                                       │
-Human Panel / AI / CI ── JSON ────────┘
+Human Panel / AI / CI ── JSON ───────┘
 ```
 
 Simulation runtimeは次を提供する。
 
 - `build`／`deploy`
 - `start`／`stop`／`status`／`log`／`diag`
-- environmentがremote hostを持つ場合のsession／port forward
+- remote hostのsession／port forward
 - 仮想I/Oの操作と状態観測
 - AI／CI向けの機械可読diagnostic
 
-`gar sim app deploy`はProduct application、`gar sim runtime deploy`はdevice providerやBridgeを
-配置する。両artifactは別snapshotであり、一方のbuildが他方を上書きしない。
+`gar sim app deploy`はProduct application、`gar sim runtime deploy`はdevice providerやBridgeを配置する。
+両artifactは別snapshotであり、一方のbuildが他方を上書きしない。
 
 ## Backendの現在地
 
-| Environment | Runtime | 状態 |
+| SimulationEnvironment | Sim Host | 状態 |
 |---|---|---|
-| `ssh_remote` | Linux systemd runtimeをSSH hostへ配置 | 実装済み。EC2 Gravitonがreference |
-| `wokwi` | Product所有のWokwi project／firmwareをlocal processで実行 | 実装済み |
-| `mujoco` | Product modelをmaterializeしMuJoCo processを実行 | 実装済み |
-| `renode_mcu` | installerと選択肢 | runtime未実装を明示するerror-only adapter |
-| `esp32_qemu_firmware` | installerと選択肢 | runtime未実装を明示するerror-only adapter |
-| `aws_ssm` | installerと選択肢 | runtime未実装を明示するerror-only adapter |
+| `ssh_remote` | `virtualbox` | Linux systemd runtimeとVirtualBox controllerを実装 |
+| `ssh_remote` | `aws_ec2` | 同じruntimeとAWS EC2 controllerを実装 |
+| `wokwi` | hostless local process | Product所有Wokwi project／firmwareを起動 |
+| `mujoco` | hostless local process | Product modelをmaterializeしMuJoCo processを起動 |
+| `renode_mcu` | hostless | installer／選択肢とerror-only runtime |
+| `esp32_qemu_firmware` | hostless | installer／選択肢とerror-only runtime |
+| `aws_ssm` | AWS | installer／選択肢とerror-only runtime |
 
-`local_docker`の実装とtarget側のDocker設定は、明示的なbuild/UTまたは既存workspaceとの互換性のために
-残しています。ただし、`gar setup`のsimulation選択肢には含めません。
-
-未実装backendを選んだ場合、別backendへ暗黙fallbackしない。
+`local_docker`のSimulationEnvironmentは旧workspace／testとの互換のため残るが、`gar setup`の
+標準simulation選択肢ではない。Dockerは標準ではBuildEnvironmentであり、`gpio_sim`の
+local Sim HostはVirtualBox Ubuntuである。未実装backendを選んだ場合は別backendへfallbackしない。
 
 ## Linux device compatibility runtime
 
-Linux simulationでは、Applicationへ`#ifdef SIMULATION`を入れず、実機と同じdevice I/Fを提供する。
+Linux simulationではApplicationへ`#ifdef SIMULATION`を入れず、実機と同じdevice I/Fを提供する。
 
 | I/F | Simulation実装 | Applicationから見えるもの |
 |---|---|---|
@@ -77,12 +102,30 @@ Bridgeは人間向けPanelだけのHTTP serverではない。Human UI、AI、CI�
 metrics fileはruntime側の限定directoryに置き、application名、regular file、size、UTF-8、JSON objectを
 検証する。scenarioはmachine-local URLを保持せず、実行時の`--bridge node=origin`から解決する。
 
-新しいsimulatorを追加する場合、固有viewerだけで完了にしない。固有APIをGARのJSON command／stateへ
-変換するBridge adapterを用意する。固有UIは人間向けclient、共通scenarioはAI／CI向けclientである。
+新しいsimulatorを追加する場合、固有viewerだけで完了にしない。固有APIをGARのJSON
+command／stateへ変換するBridge adapterを用意する。
+
+## VirtualBox local Sim Hostの初回準備
+
+人間がmachineごとに一度行う。
+
+1. VirtualBoxへUbuntu VMを作り、host-only networkまたはNAT port forwardでWindowsからSSH可能にする。
+2. `infra/simulation-host/ubuntu-bootstrap.sh`をroot権限で実行する。
+3. `sudo modprobe gpio-sim`と`/sys/kernel/config`の利用可否を確認する。
+4. Windowsの`%USERPROFILE%\.ssh\config`へ固定Host aliasとkeyを登録し、host keyを確認する。
+5. `gar setup`でSimulation Environmentに`SSH Remote`、Sim Hostに`Local Ubuntu (VirtualBox)`を選ぶ。
+6. VM名／UUIDとSSH aliasを保存する。
+
+詳細とSSH config例は[`infra/virtualbox/README.md`](../infra/virtualbox/README.md)を参照する。
+VM名、IP、SSH keyはrepositoryへcommitしない。
 
 ## 標準操作
 
+VirtualBoxでもAWSでも同じである。
+
 ```bash
+gar sim host start --workspace Local/Product
+gar sim host status --workspace Local/Product
 gar sim runtime build --workspace Local/Product
 gar sim runtime deploy --workspace Local/Product
 gar sim app build --workspace Local/Product
@@ -95,22 +138,17 @@ gar sim runtime diag --workspace Local/Product --json
 
 ```bash
 gar sim runtime stop --workspace Local/Product
-```
-
-remote hostを使用する場合:
-
-```bash
-gar sim host start --workspace Local/Product
-gar sim host status --workspace Local/Product
 gar sim host stop --workspace Local/Product
 ```
 
-Linux runtimeの`start`はruntime serviceとport forwardを開始する。port forward不要時は、対応する
-commandの`--no-port-forward`を使用する。正確なoptionは`gar sim ... --help`を正本とする。
+`runtime start`はruntime serviceとport forwardを開始する。port forward不要時は
+`--no-port-forward`を使う。VirtualBox providerの`host stop`はACPI shutdownを要求し、
+AWS providerはinstance stopを要求する。いずれもOSが停止したことをstatusで確認する。
 
-## EC2 hostとTerraform
+## AWS hostとTerraform
 
-`gar sim infra`はTerraformを使うreference implementationであり、application deployとは別の責務である。
+`gar sim infra`はAWS EC2 provider用のTerraform reference implementationであり、
+VirtualBox VMの作成commandではない。
 
 ```bash
 gar sim infra setup
@@ -120,26 +158,20 @@ gar sim infra destroy
 ```
 
 infraはVM、network、storage、bootstrapを所有する。Application／runtime artifactの配置とstartは
-`gar sim app`／`gar sim runtime`が所有する。
+`gar sim app`／`gar sim runtime`が所有する。cloud login、region、instance type、課金、
+`apply`／`destroy`は人間が確認する。
 
-SSH／AWS loginに人間入力が必要な場合、GARは無限再試行せず、Terminal Bridgeへ認証操作を引き渡す。
-認証後に元のcommandを再実行する。
-
-## Wokwi
+## WokwiとMuJoCo
 
 WokwiはProduct hookがtemplate、firmware、diagram、`wokwi.toml`をSIM_APP artifactへまとめる。
 `gar sim app deploy`がruntime workspaceへ展開し、`start`が配置済みprojectを検証して起動する。
-
-現状の自動scenarioはProduct所有のWokwi形式であり、Linux Bridgeの共通scenarioとは統一されていない。
-この例外を、全backendが対応済みであるかのように扱わない。
-
-## MuJoCo
+現状の自動scenarioはProduct所有のWokwi形式で、Linux Bridge共通scenarioとは統一途中である。
 
 MuJoCo runtimeはProduct artifactに含まれるmodelとassetをlocal workspaceへmaterializeする。
 absolute path、`~`、path traversalを拒否し、modelを検証してからprocessを起動する。
 
-Wokwi／MuJoCoのlocal process lifecycleは、PIDだけでなくcommandとprocess start timeを照合し、
-stale stateによって無関係なprocessを停止しない。state更新とstart／stopはatomic／排他的に行う。
+Wokwi／MuJoCoのlocal process lifecycleはWindowsとPOSIXの両方でprocess identityを確認する。
+PIDだけで無関係なprocessを停止せず、commandとprocess create timeを照合する。
 
 ## Multi-node scenario
 
@@ -155,26 +187,27 @@ gar system test \
   --json
 ```
 
-scenarioは`command`、`observe`、`assert`、`wait`を持ち、失敗時も`cleanup`を実行する。
-counterは前回runの値で偽PASSしないよう、process再起動またはbefore／after比較で評価する。
-
 ## 診断順序
 
-問題が起きたら、次の順に境界を狭める。
-
 1. `gar sim host status`
-2. `gar sim runtime diag --json`
-3. artifact build ID／checksum
-4. runtime serviceとdevice node
-5. Bridge health／metrics freshness
-6. Application log
-7. Product protocol／scenario assertion
+2. `ssh <simulation_host.host> true`
+3. `gar sim runtime diag --json`
+4. artifact architecture／build ID／checksum
+5. runtime serviceとdevice node
+6. Bridge health／metrics freshness
+7. Application log
+8. Product protocol／scenario assertion
 
 | 症状 | 主な確認点 |
 |---|---|
-| runtimeへ接続できない | SSH config Host、host状態、認証session |
-| device nodeがない | runtime service、kernel module、hardware binding |
+| VirtualBox VMが起動しない | `VBoxManage showvminfo`、VM名／UUID、VirtualBox service |
+| runtimeへ接続できない | SSH config Host、VM network、host key、AWS address更新 |
+| architecture mismatch | VirtualBox／AWS切替後にSIM_RUNTIMEとSIM_APPを再build |
+| device nodeがない | bootstrap、kernel module、`gpio_sim`、runtime service／hardware binding |
 | Panelだけ更新されない | Bridge WebSocket、device provider、browser cache |
-| scenarioが即座に偽PASSする | metricの初期化、before／after比較、process restart |
+| scenarioが即座に偽PASS | metric初期化、before／after比較、process restart |
 | deploy後も古い挙動 | artifactとrunning build ID、service restart |
-| 未実装errorが出る | 選択backendがerror-onlyか[検証状態](07_VERIFICATION.md)で確認 |
+| 未実装error | 選択backendがerror-onlyか[検証状態](07_VERIFICATION.md)で確認 |
+
+VirtualBox controllerやWindows process adapterがunit testで検証されていても、実VMのnetwork、
+kernel module、USB deviceまで自動的に確認済みにはならない。[検証状態](07_VERIFICATION.md)を参照する。

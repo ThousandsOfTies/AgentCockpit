@@ -236,7 +236,7 @@ class GarTargetArchitectureTest(unittest.TestCase):
         self.assertEqual("raspi-target", config["target"]["host"])
         save.assert_called_once_with(config)
 
-    def test_local_target_build_runs_product_hook(self) -> None:
+    def test_legacy_native_target_build_runs_product_hook(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             hook = root / "scripts" / "product-target-build.sh"
@@ -252,7 +252,13 @@ class GarTargetArchitectureTest(unittest.TestCase):
             )
             completed = mock.Mock(returncode=0)
             with mock.patch("scripts.gar_lib.build.local.subprocess.run", return_value=completed) as run:
-                selected_workspace = workspace(root, target="esp32_esptool")
+                selected_workspace = Workspace(
+                    id="ws_target",
+                    name="Local/Product",
+                    branch="Product",
+                    connection={"type": "local", "path": str(root)},
+                    selected_environments={"codespace": "native", "target": "esp32_esptool"},
+                )
                 artifact = build_environment_for(
                     selected_workspace,
                     LocalArtifactStore(),

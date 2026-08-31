@@ -4,15 +4,19 @@
 
 | レイヤ | 実体 | 役割 |
 |---|---|---|
-| 1. 統合開発環境 | VSCode + `gar` CLI | AI・人間が共有する操作面。ビルド/デプロイ/観察の起点 |
-| 2. ビルド環境 | Local / GitHub Codespaces | Product hookを実行し、Target別toolchainでartifactを生成 |
-| 3. シミュレーション環境 | Docker / EC2 / Wokwi / MuJoCo | Productに応じた仮想環境を共通Bridge／lifecycleへ接続 |
+| 1. 統合操作面 | Windows + VSCode + `gar` CLI | AI・人間が共有する操作面。artifact、USB／COM、デプロイの起点 |
+| 2. ビルド環境 | Local Docker / GitHub Codespaces | Linux上でProduct hookを実行し、Target別toolchainでartifactを生成 |
+| 3. シミュレーション環境 | VirtualBox Ubuntu / AWS Ubuntu / Wokwi / MuJoCo | Productに応じた仮想環境を共通Bridge／lifecycleへ接続 |
 | 4. デバイス互換 Runtime | CUSE / gpio-sim + Bridge等 | `/dev/*`またはsimulator APIをProductの外部interfaceへ変換 |
 | 5. 実機接続環境 | Raspberry Pi 5 / Luckfox RK3506 / ESP32等 | real deviceで実行。OS準備、flash、boot統合はTarget Packが担当 |
 
-ビルド成果物は、選択したBuildEnvironment（Local / Codespaces）→ WSL側artifact store →
+ビルド成果物は、選択したBuildEnvironment（Local Docker / Codespaces）→ host側artifact store →
 simulation／実機の一方向で流れる。実行先で場当たり的にbuildしない。Target固有のbuild手順は
 Product hook、toolchain／sysroot探索はTarget Packへ置く。
+
+WSLはこのレイヤに含めない。Docker Desktopが内部でWSL2 backendを使う場合も、
+GARはDocker capabilityだけを利用する。Linux kernelの`gpio_sim`が必要なlocal simulationは
+VirtualBox Ubuntu、remote variantはAWS Ubuntuが担う。
 
 ---
 
@@ -23,7 +27,7 @@ GARのコマンドは明示的なlifecycle操作として扱う。ユーザー�
 抽象 target であり、個別の実行方法（PlatformIO、Codespaces、esptool、adb、scp など）は
 `gar setup` で選ばれた target 定義と接続設定から解決する。
 
-現在の`deploy`は、WSL側artifact storeにある最新bundleを対象runtimeへ反映する操作であり、
+現在の`deploy`は、host側artifact storeにある最新bundleを対象runtimeへ反映する操作であり、
 buildやfetchを暗黙には実行しない。新しい成果物が必要な場合は先に`build`を実行し、
 既存Codespaces bundleだけを取り直す場合は`fetch`を明示的に実行する。
 
@@ -63,7 +67,7 @@ Target probe/HILという別の境界で行う。
 Codespace は BuildEnvironment の実装のひとつ。ユーザーは通常 `gar sim app build` /
 `gar sim app deploy` / `gar target build` / `gar target deploy` から間接的に使う。
 成果物は target graph の artifact node と `artifact.json` に記載されたパスで管理する。
-WSL側ではworkspace ID・artifact種別・build IDごとに不変snapshotを作り、`latest.json`で
+host側ではworkspace ID・artifact種別・build IDごとに不変snapshotを作り、`latest.json`で
 最新snapshotを選ぶ。これにより`SIM_APP`、`SIM_RUNTIME`、`TARGET_APP`が互いに上書きされない。
 
 実機操作も make 的な依存 target として扱う。
@@ -97,9 +101,10 @@ IMX91SのUUUフルイメージ書き込みを選択できる。UUU backendはman
 
 ---
 
-## 1. 統合開発環境
+## 1. Windows統合操作面
 
-Gapless Agent Runtimeでは、VSCodeを、開発者と AI エージェントが共有する統合開発環境として使用します。
+Gapless Agent Runtimeでは、Windows上のVS Codeと`gar` CLIを、開発者とAIエージェントが
+共有する統合操作面として使用する。
 
 ここにすべての情報と操作インタフェースを集約することで**AI が開発作業の最初から最後までを自分で実行できる状態**を実現します。
 
@@ -112,6 +117,10 @@ Gapless Agent Runtimeでは、VSCodeを、開発者と AI エージェントが�
 
 この役割変更を実現するために、Gapless Agent Runtimeでは`gar` CLI、JSON scenario、metrics、
 log、diagnosticを整備し、build、deploy、仮想H/W操作、確認までを再現可能にする。
+
+OS差はcommand名ではなくcapability adapterで吸収する。Product buildはDocker、
+NXP flashはhost native UUU、serial verificationはpyserial、Linux simulationはSSH/SCPを使うが、
+ユーザーは同じ`gar ...`を実行する。WindowsにSSH serverを立てて同一host内を往復しない。
 
 ### Simulation Control Plane — environment をまたぐ不変条件
 
@@ -133,7 +142,13 @@ Wokwi の自動操作を製品が追加する場合、現状は Wokwi CLI 固有
 
 ---
 
-## 2. クラウド開発環境 (GitHub Codespaces)
+## 2. ビルド環境
+
+Local DockerとGitHub CodespacesはBuildEnvironmentのproviderである。どちらもProduct workspaceが
+所有する`product-*-build.sh`をLinux上で実行し、同じartifact contractへcaptureする。
+Local Dockerの既定imageは`infra/build/`から作成する。
+
+### GitHub Codespaces
 
 Gapless Agent Runtime では、開発環境として GitHub Codespaces を採用しています。
 
@@ -143,14 +158,29 @@ Gapless Agent Runtime では、その標準化された作業場に AI Agent も
 
 ---
 
-## 3. シミュレーション環境 (AWS EC2 Graviton)
+## 3. シミュレーション環境
 
-### VM の選定理由
+Linux device simulationは`ssh_remote`というruntime種類と、それを載せるSim Host providerを分ける。
+
+```text
+Linux systemd simulation runtime
+    ├─ Local Ubuntu (VirtualBox) ── x86_64既定
+    └─ Remote Ubuntu (AWS EC2) ── aarch64既定
+```
+
+VirtualBoxとAWSは別のsimulatorではない。共通のUbuntu bootstrap、SSH／SCP、systemd runtime、
+Bridgeを使う。ローカルで`gpio_sim`が必要な場合はVirtualBox Ubuntuを使い、
+AWSは同じruntimeをremoteで実行するvariantである。host lifecycleの差は
+`simulation/host/virtualbox.py`と`aws_ec2.py`に閉じる。
+
+### Architectureの契約
 
 Linux ARM64のreference simulationにはAWS EC2 Gravitonを採用している。Raspberry Pi 5と同じ
 **ARM64 (aarch64)／glibc** envelopeを満たすProductでは、同一binaryをdeployできる。
 x86 CPU emulationを挟まず実速で動かせる一方、kernel、driver、device、timingの同一性は別途検証する。
-Local Docker、Wokwi、MuJoCoも別のSimulationEnvironmentとして同じ上位操作へ接続する。
+VirtualBox x86_64とAWS aarch64の間でbinaryを流用せず、artifact metadataのarchitectureと
+選択中のSim Hostをdeploy前に照合する。WokwiとMuJoCoは別のSimulationEnvironmentとして
+同じ上位操作へ接続する。Dockerは標準ではBuildEnvironmentである。
 
 ---
 
@@ -160,7 +190,7 @@ Local Docker、Wokwi、MuJoCoも別のSimulationEnvironmentとして同じ上位
 
 アプリ側に `#ifdef SIMULATION` やシミュレーション専用 HAL を持たせない。アプリは実機と同じ `/dev/i2c-1`、`/dev/spidev0.0`、`/dev/gpiochip0` を開くだけにし、差し替えの責務を OS/device layer に閉じ込める。
 
-EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
+VirtualBox／AWSのUbuntu Sim Host上では以下の仮想デバイスで`/dev/*`を再現する。
 
 | I/F | 実装 | アプリから見えるもの |
 |---|---|---|
@@ -174,7 +204,7 @@ EC2 上では以下の仮想デバイスで `/dev/*` を再現する。
 これを利用できる。RK3506のようなarmv7 Targetでは別binaryをbuildし、同じsource、Linux device I/F、
 protocol、state behaviorを契約にする。accelerator固有実装では外部behaviorと性能条件で適合を確認する。
 
-CUSE／gpio-simの実装と保守はAIと自動testが担い、実機で得た差分をprovider、Target capability、
+CUSE／gpio-simの実装と保守はAIと自動testが担い、実機で得た差分をruntime provider、Target capability、
 Bindingへ戻す。
 
 ### 仮想 H/W の操作・観察（bridge）
@@ -249,3 +279,7 @@ NXP UUU等のUSB recoveryはapplication deployと副作用が異なるため、T
 USB identity、image destination、verify、recoveryを明示する独立provisioning classとして扱う。
 FRDM-IMX91SではUUUのdownload USB接続とUSB-C debug UARTを別接続として扱い、
 `target.serial`にコンソールdeviceを設定すると書き込み後の起動パターン確認を行える。
+
+Windows操作面ではTarget layerがartifact／recipeの判定を持ち、access layerがhost nativeの
+`uuu.exe`起動とpyserial `COMn`を担う。標準経路はWindowsがUSBを所有するため、
+WSLへのusbipd attach／detachは不要である。`gar usb`はLinux-only USB tool用のlegacy compatibilityとして残す。

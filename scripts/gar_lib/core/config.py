@@ -165,6 +165,7 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
     ec2_region = None
     ec2_repo_dir = None
     ec2_identity_file = None
+    ec2_arch = None
     invalid_ec2_host = False
     if isinstance(ec2, dict):
         if isinstance(ec2.get("host"), str) and is_valid_runtime_host(ec2["host"]):
@@ -181,6 +182,8 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
             ec2_repo_dir = ec2["repo_dir"]
         if isinstance(ec2.get("identity_file"), str) and ec2["identity_file"]:
             ec2_identity_file = ec2["identity_file"]
+        if isinstance(ec2.get("arch"), str) and ec2["arch"]:
+            ec2_arch = ec2["arch"]
 
     usb = data.get("usb")
     usb_busid = None
@@ -207,6 +210,18 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
     hardware = data.get("hardware")
     hardware_settings = dict(hardware) if isinstance(hardware, dict) else {}
 
+    build = data.get("build")
+    build_settings = dict(build) if isinstance(build, dict) else {}
+
+    simulation_host = data.get("simulation_host")
+    simulation_host_settings = dict(simulation_host) if isinstance(simulation_host, dict) else {}
+
+    virtualbox = data.get("virtualbox")
+    virtualbox_settings = dict(virtualbox) if isinstance(virtualbox, dict) else {}
+
+    docker = data.get("docker")
+    docker_settings = dict(docker) if isinstance(docker, dict) else {}
+
     return {
         "workspace_id": data["id"],
         "workspace_name": data["name"],
@@ -224,12 +239,17 @@ def load_config(*, workspace_selector: str | Path | None = None) -> dict:
             **({"region": ec2_region} if ec2_region else {}),
             **({"repo_dir": ec2_repo_dir} if ec2_repo_dir else {}),
             **({"identity_file": ec2_identity_file} if ec2_identity_file else {}),
+            **({"arch": ec2_arch} if ec2_arch else {}),
         },
         **({"_invalid_ec2_host": True} if invalid_ec2_host else {}),
         **({"usb": {"busid": usb_busid}} if usb_busid else {}),
         **({"esp32": {"port": esp32_port}} if esp32_port else {}),
         **({"target": target_settings} if target_settings else {}),
         **({"hardware": hardware_settings} if hardware_settings else {}),
+        **({"build": build_settings} if build_settings else {}),
+        **({"simulation_host": simulation_host_settings} if simulation_host_settings else {}),
+        **({"virtualbox": virtualbox_settings} if virtualbox_settings else {}),
+        **({"docker": docker_settings} if docker_settings else {}),
         **(
             {
                 "adb": {

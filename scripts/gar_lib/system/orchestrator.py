@@ -180,7 +180,7 @@ class SystemOrchestrator:
             workspace = workspaces.get(node_id)
             if workspace is None:
                 raise GarDomainError(f"scenario nodeのworkspaceを解決できません: {node_id}")
-            port = workspace.docker.bridge_port
+            port = workspace.simulation_bridge_port
             if port is None:
                 raise GarDomainError(
                     f"scenario bridge URLが未設定です: {node_id}。--bridge {node_id}=http://127.0.0.1:PORT を指定してください"
@@ -346,7 +346,7 @@ class SystemOrchestrator:
                 values[name] = str(self.topology.links[str(source.value)].port)
             else:
                 peer = workspaces[str(source.value)]
-                private_ip = peer.ec2.private_ip
+                private_ip = peer.simulation_private_ip
                 if not private_ip:
                     raise GarDomainError(f"node {source.value} のprivate_ipが未設定です")
                 values[name] = private_ip
@@ -423,7 +423,7 @@ class SystemOrchestrator:
         workspace = workspaces.get(node_id)
         if workspace is None:
             raise GarDomainError(f"node {node_id} のworkspaceを解決できません")
-        private_ip = workspace.ec2.private_ip
+        private_ip = workspace.simulation_private_ip
         if not private_ip:
             raise GarDomainError(f"node {node_id} のprivate_ipが未設定です")
         return private_ip

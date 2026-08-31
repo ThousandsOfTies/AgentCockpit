@@ -1,31 +1,28 @@
 # コマンドリファレンス
 
-`gar` コマンド一覧。**現行実装はWSLのvenv上で実行する**（`make start`で有効化）。
-Windowsをentrypointにする運用の経緯と人間作業は
-[0から実機まで](00_ZERO_TO_TARGET_TUTORIAL.md)、既存設計は
+`gar` コマンド一覧。Windowsでは`scripts\gar.cmd`、Linux／macOSでは`scripts/gar`を
+entrypointにし、OSやproviderが変わっても同じ`gar ...` commandを使う。
+標準運用と人間作業は[0から実機まで](00_ZERO_TO_TARGET_TUTORIAL.md)、設計は
 [02_ARCHITECTURE.md](02_ARCHITECTURE.md)、シミュレーション詳細は
 [06_SIMULATION.md](06_SIMULATION.md)を参照する。
 
-## 実行場所と実装状態
+## 実行場所と責務
 
-Windows host用の同名`gar` launcherは移行目標であり、まだこのrepositoryには存在しない。
-macOS用entrypoint／host adapterも未実装・未検証である。
-次の表は、現行commandの実体と、command名を変えずに到達する移行先を区別する。
+| レイヤー | 標準provider | GARから見た役割 |
+|---|---|---|
+| Control Host | Windows | `gar.cmd`、Git／editor、native USB／COM／UUU、Docker／VirtualBoxの制御 |
+| BuildEnvironment | Local Docker | Product workspaceを`/workspace`へmountし、Linux build hookを実行 |
+| SimulationEnvironment | `ssh_remote` | Ubuntu上のdevice runtimeへ共通SSH／SCPで接続 |
+| Simulation Host | VirtualBoxまたはAWS EC2 | 同じUbuntu runtimeをlocal VMまたはremote VMで実行 |
+| TargetEnvironment | UUU／ADB／SSH／esptool等 | 実機固有の配置・flash経路を提供 |
 
-| capability／command | 現行実装 | Windows host移行後 | 状態 |
-|---|---|---|---|
-| `gar setup`、`gar sim ... build`、`gar target build`、`gar system ...` | WSL上のPython GAR | Windows launcherからWSL backendへ固定routing | launcher未実装 |
-| `gar target deploy`（UUU） | WSL上でmanifestのLinux版`uuu`を直接起動 | Windows native `uuu.exe`を起動 | Windows UUU adapter未実装 |
-| UUU後の`serialVerify` | POSIX `/dev/tty*`を`termios`で監視 | Windows COM adapterで監視 | Windows COM adapter未実装 |
-| `adb_win` Target | WSLからWindows `adb.exe`を起動 | Windows hostからnative `adb.exe`を起動可能にする | 現行のWSL interop経路は実装済み |
-| `gar usb` | WSLから`usbipd.exe`を操作 | Linux専用USB toolだけが使う例外経路 | 現行実装済み |
-| Local Docker simulation | WSLからDockerを操作する既存workspace | Docker Desktop WSL2 backendをWSLから操作 | 現行setupでは新規選択せず、Desktop上の同等性も未検証 |
-| Git、test、project全体の検索 | WSL shellで各command／`rg`を直接実行 | Windows launcherからWSLへ固定routing可能 | 対応するGAR top-level commandは未実装 |
+WindowsではUUUをhost nativeの`uuu.exe`として実行し、Target Packに`serialVerify`があれば
+pyserialで`COMn`のboot markerを待つ。これは対話型serial consoleではなくdeploy後の起動確認である。
+Linux／macOSでも同じcommand contractを使うが、macOSでの実機adapterとE2Eは未検証である。
 
-移行では「Windowsで失敗したらWSL」というfallbackを標準にしない。build／source操作はWSL、
-UUU／COMはWindows、Linux専用USBだけはWSL + usbipd、というcapability単位の固定routingにする。
-Docker Desktopを導入しただけではProduct buildが自動的にcontainer化されない。Product build hook
-またはSimulationEnvironmentがDockerを選択した場合だけ利用する。
+WSLは標準構成に含めない。Docker Desktopが内部backendとしてWSL2を使っていても、GARは
+Docker Engineだけを操作する。`gar usb`だけは、Linux専用USB toolをWSL2で使う既存環境向けの
+明示的な互換経路であり、Windows native UUU／COMでは使わない。
 
 ---
 
@@ -33,24 +30,26 @@ Docker Desktopを導入しただけではProduct buildが自動的にcontainer�
 
 | コマンド | 内容 |
 |---|---|
-| `make init` | `.venv` 作成・`gar` symlink・VSCode extension install |
-| `make start` | venv + bash completion を有効化したサブシェルを開く |
+| `scripts\gar.cmd --help` | Windows用launcher。`.venv\Scripts\python.exe`とruntime依存を準備してGARを実行 |
+| `scripts/gar --help` | Linux／macOS用launcher |
+| `make init` | GAR core開発用の`.venv`作成・`gar` symlink・VS Code extension install |
+| `make start` | GAR core開発用のvenv + bash completion sub-shellを開く |
 | `make check` | Ruff、unittest、shell構文、VS Code拡張のNode testをまとめて確認 |
-| `gar setup` | target選択・gar-tools確認/取得・workspace/environment/接続設定・依存確認。`ssh_remote`ではruntime host入力必須。local product workspaceは複数登録可能 |
+| `gar setup` | Product workspace、Target、Build、Simulation、Simulation Host、Target接続を対話設定。local Product workspaceは複数登録可能 |
 | `gar setup --no-install` | 不足依存をインストールせず、導入案内を表示 |
-| `gar setup --ec2-host HOST` | simulation runtime用SSH host aliasを保存。`ssh_remote`選択時は設定必須 |
+| `gar setup --ec2-host HOST` | AWS EC2互換用option。AWS Simulation HostのSSH config aliasを保存 |
 | `gar setup --esp32-port PORT` | ESP32 esptool用serial portを保存 |
 | `gar hw init` | 現在のProduct directoryに、Product所有の空のhardware CSV schemaを生成 |
 | `gar hw init --dir DIR [--force]` | 出力先を明示し、必要なら既存CSVを上書き（`--target`は互換用でschemaには影響しない） |
 | `gar hw validate [--workspace NAME] [--requirements PATH] [--capabilities PATH] [--binding PATH] [--json]` | Product requirements、Target capabilities、Bindingを実機接続前に静的検証 |
-| `make port-forward EC2=HOST` | 明示したEC2 SSH hostへのHardware Panel port forwardを開始 |
-| `make port-forward-stop EC2=HOST` | 明示したEC2 SSH hostのport forwardを停止 |
-| `make port-forward-status EC2=HOST` | 明示したEC2 SSH hostのport forward状態を確認 |
+| `make port-forward SIM_HOST=HOST` | 指定Simulation HostへのHardware Panel port forwardを開始 |
+| `make port-forward-stop SIM_HOST=HOST` | 指定Simulation Hostのport forwardを停止 |
+| `make port-forward-status SIM_HOST=HOST` | 指定Simulation Hostのport forward状態を確認 |
 
 ### Workspace ごとの設定
 
-`GaplessAgentRuntime/.gar/config.json` は `workspaces` 配列を正本とします。
-target、environment、EC2 接続先は各 workspace 要素に保存され、別アプリの設定と混ざりません。
+`GaplessAgentRuntime/.gar/config.json`は`workspaces`配列を正本とする。Target、Build、Simulation、
+Simulation Hostとmachine-local接続値はworkspace要素ごとに保存され、別Productと混ざらない。
 
 ```json
 {
@@ -66,25 +65,43 @@ target、environment、EC2 接続先は各 workspace 要素に保存され、別
       "selected_environments": {
         "codespace": "local",
         "simulator": "ssh_remote",
+        "simulation_host": "virtualbox",
         "target": "uuu"
       },
       "selected_target": "frdm-imx91s",
       "target": {
-        "serial": "/dev/ttyCH343USB0"
+        "serial": "COM5"
       },
-      "ec2": {
-        "host": "my-sim-host",
-        "identity_file": "~/.ssh/my-sim-host.pem"
+      "build": {
+        "image": "gar-build-env:ubuntu-24.04",
+        "docker_socket": false
+      },
+      "simulation_host": {
+        "provider": "virtualbox",
+        "host": "gar-sim-local",
+        "arch": "x86_64",
+        "repo_dir": "/home/gar/GaplessAgentRuntime",
+        "bridge_port": 8080
+      },
+      "virtualbox": {
+        "vm": "GAR Ubuntu Sim"
       }
     }
   ]
 }
 ```
 
-`gar setup` の simulator 一覧では `local_docker` を新規選択しません。Docker 用の
-image・device・mount 設定は、既存または明示的な build/UT workspace と互換性を保つため、
-target 定義 (`gar-tools/targets/<id>/target.json` の `simulation.docker`) に残しています。
-標準の Linux device simulation は `ssh_remote` を使用します。
+`selected_environments.codespace`は歴史的なconfig keyで、`local`の表示名と現在の意味は
+`Local Docker`である。`native`は既存workspace向けのlegacy BuildEnvironmentである。
+`build.image`を省略すると`gar-build-env:ubuntu-24.04`を使う。`build.docker_socket`の既定値は
+`false`であり、Product hook自体がDocker daemonを必要とする場合だけ`true`にする。
+
+Linux device simulationの標準は`simulator=ssh_remote`である。接続先の違いは独立した
+`simulation_host=virtualbox|aws_ec2`が吸収する。VirtualBoxとAWSで`gar sim ...`の呼び方は変えない。
+
+`local_docker` simulatorは既存／明示的なDocker simulation workspaceとの互換性のため残している。
+Docker simulation用のimage・device・mount設定はTarget定義
+（`gar-tools/targets/<id>/target.json`の`simulation.docker`）に置く。
 
 Docker backendを明示した既存workspaceでは、workspaceの `docker` 設定で target 定義を
 上書きできます。すべて省略可能です。
@@ -135,10 +152,11 @@ host kernel が必要です。`gar sim gpio check --json` で確認できます�
 product build hook に次の環境変数を渡します。artifact を動かす simulation host
 のアーキテクチャに合わせるためです。
 
-| simulator | `GAR_SIM_ARCH` | `CC` |
+| Simulation Host／simulator | `GAR_SIM_ARCH` | `CC` |
 |---|---|---|
 | `local_docker`（明示／既存workspace） | このマシンのアーキテクチャ（`docker.arch` で上書き） | `gcc` |
-| `ssh_remote` | `aarch64`（`ec2.arch` で上書き） | `aarch64-linux-gnu-gcc` |
+| `ssh_remote` + `virtualbox` | `x86_64`（`simulation_host.arch`で上書き） | `x86_64-linux-gnu-gcc` |
+| `ssh_remote` + `aws_ec2` | `aarch64`（`simulation_host.arch`またはlegacy `ec2.arch`で上書き） | `aarch64-linux-gnu-gcc` |
 
 `GAR_SIM_ENVIRONMENT` には simulator の ID そのものが入ります。target build
 （`gar target build`）にはこれらの変数は渡りません。
@@ -174,20 +192,24 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 
 ---
 
-## 1. ビルド環境 管理
+## 1. ビルド環境 管理 (`gar code`)
 
 | コマンド | 内容 |
 |---|---|
 | `gar code boot [--workspace NAME]` | workspaceのdevelopment environmentがCodespacesならVMを起動。localなら状態を案内 |
-| `gar code start [--workspace NAME]` | workspace設定からCodespaceとremote pathを解決し、sshfsマウント・terminal profileを追加 |
-| `gar code stop [--workspace NAME]` | 保存済み接続状態を使ってマウント解除・profile削除 |
+| `gar code start [--workspace NAME]` | workspace設定からCodespaceとremote pathを解決し、SSH terminal profileを追加。POSIX hostでは既定でsshfs mountも行う |
+| `gar code stop [--workspace NAME]` | 保存済み接続状態を使ってprofileを削除し、mountを使ったhostでは解除 |
 | `gar code shutdown [--workspace NAME]` | workspaceに対応するCodespace VMを停止 |
 | `gar code status [--workspace NAME]` | Codespace VM / 接続状態を確認 |
 
-各commandは`--workspace NAME`でproduct workspaceを選びます。Codespaces環境では
-`--target NAME`（互換alias: `--codespace NAME`）で接続先を一時上書きできます。
-`start`は`--remote-path`、`--mount-dir`、`--settings`、`--profile-name`、`--no-mount`、
-`stop`は同種のlocal接続設定と`--shutdown`に対応します。
+各commandは`--workspace NAME`でProduct workspaceを選ぶ。Codespaces環境では`--target NAME`
+（互換alias: `--codespace NAME`）で接続先を一時上書きできる。`start`は`--remote-path`、
+`--mount-dir`、`--settings`、`--profile-name`、`--no-mount`、`stop`は同種のlocal接続設定と
+`--shutdown`に対応する。
+
+Windowsの`code start`は自動的にno-mount modeになり、WinFsp／SSHFSを要求しない。VS Code profileは
+repositoryのPython launcher経由で`gh codespace ssh`を実行する。Linux／macOSは従来どおりsshfsを
+利用でき、不要なら`--no-mount`を指定する。
 `code boot`／`shutdown`はcloud VMの起動／停止と課金状態を変える。初回認証、organization policy、
 課金可否は人間が確認し、不要になったVMは明示的に停止する。
 
@@ -195,7 +217,8 @@ Git remote と branch は接続先から自動検出し、検出できない場�
 
 ## 2. シミュレーション (`gar sim`)
 
-物理ハードウェアエミュレータ（AWS EC2上の互換ランタイム、またはWokwiなどのローカル/クラウドエミュレータ）を用いた動作検証コマンドです。詳細は [06_SIMULATION.md](06_SIMULATION.md) を参照。
+Ubuntu Device Simulation（VirtualBox local VMまたはAWS remote VM）、Docker互換simulation、
+Wokwi等を用いた動作検証commandである。詳細は[06_SIMULATION.md](06_SIMULATION.md)を参照する。
 
 ## System topology (`gar system`)
 
@@ -245,7 +268,7 @@ top-level groupです。
 
 | subject | レイヤー | 操作対象 | 日常的な役割 |
 |---|---|---|---|
-| `gar sim host` | **ホスト** | EC2 / container などシミュレーションホストOS | シミュレーション用のVMやホストの起動・停止・接続状態の管理 |
+| `gar sim host` | **ホスト** | VirtualBox／AWS Ubuntu、legacy Docker container | Simulation Hostの起動・停止・接続状態の管理 |
 | `gar sim runtime` | **ランタイム** | 仮想デバイス（I2C, SPI, GPIO）のスタブ | 仮想デバイスのエミュレータ（CUSEスタブやブリッジ等）のビルド・起動・ログ監視・個別デバッグ |
 | `gar sim app` | **アプリ** | Product成果物 | 検証したいProductアプリケーションのビルドと環境への反映 |
 | `gar sim gpio` | **仮想GPIO** | GPIO dummy runtime | GPIO dummy runtime の生成・配置・状態確認 |
@@ -307,13 +330,15 @@ gar sim host stop
 #### ホスト管理 (`gar sim host`)
 | コマンド | 内容 |
 |---|---|
-| `gar sim host start [--pull] [--no-update-ssh]` | シミュレーションホストを起動し、SSH接続設定を更新（`--pull` はworkspaceの `ec2.repo_dir` / `docker.repo_dir` で `git pull`） |
-| `gar sim host stop` | シミュレーションホストを停止（インスタンスは削除されず、課金が抑えられます） |
-| `gar sim host status [--json]` | ホストの実状態を表示。Dockerではinspectしたimage/portと現在specの一致も報告 |
-| `gar sim host <start/stop/status> --workspace NAME` | 指定workspaceのsimulator選択に応じ、DockerまたはEC2 host設定を使う |
+| `gar sim host start [--pull] [--no-update-ssh]` | 選択providerのSimulation Hostを起動。`--pull`は`simulation_host.repo_dir`（AWS legacyは`ec2.repo_dir`）で`git pull` |
+| `gar sim host stop` | 選択providerのhostを停止。VirtualBoxはACPI shutdown、AWSはinstance stop、legacy Dockerはcontainer stop |
+| `gar sim host status [--json]` | providerの実状態を表示。legacy Dockerではimage／portと現在specの一致も報告 |
+| `gar sim host <start/stop/status> --workspace NAME` | 指定workspaceのSimulation Environment／Host provider設定を使う |
 
-remote `host start`はcloud computeと課金状態を変え得る。人間または明示的に権限を与えられたCIが
-provider、workspace、課金可否を確認し、不要になったhostは`stop`する。
+VirtualBoxでは`virtualbox.vm`、共通SSH接続には`simulation_host.host`を使う。AWS providerでは
+Terraform outputを`simulation_host`へ同期し、既存configの`ec2.*`も互換入力として読む。
+AWSの`host start`はcloud computeと課金状態を変え得るため、人間または明示的に権限を与えられたCIが
+workspace、region、instance、課金可否を確認し、不要になったhostは`stop`する。
 
 #### 仮想デバイス環境管理 (`gar sim runtime`)
 | コマンド | 内容 |
@@ -401,9 +426,10 @@ commandが実行可能であることを、人間の承認済みであること�
 
 | コマンド | 内容 |
 |---|---|
-| `gar target fetch [--workspace NAME]` | workspace の build environment から artifact bundle を WSL hub へ取得（Codespaces は gh cp、local は取得不要）。artifact node の内部処理 |
+| `gar target fetch [--workspace NAME]` | workspaceのBuildEnvironmentからartifact storeへbundleを取得（Codespacesは`gh cp`、Local Dockerは既にhost storeへcapture済み）。artifact nodeの内部処理 |
 
-ADB接続に失敗した場合は、Terminal Bridgeを通じて`gar usb list` / `gar usb attach`による復旧手順を案内する。
+ADB接続に失敗した場合、Windows native ADB environmentではhost側driver／`adb devices`を確認する。
+Linux専用ADB経路を意図してWSL2へdeviceを渡す場合だけ`gar usb list`／`gar usb attach`を使う。
 
 Recipe-backed Linux Targetの日常操作:
 
@@ -443,92 +469,63 @@ ESP32 / USB serial の低レベル確認やトラブルシュートは
 
 ---
 
-## 4. USB 接続（WSL2 usbipd-win passthrough、例外経路）
+## 4. USB接続（legacy WSL2 passthrough）
 
-WSL2 から Windows 側の `usbipd-win` を呼び、USB serial / adb デバイスを
-`/dev/ttyACM*` や `/dev/ttyUSB*` として WSL2 に接続するための補助コマンド。
-Windows 側に `usbipd-win` が必要。
-
-これは現行UUU／POSIX serial backendとの互換経路である。Windows native UUU／COM adapterへ
-移行したTargetでは使わず、Linux専用toolがUSB deviceを直接必要とする場合だけ明示的に使う。
-
-初回 bind は Host OS 側の管理者権限が必要になることがある。その場合は
-Windows 管理者 PowerShell で一度だけ実行する。
-
-```powershell
-usbipd bind --busid <busid>
-```
+`gar usb`は標準のWindows native UUU／COM経路では使わない。Linux版しかないUSB toolを既存の
+WSL2環境で動かす必要がある場合に限り、Windows側の`usbipd-win`を介してdeviceをWSL2へ渡す
+互換commandである。
 
 | コマンド | 内容 |
 |---|---|
-| `gar usb bind --match CH9102` | USB デバイスを usbipd-win に share 登録 |
-| `gar usb attach` | USB-C デバイスを usbipd-win 経由で WSL2 に attach |
-| `gar usb detach` | detach |
-| `gar usb status` | 接続状態確認 |
-| `gar usb list [--json]` | 接続可能デバイス一覧 |
+| `gar usb list [--json]` | usbipd-winが認識するdevice一覧 |
+| `gar usb bind --busid ID` | deviceをusbipd-winへshare登録。初回は管理者権限が必要な場合がある |
+| `gar usb attach --busid ID` | deviceをWSL2へattach |
+| `gar usb detach --busid ID` | WSL2からdetach |
+| `gar usb status [--json]` | 保存した、または指定したdeviceの状態確認 |
 
-`attach` / `bind`は`--busid`、`--match`、`--no-remember`、`detach`は`--busid` / `--match`、
-`status`は`--busid` / `--match` / `--json`に対応します。
+`bind`／`attach`は`--busid`、`--match`、`--no-remember`、`detach`は`--busid`／`--match`、
+`status`は`--busid`／`--match`／`--json`に対応する。
 
-WSLへattachしている間、そのUSB deviceはWindows native toolから利用できない。人間が対象を識別し、
-device所有権をWSLへ移すことを承認してからattachする。FRDM-IMX91Sの現行UUU経路ではdownload USBと
-debug UARTが別deviceであり、保存できるbus IDは一件だけである。両方を`gar usb list`で識別し、
-各commandへ`--busid`を明示する。自動検出に頼らない。
-
-現行UUU経路では、これに加えてWSLへLinux版UUU／libusbを導入し、debug UARTを開けるよう
-udev ruleまたはgroup membershipを人間が設定する。Windows native UUU／COMへ移行した後は不要になる。
-
-adb 実機は Windows 側 `adb.exe` を直接使う environment もあり、その場合は `usbipd-win`
-不要。USB serial flash など WSL2 の device node が必要な経路では `gar usb` を使う。
+attach中のdeviceはWindows native toolから利用できない。人間が対象deviceを識別し、所有権を
+WSL2へ移すことを承認してから実行する。NXP UUUとdebug UARTはWindows側に置く標準構成なので、
+`gar target deploy`の前に`gar usb attach`してはならない。
 
 ---
 
 ## 5. Windows hostの初回準備（GAR外のcommand）
 
-この節は`gar` commandではない。Windowsをentrypointにするため、人間がmachineごとに一度だけ
-実行または確認するOS操作である。UAC、driver導入、physical Target選択をAIが無断で完了扱いにしない。
-判断理由と安全な実行順の正本は[0から実機まで](00_ZERO_TO_TARGET_TUTORIAL.md)とし、この節は
-copy可能なhost commandの索引だけを提供する。
+この節は`gar` commandではない。machineごとに人間が一度だけ行うOS／vendor tool準備の索引である。
+UAC、driver、license、physical Target、flash先storageの判断はGARやAIが代行しない。詳しい順序は
+[0から実機まで](00_ZERO_TO_TARGET_TUTORIAL.md)を参照する。
 
-### WSLとDockerの確認
+### GAR、Docker、VirtualBox
+
+repositoryとProduct workspaceはWindows filesystem上に配置し、PowerShellで確認する。
 
 ```powershell
-wsl.exe --list --verbose
+python --version
+git --version
 docker version
-wsl.exe --distribution Ubuntu-26.04 -- docker version
+VBoxManage --version
+ssh -V
+scripts\gar.cmd --help
 ```
 
-Dockerを使う場合は、人間がDocker DesktopのWSL2 backendと対象distributionのWSL integrationを
-有効にする。最後のcommandは現在のPCのdistribution名を使った例であり、別machineでは
-`Ubuntu-26.04`を`wsl.exe --list --verbose`で確認した名前へ置き換える。Windows側だけでなく、
-対象WSL distribution内からDocker daemonへ到達できることと、Product workspaceがWSL filesystem上に
-あることを確認する。
+Docker DesktopはWindowsから`docker version`が成功する状態にする。WSL distribution integrationや
+WSL filesystemのmountはGARの要件ではない。Product build時はLocal DockerがWindows workspaceを
+containerの`/workspace`へbind mountする。Defender除外を一律には要求せず、実測で必要性を確認して
+組織のsecurity policyに従う。
 
-### Yurufuwa作業領域rootのWindows link
-
-artifact単位や個別Projectのlinkを切替のたびに張り替えない。複数Projectを含むYurufuwa作業領域rootへ
-directory symbolic linkを一本だけ作成する。junction（`/J`）ではなくsymbolic linkを使う。
-
-次は現在のPCの値である。別machineでは、先に`wsl.exe --list --verbose`でdistribution名を、
-WSL shellの`pwd`で作業領域rootを確認してから`-Target`を置き換える。
+VirtualBox Sim Hostでは、Ubuntu VM名とWindowsのSSH config aliasを`gar setup`へ保存する。
+VM作成、network、SSH key、host key確認、Ubuntu bootstrapは人間が行う。
 
 ```powershell
-New-Item -ItemType Directory -Force C:\GAR
-New-Item -ItemType SymbolicLink `
-  -Path C:\GAR\Yurufuwa `
-  -Target '\\wsl.localhost\Ubuntu-26.04\home\user\Yurufuwa'
-
-Test-Path C:\GAR\Yurufuwa\GAR\GaplessAgentRuntime
+VBoxManage showvminfo "GAR Ubuntu Sim" --machinereadable
+ssh gar-sim-local "uname -m; sudo modprobe gpio-sim; test -d /sys/kernel/config"
+gar sim host status --workspace Local/Product
 ```
 
-2026-08-28のこのmachineでの試験ではlink作成に管理者PowerShellが必要だった。Developer Modeを有効にする場合も、
-有効化は人間が判断する。link作成後の通常参照には管理者権限を要求しない。
-
-Windows pathはWindows native peripheral toolがartifactへ到達するためのaliasである。WSL commandは
-引き続き`/home/user/Yurufuwa`を使い、Windows native Git／build／recursive searchをlink越しに
-実行しない。配下Projectの切替に追加linkやlinkの張り替えは不要である。
-
-### Windows native UUUとserialの確認
+### Windows native UUUとCOM boot verification
 
 ```powershell
 Get-Command uuu.exe
@@ -536,33 +533,19 @@ uuu.exe -h
 Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Name
 ```
 
-これらはtoolとportの存在確認だけであり、flash commandではない。人間がdownload USB、debug UART、
-boot mode、対象Board、書込みstorageを確認してから`gar target deploy`を承認する。Windows native
-UUU／COM adapterが未実装の間は、Windows上で同名`gar`からdeployできるとはみなさない。
+Target PackのUUU commandはhost native processとして実行される。WindowsではPATH上の`uuu.exe`、
+Linux／macOSではPATH上の`uuu`を選ぶ。`serialVerify`はpyserialで保存済みの`COMn`またはPOSIX deviceを
+開き、boot markerが現れるまで待つ。GARは対話型serial terminalを提供しない。
 
-### 移行中の診断用WSL起動
-
-Windows launcher実装前にPowerShellから現行GARを診断するときは、`wsl.exe`で明示的にWSL commandを
-起動できる。ただし、これはdaily user interfaceではなく移行中の診断手段である。次は現在のPCの例で、
-別machineではdistribution名と`--cd`のpathを置き換える。
-
-```powershell
-wsl.exe --distribution Ubuntu-26.04 `
-  --cd /home/user/Yurufuwa/GAR/GaplessAgentRuntime `
-  -- bash -lc 'source .venv/bin/activate && gar --help'
-```
+`uuu.exe -h`とCOM一覧は非破壊的だが、`gar target deploy`はfull imageを書き換え得る。人間が
+download USB、debug UART、boot switch、Board、image、書込みstorageを毎回確認してから実行する。
 
 ### Text検索command
 
-| command | 用途 | Project全体での扱い |
-|---|---|---|
-| WSL版`rg` | source、設定、logの高速な再帰検索 | 標準。WSL filesystem内で実行する |
-| Windows版`rg.exe` | NTFS上のWindows-local file検索 | WSL project linkの全走査には使わない |
-| `Select-String` | PowerShell pipeline内の小規模なtext検索 | 補助用途 |
-| `findstr` | 単純なliteral検索やcommand出力のfilter | `grep`互換interfaceとして使わない |
-
-`gar grep`と`gar search`は現行commandではない。将来追加する場合は、Windows上でもWSL版`rg`へ
-固定routingし、OSごとに異なるregex semanticsをuser／AIへ見せない。
+GARは`grep`／`findstr`のwrapperを提供しない。Project全体の再帰検索にはWindows版`rg.exe`を推奨する。
+`Select-String`はPowerShell pipeline、`findstr`は単純なcommand出力filterには使えるが、GNU grepの
+完全互換ではない。大量fileの検索が遅い場合は、GNU toolをWindowsへ移植した実装へ置換するのではなく、
+まずnative `rg.exe`を使い、workspace配置とDefender等のI/O条件を実測する。
 
 ---
 

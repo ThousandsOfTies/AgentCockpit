@@ -19,28 +19,65 @@ from support.gar_cli_test_support import (
 
 from scripts.gar_lib.commands.setup import run_setup
 from scripts.gar_lib.commands.setup.command import _configure_selected_environment_connection
+from scripts.gar_lib.commands.setup.simulation_host_setup import configure_simulation_host_connection
 from scripts.gar_lib.commands.workspace_resolver import resolve_workspace
 from scripts.gar_lib.core.config import load_config, save_config
 from scripts.gar_lib.core.tools_repository import ensure_gar_tools_available
+from scripts.gar_lib.environments.setup_option import SimulationHostSetupOption
 from scripts.gar_lib.target.manifest import TargetManifest, discover_target_manifests
 
 
 class GarSetupConfigTest(unittest.TestCase):
-    def test_selecting_ssh_simulation_prompts_for_its_host_immediately(self) -> None:
+    def test_switching_sim_host_provider_clears_previous_provider_bindings(self) -> None:
+        config = {
+            "selected_environments": {"simulation_host": "virtualbox"},
+            "simulation_host": {
+                "provider": "aws_ec2",
+                "host": "stale-aws",
+                "private_ip": "10.0.0.10",
+                "arch": "aarch64",
+            },
+        }
+
+        with (
+            mock.patch("scripts.gar_lib.commands.setup.simulation_host_setup.save_config") as save_config,
+            mock.patch("scripts.gar_lib.commands.setup.simulation_host_setup.sys.stdin.isatty", return_value=False),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            configure_simulation_host_connection(config)
+
+        self.assertEqual({"provider": "virtualbox"}, config["simulation_host"])
+        save_config.assert_called_once_with(config)
+
+    def test_selecting_ssh_simulation_defers_connection_to_sim_host_category(self) -> None:
         config = {"selected_environments": {"simulator": "ssh_remote"}}
         with (
-            mock.patch("scripts.gar_lib.commands.setup.command.configure_default_ec2_host") as configure_host,
+            mock.patch("scripts.gar_lib.commands.setup.command.configure_simulation_host_connection") as configure_host,
             mock.patch("scripts.gar_lib.commands.setup.command.configure_target_connection") as configure_target,
         ):
             _configure_selected_environment_connection("simulator", "ssh_remote", config, ec2_host=None)
 
-        configure_host.assert_called_once_with(config, ec2_host=None)
+        configure_host.assert_not_called()
         configure_target.assert_not_called()
+
+    def test_selecting_simulation_host_prompts_for_provider_connection(self) -> None:
+        config = {"selected_environments": {"simulation_host": "virtualbox"}}
+        with mock.patch(
+            "scripts.gar_lib.commands.setup.command.configure_simulation_host_connection"
+        ) as configure_host:
+            _configure_selected_environment_connection(
+                "simulation_host",
+                "virtualbox",
+                config,
+                ec2_host=None,
+            )
+
+        configure_host.assert_called_once_with(config, ec2_host=None)
 
     def test_selecting_ssh_target_prompts_for_its_host_immediately(self) -> None:
         config = {"selected_environments": {"target": "ssh_scp"}}
         with (
-            mock.patch("scripts.gar_lib.commands.setup.command.configure_default_ec2_host") as configure_host,
+            mock.patch("scripts.gar_lib.commands.setup.command.configure_simulation_host_connection") as configure_host,
             mock.patch("scripts.gar_lib.commands.setup.command.configure_target_connection") as configure_target,
         ):
             _configure_selected_environment_connection("target", "ssh_scp", config, ec2_host=None)
@@ -646,9 +683,16 @@ class GarSetupConfigTest(unittest.TestCase):
         class FakeSshSimulationEnvironment(FakeSimulationEnvironment):
             environment_id = "ssh_remote"
 
+        class FakeAwsSimulationHost(SimulationHostSetupOption):
+            environment_id = "aws_ec2"
+            display_name = "AWS"
+            description = "AWS Sim Host"
+            required_commands = ()
+
         environments = [
             FakeDevelopmentEnvironment,
             FakeSshSimulationEnvironment,
+            FakeAwsSimulationHost,
             FakeTargetAccessEnvironment,
         ]
         targets = [
@@ -670,6 +714,7 @@ class GarSetupConfigTest(unittest.TestCase):
             "selected_environments": {
                 "codespace": "development_test",
                 "simulator": "ssh_remote",
+                "simulation_host": "aws_ec2",
                 "target": "device_test",
             },
         }
@@ -694,7 +739,7 @@ class GarSetupConfigTest(unittest.TestCase):
             result = run_setup(no_install=True)
 
         self.assertEqual(1, result)
-        self.assertIn("Simulation Runtime host (--ec2-host)", stdout.getvalue())
+        self.assertIn("Remote Sim Host (--ec2-host)", stdout.getvalue())
 
     def test_setup_can_store_esp32_esptool_port(self) -> None:
         class FakeEsp32EsptoolEnvironment(FakeTargetAccessEnvironment):
@@ -819,6 +864,43 @@ class GarSetupConfigTest(unittest.TestCase):
             {"path": "config/hardware"},
             migrated["workspaces"][0]["hardware"],
         )
+
+    def test_load_and_save_preserves_build_and_simulation_provider_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / ".gar" / "config.json"
+            config_path.parent.mkdir()
+            entry = {
+                "id": "ws_test",
+                "name": "Local/Product",
+                "connection": {"type": "local", "path": str(Path(tmp) / "product")},
+                "branch": "main",
+                "selected_environments": {
+                    "codespace": "local",
+                    "simulator": "ssh_remote",
+                    "simulation_host": "virtualbox",
+                },
+                "build": {"image": "custom-build:latest", "docker_socket": True},
+                "simulation_host": {
+                    "provider": "virtualbox",
+                    "host": "gar-sim-local",
+                    "arch": "x86_64",
+                },
+                "virtualbox": {"vm": "GAR Ubuntu Sim"},
+                "docker": {"image": "legacy-sim:latest", "arch": "x86_64"},
+                "ec2": {"host": "legacy-aws", "arch": "aarch64"},
+            }
+            config_path.write_text(json.dumps({"workspaces": [entry]}), encoding="utf-8")
+
+            with mock.patch("scripts.gar_lib.core.config.CONFIG_PATH", config_path):
+                config = load_config()
+                save_config(config)
+                saved = json.loads(config_path.read_text(encoding="utf-8"))["workspaces"][0]
+
+        self.assertEqual(entry["build"], saved["build"])
+        self.assertEqual(entry["simulation_host"], saved["simulation_host"])
+        self.assertEqual(entry["virtualbox"], saved["virtualbox"])
+        self.assertEqual(entry["docker"], saved["docker"])
+        self.assertEqual(entry["ec2"], saved["ec2"])
 
     def test_resolve_workspace_accepts_legacy_selected_providers_key(self) -> None:
         entry = {

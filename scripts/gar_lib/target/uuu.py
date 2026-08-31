@@ -2,24 +2,33 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
+from scripts.gar_lib.access.serial import PySerialPatternVerifier, SerialPatternVerifier
+from scripts.gar_lib.access.uuu import LocalUuuCommandChannel, UuuCommandChannel
 from scripts.gar_lib.artifacts.manifest import load_deploy_files, resolve_artifact_src
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.target.environment import TargetEnvironment
 from scripts.gar_lib.target.manifest import TargetManifest
-from scripts.gar_lib.target.serial_console import wait_for_serial_pattern
 
 
 class UuuTargetEnvironment(TargetEnvironment):
     """Flash a product-owned full Linux image using the selected Target recipe."""
 
-    def __init__(self, manifest: TargetManifest, *, console_port: str | None = None):
+    def __init__(
+        self,
+        manifest: TargetManifest,
+        *,
+        console_port: str | None = None,
+        command_channel: UuuCommandChannel | None = None,
+        serial_verifier: SerialPatternVerifier | None = None,
+    ):
         self.manifest = manifest
         self.settings = manifest.provisioning_settings("uuu")
         self.console_port = console_port
+        self.command_channel = command_channel or LocalUuuCommandChannel()
+        self.serial_verifier = serial_verifier or PySerialPatternVerifier()
 
     def prepare(self) -> None:
         raise GarDomainError("UUU接続には target prepare は不要です。boot modeをserial downloaderへ切り替えてください")
@@ -33,7 +42,7 @@ class UuuTargetEnvironment(TargetEnvironment):
         if not isinstance(command, list) or not command:
             raise GarDomainError(f"Target {self.manifest.id} のUUU command設定がありません")
         args = [self._expand(item, image, artifact.bundle_path) for item in command]
-        result = subprocess.run(args, cwd=image.parent, check=False)
+        result = self.command_channel.run(args, cwd=image.parent)
         if result.returncode != 0:
             raise GarDomainError(f"UUUによるイメージ書き込みに失敗しました (exit {result.returncode})")
         self._verify_serial_boot()
@@ -76,7 +85,7 @@ class UuuTargetEnvironment(TargetEnvironment):
         timeout = settings.get("timeoutSeconds", 30)
         if not isinstance(pattern, str) or not isinstance(baud, int) or not isinstance(timeout, int | float):
             raise GarDomainError("UUU serialVerify設定が不正です")
-        wait_for_serial_pattern(
+        self.serial_verifier.wait(
             self.console_port,
             baud=baud,
             pattern=pattern,

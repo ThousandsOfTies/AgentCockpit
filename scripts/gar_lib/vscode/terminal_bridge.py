@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -28,7 +29,8 @@ def installed_vscode_terminal_bridge_path() -> Path | None:
 
 def install_vscode_terminal_bridge() -> int:
     src = PROJECT_ROOT / "tools" / "vscode-gar"
-    dest = Path.home() / ".vscode-server" / "extensions" / f"{VSCODE_EXT_NAME}-{VSCODE_EXT_VERSION}"
+    vscode_root = ".vscode" if os.name == "nt" else ".vscode-server"
+    dest = Path.home() / vscode_root / "extensions" / f"{VSCODE_EXT_NAME}-{VSCODE_EXT_VERSION}"
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         for existing in dest.parent.glob(f"{VSCODE_EXT_NAME}-*"):

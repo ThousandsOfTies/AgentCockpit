@@ -73,6 +73,9 @@ def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
     selected_simulation = config.get("selected_environments", {}).get("simulator")
     if selected_simulation != "ssh_remote":
         return
+    selected_provider = config.get("selected_environments", {}).get("simulation_host")
+    if selected_provider not in {None, "aws_ec2"}:
+        return
 
     current_host = default_ec2_host(config)
     if config.pop("_invalid_ec2_host", False):
@@ -84,6 +87,7 @@ def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
 
     if ec2_host:
         set_default_ec2_host(config, ec2_host)
+        _set_generic_simulation_host(config, ec2_host)
         save_config(config)
         print(f"Runtime host: {style(ec2_host, BOLD, GREEN)}")
         return
@@ -97,8 +101,18 @@ def configure_default_ec2_host(config: dict, *, ec2_host: str | None) -> None:
     selected_host = _prompt_runtime_host(current_host)
     if selected_host != current_host:
         set_default_ec2_host(config, selected_host)
+        _set_generic_simulation_host(config, selected_host)
         save_config(config)
         print(f"  {style('更新しました:', GREEN)} {selected_host}")
+
+
+def _set_generic_simulation_host(config: dict, host: str) -> None:
+    settings = config.setdefault("simulation_host", {})
+    if not isinstance(settings, dict):
+        settings = {}
+        config["simulation_host"] = settings
+    settings["provider"] = "aws_ec2"
+    settings["host"] = host
 
 
 def _prompt_runtime_host(current_host: str | None) -> str:

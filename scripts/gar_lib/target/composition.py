@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -134,6 +135,8 @@ def _ssh_host(workspace: Workspace) -> str:
 
 
 def _windows_path(path: Path) -> str:
+    if os.name == "nt":
+        return str(path)
     completed = subprocess.run(
         ("wslpath", "-w", str(path)),
         check=False,

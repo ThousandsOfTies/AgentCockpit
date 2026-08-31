@@ -17,6 +17,7 @@ from scripts.gar_lib.access.docker import (
     DockerFileChannel,
 )
 from scripts.gar_lib.access.ssh import ScpFileChannel, SshCommandChannel
+from scripts.gar_lib.access.virtualbox import VirtualBoxCliChannel
 from scripts.gar_lib.core.config import PROJECT_ROOT
 from scripts.gar_lib.core.errors import GarDomainError
 from scripts.gar_lib.core.tools_repository import gar_tools_root
@@ -36,6 +37,7 @@ from scripts.gar_lib.simulation.host.docker import (
 )
 from scripts.gar_lib.simulation.host.docker_spec import DockerHostSpec, docker_host_spec
 from scripts.gar_lib.simulation.host.ssh_config import SshConfigHostAddressUpdater
+from scripts.gar_lib.simulation.host.virtualbox import VirtualBoxSimulationHostController
 from scripts.gar_lib.simulation.runtime.aws_ssm import AwsSsmSimulationEnvironment
 from scripts.gar_lib.simulation.runtime.contract import SimulationEnvironment
 from scripts.gar_lib.simulation.runtime.esp32_qemu import Esp32QemuSimulationEnvironment
@@ -48,8 +50,10 @@ from scripts.gar_lib.simulation.runtime.wokwi import WokwiSimulationEnvironment
 from scripts.gar_lib.target.manifest import discover_target_manifests, target_by_id
 
 LOCAL_DOCKER = "local_docker"
-EC2_HOST_SIMULATORS = ("ssh_remote", "aws_ssm")
+SSH_HOST_SIMULATORS = ("ssh_remote", "aws_ssm")
 HOSTLESS_SIMULATORS = ("wokwi", "mujoco", "renode_mcu", "esp32_qemu_firmware")
+AWS_EC2_HOST = "aws_ec2"
+VIRTUALBOX_HOST = "virtualbox"
 
 
 def selected_simulator(workspace: Workspace) -> str | None:
@@ -70,7 +74,7 @@ def simulation_environment_for(workspace: Workspace) -> SimulationEnvironment:
         )
 
     if backend == "ssh_remote":
-        host = _ec2_host(workspace)
+        host = _simulation_ssh_host(workspace)
         return LinuxSystemdSimulationEnvironment(
             command_channel=SshCommandChannel(host),
             file_channel=ScpFileChannel(host),
@@ -98,7 +102,7 @@ def simulation_environment_for(workspace: Workspace) -> SimulationEnvironment:
 
 
 def simulation_host_for(workspace: Workspace) -> SimulationHostController:
-    """simulation を載せる host（container / EC2）を操作するオブジェクトを作る。"""
+    """Create the selected VirtualBox, AWS, or legacy Docker simulation host."""
 
     backend = selected_simulator(workspace)
 
@@ -116,21 +120,36 @@ def simulation_host_for(workspace: Workspace) -> SimulationHostController:
 
     if backend in HOSTLESS_SIMULATORS:
         raise GarDomainError(f"{backend} simulation environmentには操作対象のsimulation hostがありません")
-    if backend not in EC2_HOST_SIMULATORS:
+    if backend not in SSH_HOST_SIMULATORS:
         raise GarDomainError(f"simulation hostはこのsimulation environmentに未対応です: " f"{backend or '(未設定)'}")
+
+    provider = _simulation_host_provider(workspace)
+    host = _simulation_ssh_host(workspace)
+    repository_path = workspace.simulation_repository_dir
+    if provider == VIRTUALBOX_HOST:
+        vm = workspace.virtualbox.vm
+        if not vm:
+            raise GarDomainError(f"VirtualBox VM名が未設定です: {workspace.name}")
+        return VirtualBoxSimulationHostController(
+            vm=vm,
+            host=host,
+            virtualbox=VirtualBoxCliChannel(),
+            repository_channel=SshCommandChannel(host),
+            repository_path=repository_path,
+        )
+    if provider != AWS_EC2_HOST:
+        raise GarDomainError(f"simulation host providerは未対応です: {provider}")
 
     instance_id = workspace.ec2.instance_id
     region = workspace.ec2.region
-    host = workspace.ec2.host
     missing = [
         name
-        for name, value in (("host", host), ("instance_id", instance_id), ("region", region))
+        for name, value in (("instance_id", instance_id), ("region", region))
         if not isinstance(value, str) or not value
     ]
     if missing:
         raise GarDomainError(f"simulation host設定が不足しています ({', '.join(missing)}): {workspace.name}")
 
-    repository_path = workspace.ec2.repo_dir
     return AwsEc2SimulationHostController(
         host=host,
         instance_id=instance_id,
@@ -156,7 +175,7 @@ def hardware_control_for(workspace: Workspace) -> SimulationHardwareControl:
         )
 
     if backend == "ssh_remote":
-        host = _ec2_host(workspace)
+        host = _simulation_ssh_host(workspace)
         return LinuxBridgeHardwareControl(
             SshCommandChannel(host),
             LinuxSystemdCommandBuilder(),
@@ -209,11 +228,18 @@ def _container_name(workspace: Workspace) -> str:
     return workspace.docker.container or DEFAULT_CONTAINER
 
 
-def _ec2_host(workspace: Workspace) -> str:
-    host = workspace.ec2.host
+def _simulation_ssh_host(workspace: Workspace) -> str:
+    host = workspace.simulation_ssh_host
     if not host:
-        raise GarDomainError(f"simulation hostが未設定です: {workspace.name}")
+        raise GarDomainError(f"simulation hostのSSH aliasが未設定です: {workspace.name}")
     return host
+
+
+def _simulation_host_provider(workspace: Workspace) -> str:
+    provider = workspace.simulation_host_provider
+    if provider:
+        return provider
+    raise GarDomainError(f"simulation host providerが未設定です: {workspace.name}")
 
 
 def _ssm_settings(workspace: Workspace) -> tuple[str, str]:

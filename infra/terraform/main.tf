@@ -108,7 +108,7 @@ resource "aws_instance" "gar_sim" {
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.gar_sim.id]
 
-  user_data                   = file("${path.module}/user_data.sh")
+  user_data                   = file("${path.module}/../simulation-host/ubuntu-bootstrap.sh")
   user_data_replace_on_change = true
 
   root_block_device {

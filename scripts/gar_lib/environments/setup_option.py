@@ -60,10 +60,12 @@ class EnvironmentSetupOption:
 
 
 class DevelopmentEnvironmentSetupOption(EnvironmentSetupOption):
-    """An environment used to edit and build product source."""
+    """An executor used to build and test product source."""
 
     category_id = "codespace"
-    category_name = "開発環境"
+    # ``codespace`` is the persisted v1 key.  The user-facing role is Build;
+    # local source is no longer assumed to execute hooks on the host OS.
+    category_name = "Build環境"
     category_order = 10
 
 
@@ -73,6 +75,14 @@ class SimulationEnvironmentSetupOption(EnvironmentSetupOption):
     category_id = "simulator"
     category_name = "シミュレート環境"
     category_order = 20
+
+
+class SimulationHostSetupOption(EnvironmentSetupOption):
+    """A compute provider that hosts an SSH-accessed Linux simulator."""
+
+    category_id = "simulation_host"
+    category_name = "Sim Host"
+    category_order = 25
 
 
 class TargetEnvironmentSetupOption(EnvironmentSetupOption):

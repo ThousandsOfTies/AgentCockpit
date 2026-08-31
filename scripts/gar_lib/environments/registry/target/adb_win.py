@@ -1,9 +1,9 @@
-"""Windows-native ADB device environment (called from WSL via interop).
+"""Windows-native ADB device environment.
 
-方式2: USB-C 実機は Windows がネイティブ認識し、WSL からは Windows の
-``adb.exe`` を直接呼ぶ。``usbipd-win`` による attach/bind は不要。
+USB-C 実機はWindowsがネイティブ認識し、GARはWindowsの``adb.exe``を直接呼ぶ。
+WSL互換経路から呼ぶ場合も``usbipd-win``によるattach/bindは不要。
 
-ローカル側（WSL）のファイルパスのみ ``wslpath -w`` で Windows 形式へ変換して
+WSL互換経路ではローカル側のファイルパスのみ``wslpath -w``でWindows形式へ変換して
 ``adb.exe`` に渡す。device 側のパス（dest）は Linux のままで変換しない。
 
 ``adb.exe`` の場所は ``gar setup`` 時に確定し、``.gar/config.json`` の
@@ -29,7 +29,7 @@ WINGET_PACKAGE_ID = "Google.PlatformTools"
 class AdbWinEnvironment(TargetEnvironmentSetupOption):
     environment_id = "adb_win"
     display_name = "ADB (Windows native)"
-    description = "Windows ネイティブの adb.exe を WSL から呼び出して USB-C 実機へ接続します" "（usbipd 不要）"
+    description = "Windowsネイティブのadb.exeでUSB-C実機へ接続します（usbipd不要）"
     display_order = 15
     required_commands = ("adb.exe",)
 

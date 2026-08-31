@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from scripts.gar_lib.artifacts.metadata import load_artifact_metadata
 from scripts.gar_lib.artifacts.store import BuildArtifactStore, LocalArtifactStore
 from scripts.gar_lib.build.environment import build_environment_for
 from scripts.gar_lib.core.artifact import Artifact, ArtifactKind
@@ -106,6 +107,7 @@ class SimulationApp:
 
     def deploy(self) -> Artifact:
         artifact = self.artifacts.latest(ArtifactKind.SIM_APP, self.workspace)
+        _validate_simulation_architecture(artifact, self.workspace)
         simulation_environment_for(self.workspace).deploy(artifact)
         return artifact
 
@@ -129,6 +131,7 @@ class SimulationRuntime:
         if not environment.requires_runtime_artifact:
             return None
         artifact = self.artifacts.latest(ArtifactKind.SIM_RUNTIME, self.workspace)
+        _validate_simulation_architecture(artifact, self.workspace)
         environment.deploy(artifact)
         return artifact
 
@@ -256,6 +259,19 @@ class SimulationIo:
 def _workspace_hardware(workspace: Workspace) -> HardwareDefinition:
     hardware_dir = str(workspace.hardware_dir) if workspace.hardware_dir is not None else None
     return load_hw_definition(hw_dir=hardware_dir)
+
+
+def _validate_simulation_architecture(artifact: Artifact, workspace: Workspace) -> None:
+    expected = workspace.simulation_architecture
+    if expected is None:
+        return
+    metadata = load_artifact_metadata(artifact.bundle_path)
+    actual = metadata.target.architecture if metadata is not None else None
+    if actual is not None and actual != expected:
+        raise GarDomainError(
+            f"simulation artifactのarchitectureが現在のSim Hostと一致しません: "
+            f"{actual} != {expected}。現在のprofileで再buildしてください"
+        )
 
 
 class Target:

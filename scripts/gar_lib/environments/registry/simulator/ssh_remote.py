@@ -5,8 +5,8 @@ from scripts.gar_lib.environments.setup_option import SimulationEnvironmentSetup
 
 class SshRemoteEnvironment(SimulationEnvironmentSetupOption):
     environment_id = "ssh_remote"
-    display_name = "SSH Remote"
-    description = "AWS EC2 を使う場合はこれを選択します。SSH config 経由で任意のリモート環境にも接続できます"
+    display_name = "Ubuntu Device Simulation (SSH)"
+    description = "VirtualBoxまたはAWS上の共通Ubuntu runtimeへSSHで接続します"
     display_order = 30
     required_commands = ("ssh",)
 

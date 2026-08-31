@@ -41,7 +41,7 @@ def add_usb_parser(
 
     parser = subparsers.add_parser(
         "usb",
-        help="USB-C 実機を usbipd-win 経由で WSL2 に attach します",
+        help="legacy Linux-only USB tool向けにusbipd-winでWSL2へattachします",
     )
     commands = parser.add_subparsers(dest="usb_command", metavar="command")
     for command_name in ("attach", "detach", "status", "list", "bind"):

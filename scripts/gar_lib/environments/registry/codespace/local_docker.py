@@ -7,7 +7,7 @@ from scripts.gar_lib.environments.setup_option import DevelopmentEnvironmentSetu
 class LocalDockerDevelopmentSetup(DevelopmentEnvironmentSetupOption):
     environment_id = "local"
     display_name = "Local Docker"
-    description = "このマシン上のローカル Docker/devcontainer 環境を使います"
+    description = "WindowsまたはLinuxからDockerを起動し、Linux container内でProduct build hookを実行します"
     display_order = 5
     required_commands = ("docker",)
 

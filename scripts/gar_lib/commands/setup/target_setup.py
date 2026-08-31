@@ -6,6 +6,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from scripts.gar_lib.access.serial import serial_port_candidates
 from scripts.gar_lib.core.config import (
     save_config,
     saved_esp32_serial_port,
@@ -75,6 +76,7 @@ def managed_backend_categories() -> set[str]:
     return {
         "codespace",
         "simulator",
+        "simulation_host",
         "target",
         "boot",
         "hostLink",
@@ -149,6 +151,8 @@ def optional_setup_categories(config: dict, targets: Sequence[TargetManifest]) -
     if target is None:
         return set()
     optional = {"simulator"}
+    if config.get("selected_environments", {}).get("simulator") != "ssh_remote":
+        optional.add("simulation_host")
     if target.default_backends.get("simulator") == "wokwi":
         optional.add("target")
     return optional
@@ -297,6 +301,9 @@ def _configure_uuu_target(config: dict) -> None:
 
 
 def detect_esp32_serial_port_candidates() -> list[str]:
+    detected = serial_port_candidates()
+    if detected:
+        return detected
     patterns = ("/dev/ttyACM*", "/dev/ttyUSB*", "/dev/ttyS*")
     candidates: list[str] = []
     for pattern in patterns:
@@ -307,6 +314,9 @@ def detect_esp32_serial_port_candidates() -> list[str]:
 
 
 def detect_uuu_serial_port_candidates() -> list[str]:
+    detected = serial_port_candidates()
+    if detected:
+        return detected
     patterns = ("/dev/ttyCH343USB*", "/dev/ttyCH342USB*", "/dev/ttyUSB*", "/dev/ttyACM*")
     candidates: list[str] = []
     for pattern in patterns:
