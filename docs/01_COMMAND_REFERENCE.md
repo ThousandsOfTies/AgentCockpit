@@ -21,8 +21,8 @@ GARの公開コマンド、構文、主要optionを一覧する。環境の準�
 ./scripts/gar config
 ```
 
-`gar setup`で`scripts`をPATHへ登録した後は、新しいterminalからOSにかかわらず
-`gar <command>`と呼び出せる。個別commandの正確なusageは`gar <command> --help`、
+`gar setup`で`scripts`をPATHへ登録した後は、新しいterminalからOSにかかわらず`gar <command>`と呼び出せる。<br>
+個別commandの正確なusageは`gar <command> --help`、
 さらに下位groupがある場合は`gar <command> <subject> --help`で確認する。
 
 複数workspaceを登録している場合は`--workspace NAME`で対象を指定する。登録が1件だけなら
