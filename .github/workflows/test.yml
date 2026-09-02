@@ -71,5 +71,11 @@ jobs:
           python -m scripts.gar_lib target --help
           cmd /c scripts\gar.cmd setup
           cmd /c scripts\gar.cmd --help
+          $completionScript = (& .\scripts\gar.cmd completion powershell --command "$PWD\scripts\gar.cmd") | Out-String
+          Invoke-Expression $completionScript
+          $completionCandidates = (TabExpansion2 "gar sim " 8).CompletionMatches.CompletionText
+          if ($completionCandidates -notcontains "runtime") {
+            throw "PowerShell completion did not return gar sim runtime"
+          }
           python -m unittest discover -s tests -p test_gar_windows_host.py -v
           python -m unittest discover -s tests -p test_gar_uuu.py -v

@@ -6,7 +6,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.gar_lib.launcher_setup import offer_scripts_path_registration
+from scripts.gar_lib.launcher_setup import (
+    COMPLETION_BLOCK_END,
+    COMPLETION_BLOCK_START,
+    offer_scripts_path_registration,
+    offer_shell_completion_registration,
+)
 
 
 class TtyInput(io.StringIO):
@@ -30,7 +35,7 @@ class GarLauncherSetupTest(unittest.TestCase):
             )
 
         self.assertEqual(0, result)
-        self.assertIn("PATH登録済みのためSKIP", output.getvalue())
+        self.assertIn("現在のPATHでgarを使用できます", output.getvalue())
         self.assertNotIn("[Y/n]", output.getvalue())
 
     def test_windows_persistent_path_duplicate_skips_without_writing(self) -> None:
@@ -55,7 +60,8 @@ class GarLauncherSetupTest(unittest.TestCase):
 
         self.assertEqual(0, result)
         write_path.assert_not_called()
-        self.assertIn("PATH登録済みのためSKIP", output.getvalue())
+        self.assertIn("ユーザーPATHには登録済みですが、現在のterminalには未反映", output.getvalue())
+        self.assertIn("PowerShell／Windows Terminal／VS Codeをいったん終了", output.getvalue())
         self.assertNotIn("[Y/n]", output.getvalue())
 
     def test_windows_default_yes_appends_user_path_and_broadcasts(self) -> None:
@@ -83,7 +89,8 @@ class GarLauncherSetupTest(unittest.TestCase):
         write_path.assert_called_once_with(f"C:\\Tools;{scripts.resolve()}", 2)
         broadcast.assert_called_once_with()
         self.assertIn("[Y/n]", output.getvalue())
-        self.assertIn("新しいterminal", output.getvalue())
+        self.assertIn("現在のterminalには未反映", output.getvalue())
+        self.assertIn(r".\scripts\gar.cmd <command>", output.getvalue())
 
     def test_no_answer_keeps_path_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -125,6 +132,7 @@ class GarLauncherSetupTest(unittest.TestCase):
         self.assertEqual(0, result)
         self.assertIn(str(scripts.resolve()), profile)
         self.assertIn('"$PATH"', profile)
+        self.assertIn("shell profileを再読込", output.getvalue())
 
     def test_noninteractive_setup_does_not_change_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -146,6 +154,142 @@ class GarLauncherSetupTest(unittest.TestCase):
         self.assertEqual(0, result)
         write_path.assert_not_called()
         self.assertIn("非対話実行", output.getvalue())
+
+    def test_bash_completion_is_generated_and_registered_from_setup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            home = Path(temporary_directory) / "home"
+            output = io.StringIO()
+
+            result = offer_shell_completion_registration(
+                scripts,
+                stdin=TtyInput("\n"),
+                stdout=output,
+                environ={"HOME": str(home), "SHELL": "/bin/bash"},
+                platform="posix",
+            )
+
+            completion = (root / ".gar" / "completion" / "gar.bash").read_text(encoding="utf-8")
+            profile = (home / ".bashrc").read_text(encoding="utf-8")
+
+        self.assertEqual(0, result)
+        self.assertIn(str(scripts / "gar"), completion)
+        self.assertIn("completion words", completion)
+        self.assertIn(COMPLETION_BLOCK_START, profile)
+        self.assertIn(COMPLETION_BLOCK_END, profile)
+        self.assertIn("Bash補完を登録しました", output.getvalue())
+
+    def test_completion_registration_is_idempotent_and_skips_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            home = Path(temporary_directory) / "home"
+            environment = {"HOME": str(home), "SHELL": "/bin/zsh"}
+
+            first = offer_shell_completion_registration(
+                scripts,
+                stdin=TtyInput("\n"),
+                stdout=io.StringIO(),
+                environ=environment,
+                platform="posix",
+            )
+            output = io.StringIO()
+            second = offer_shell_completion_registration(
+                scripts,
+                stdin=TtyInput("n\n"),
+                stdout=output,
+                environ=environment,
+                platform="posix",
+            )
+            profile = (home / ".zshrc").read_text(encoding="utf-8")
+
+        self.assertEqual(0, first)
+        self.assertEqual(0, second)
+        self.assertEqual(1, profile.count(COMPLETION_BLOCK_START))
+        self.assertIn("Zsh補完は登録済み", output.getvalue())
+        self.assertNotIn("[Y/n]", output.getvalue())
+
+    def test_completion_registration_replaces_all_stale_managed_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            home = Path(temporary_directory) / "home"
+            home.mkdir()
+            profile = home / ".bashrc"
+            stale = (
+                f"{COMPLETION_BLOCK_START}\n. /old/one\n{COMPLETION_BLOCK_END}\n"
+                f"{COMPLETION_BLOCK_START}\n. /old/two\n{COMPLETION_BLOCK_END}\n"
+            )
+            profile.write_text("user setting\n" + stale, encoding="utf-8")
+
+            result = offer_shell_completion_registration(
+                scripts,
+                stdin=TtyInput("\n"),
+                stdout=io.StringIO(),
+                environ={"HOME": str(home), "SHELL": "/bin/bash"},
+                platform="posix",
+            )
+            profile_text = profile.read_text(encoding="utf-8")
+
+        self.assertEqual(0, result)
+        self.assertEqual(1, profile_text.count(COMPLETION_BLOCK_START))
+        self.assertNotIn("/old/one", profile_text)
+        self.assertNotIn("/old/two", profile_text)
+        self.assertIn("user setting", profile_text)
+
+    def test_windows_completion_registers_detected_powershell_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "repo"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            profiles = [
+                Path(temporary_directory) / "PowerShell" / "profile.ps1",
+                Path(temporary_directory) / "WindowsPowerShell" / "profile.ps1",
+            ]
+            output = io.StringIO()
+            with mock.patch(
+                "scripts.gar_lib.launcher_setup._windows_powershell_profiles",
+                return_value=profiles,
+            ):
+                result = offer_shell_completion_registration(
+                    scripts,
+                    stdin=TtyInput("\n"),
+                    stdout=output,
+                    environ={},
+                    platform="nt",
+                )
+
+            completion = (root / ".gar" / "completion" / "gar.ps1").read_text(encoding="utf-8")
+            profile_texts = [profile.read_text(encoding="utf-8") for profile in profiles]
+
+        self.assertEqual(0, result)
+        self.assertIn("Register-ArgumentCompleter -Native", completion)
+        self.assertIn("gar.cmd", completion)
+        self.assertTrue(all(COMPLETION_BLOCK_START in text for text in profile_texts))
+        self.assertIn("PowerShell補完を登録しました", output.getvalue())
+
+    def test_noninteractive_completion_setup_does_not_write_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            scripts = Path(temporary_directory) / "repo" / "scripts"
+            scripts.mkdir(parents=True)
+            home = Path(temporary_directory) / "home"
+            output = io.StringIO()
+
+            result = offer_shell_completion_registration(
+                scripts,
+                stdin=io.StringIO(""),
+                stdout=output,
+                environ={"HOME": str(home), "SHELL": "/bin/bash"},
+                platform="posix",
+            )
+
+        self.assertEqual(0, result)
+        self.assertFalse((home / ".bashrc").exists())
+        self.assertIn("非対話実行のためBash補完登録をSKIP", output.getvalue())
 
 
 if __name__ == "__main__":

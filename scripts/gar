@@ -69,7 +69,8 @@ def ensure_venv() -> int:
 #   venvをactivate済みならVIRTUAL_ENVが一致するため、再実行せずCLI処理へ進む。
 # - 引数がsetupだけなら、bootstrap完了後にlauncher自身が消費して正常終了する。
 #   workspaceやenvironmentの設定はGAR CLIのconfig commandが担当する。対話実行では
-#   scripts directoryのPATH登録を確認し、登録済みなら変更せずSKIPする。
+#   scripts directoryのPATH登録とPowerShell／Bash／Zsh補完登録を確認する。
+#   補完scriptはCLI parserへ動的に問い合わせるため、command追加時の再登録は不要である。
 def main() -> int:
     if os.environ.get("GAR_VENV") != str(VENV) and os.environ.get("VIRTUAL_ENV") != str(VENV):
         result = ensure_venv()
@@ -89,9 +90,15 @@ def main() -> int:
                 return result
         print(f"GAR runtimeの準備が完了しました: {VENV}")
         sys.path.insert(0, str(ROOT))
-        from scripts.gar_lib.launcher_setup import offer_scripts_path_registration
+        from scripts.gar_lib.launcher_setup import (
+            offer_scripts_path_registration,
+            offer_shell_completion_registration,
+        )
 
-        return offer_scripts_path_registration(ROOT / "scripts")
+        result = offer_scripts_path_registration(ROOT / "scripts")
+        if result != 0:
+            return result
+        return offer_shell_completion_registration(ROOT / "scripts")
 
     sys.path.insert(0, str(ROOT))
 

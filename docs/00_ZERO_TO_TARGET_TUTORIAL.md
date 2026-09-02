@@ -88,8 +88,11 @@ scripts\gar.cmd --help
 ```
 
 `setup`はlauncherだけが処理し、repository内の`.venv\Scripts\python.exe`とGAR用Python依存を
-必要に応じて用意する。`scripts`がPATHに無ければユーザーPATHへ登録するか`[Y/n]`で確認し、
-登録済みならSKIPする。変更は新しいterminalから有効になる。workspace／environment設定は行わず、
+必要に応じて用意する。`scripts`がPATHに無ければユーザーPATHへ登録するか`[Y/n]`で確認する。
+続けてWindowsではPowerShell、LinuxではBash、macOSではZshのTab補完登録を`[Y/n]`で確認する。
+登録済みならmarkerを検出してSKIPし、機能追加後の候補は現在のCLI parserから自動取得する。
+変更はPowerShell／Windows Terminal／VS Code／ChatGPT Appをいったん終了して開き直した後に
+有効になる。workspace／environment設定は行わず、
 続く`config`が担当する。PATH登録後は以下を`gar ...`と表記する。Linux／macOSのhostでは
 `scripts/gar ...`を使う。公開commandと引数は同じである。
 

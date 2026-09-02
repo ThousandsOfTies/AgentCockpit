@@ -21,7 +21,7 @@ GARの公開コマンド、構文、主要optionを一覧する。環境の準�
 ./scripts/gar config
 ```
 
-`gar setup`で`scripts`をPATHへ登録した後は、新しいterminalからOSにかかわらず`gar <command>`と呼び出せる。<br>
+`gar setup`で`scripts`をPATHへ登録した後は、terminal hostを開き直すとOSにかかわらず`gar <command>`と呼び出せる。<br>
 個別commandの正確なusageは`gar <command> --help`、
 さらに下位groupがある場合は`gar <command> <subject> --help`で確認する。
 
@@ -33,14 +33,16 @@ GARの公開コマンド、構文、主要optionを一覧する。環境の準�
 
 | コマンド | 内容 |
 |---|---|
-| `gar setup` | repositoryの`.venv`と`requirements-gar.txt`を準備し、未登録なら`scripts`のユーザーPATH登録を`[Y/n]`で確認 |
+| `gar setup` | `.venv`とruntime依存を準備し、未登録ならユーザーPATHとPowerShell／Bash／Zsh補完の登録を`[Y/n]`で確認 |
 | `gar config` | Product workspace、Target、Build、Simulation、Sim Host、Target接続を対話設定 |
 | `gar config --no-install` | environment固有toolを導入せず、不足内容だけを表示 |
 | `gar config --ec2-host HOST` | AWS互換用のSSH config Host aliasを保存 |
 | `gar config --esp32-port PORT` | esptoolが使うserial portを保存（例: `COM3`、`/dev/ttyUSB0`） |
 
-`setup`はlauncherだけが処理し、workspaceや接続先を設定しない。非対話実行ではPATHを変更しない。
-PATHが現在または永続設定に既に含まれる場合は登録をSKIPする。設定は`config`が
+`setup`はlauncherだけが処理し、workspaceや接続先を設定しない。非対話実行ではPATHとprofileを
+変更しない。補完登録はmarker付きで冪等に更新し、候補は現在のCLI parserから取得するため、
+機能追加時の再登録は不要である。永続PATH／profile変更は、起動済みのPowerShell、Windows Terminal、
+VS Code、ChatGPT App、POSIX shellには反映されないため、terminal hostをいったん終了して開き直す。設定は`config`が
 GAR repository直下の`.gar/config.json`へworkspace単位で保存する。
 
 ## 2. Build workspace接続 (`gar code`)
@@ -190,4 +192,8 @@ attach中のdeviceはWindows native toolから利用できない。対象device�
 | `gar terminal run [--title TITLE] [--cwd DIR] -- COMMAND...` | VS Code integrated terminalへ実行要求を作成 |
 | `gar terminal run --command "COMMAND"` | 実行要求を1つのcommand文字列で指定 |
 | `gar terminal gc [--keep-days N] [--dry-run]` | 古いterminal request／statusを削除（既定7日） |
-| `gar completion bash` | bash completion scriptをstdoutへ出力 |
+| `gar completion bash` | Bash completion scriptをstdoutへ出力 |
+| `gar completion zsh` | Zsh completion scriptをstdoutへ出力 |
+| `gar completion powershell` | PowerShell completion scriptをstdoutへ出力 |
+
+通常は`gar setup`がOS／shellを判定してprofileへ登録するため、これらを直接実行する必要はない。

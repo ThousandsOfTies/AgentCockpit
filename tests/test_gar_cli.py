@@ -9,6 +9,8 @@ from scripts.gar_lib.cli import (
     build_parser,
     build_parser_bundle,
     completion_bash_script,
+    completion_powershell_script,
+    completion_zsh_script,
     main,
     normalize_question_help,
 )
@@ -87,13 +89,21 @@ class GarCliRootParserTest(GarCliDispatchAssertions, unittest.TestCase):
         run_config.assert_called_once()
         self.assertTrue(run_config.call_args.args[0].no_install)
 
-    def test_completion_bash_script_uses_argcomplete(self) -> None:
-        text = completion_bash_script()
-        self.assertIn("register-python-argcomplete gar", text)
-        self.assertIn("eval", text)
+    def test_completion_scripts_delegate_to_parser_candidates(self) -> None:
+        text = completion_bash_script("/repo/scripts/gar")
         self.assertIn("completion words", text)
+        self.assertIn("/repo/scripts/gar", text)
         self.assertIn("_gar_completion", text)
         self.assertNotIn("_agp_completion", text)
+
+        zsh_text = completion_zsh_script("/repo/scripts/gar")
+        self.assertIn("completion words", zsh_text)
+        self.assertIn("compdef _gar_completion gar", zsh_text)
+
+        powershell_text = completion_powershell_script(r"C:\repo\scripts\gar.cmd")
+        self.assertIn("Register-ArgumentCompleter -Native -CommandName gar", powershell_text)
+        self.assertIn("completion words", powershell_text)
+        self.assertIn(r"C:\repo\scripts\gar.cmd", powershell_text)
 
     def test_completion_bash_is_available_from_cli(self) -> None:
         output = io.StringIO()
@@ -101,7 +111,39 @@ class GarCliRootParserTest(GarCliDispatchAssertions, unittest.TestCase):
             result = main(["completion", "bash"])
 
         self.assertEqual(0, result)
-        self.assertIn("register-python-argcomplete gar", output.getvalue())
+        self.assertIn("completion words", output.getvalue())
+
+    def test_completion_zsh_and_powershell_are_available_from_cli(self) -> None:
+        for shell, expected in (
+            ("zsh", "compdef _gar_completion gar"),
+            ("powershell", "Register-ArgumentCompleter -Native -CommandName gar"),
+        ):
+            with self.subTest(shell=shell):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    result = main(["completion", shell])
+
+                self.assertEqual(0, result)
+                self.assertIn(expected, output.getvalue())
+
+    def test_completion_hides_internal_words_protocol(self) -> None:
+        help_output = io.StringIO()
+        with contextlib.redirect_stdout(help_output):
+            help_result = main(["completion", "--help"])
+
+        self.assertEqual(0, help_result)
+        self.assertNotIn("words", help_output.getvalue())
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = main(["completion", "words", "--cword", "2", "--", "gar", "completion", ""])
+
+        self.assertEqual(0, result)
+        candidates = output.getvalue().splitlines()
+        self.assertIn("powershell", candidates)
+        self.assertIn("bash", candidates)
+        self.assertIn("zsh", candidates)
+        self.assertNotIn("words", candidates)
 
     def test_completion_words_uses_parser_commands(self) -> None:
         output = io.StringIO()

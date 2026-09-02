@@ -57,8 +57,10 @@ scripts\gar.cmd setup
 scripts\gar.cmd config
 ```
 
-`setup`はrepositoryの`.venv`とGAR用Python依存を準備し、未登録なら`scripts`をユーザーPATHへ
-追加するか`[Y/n]`で確認して終了します。登録済みなら変更せずSKIPします。`config`がworkspace、
+`setup`はrepositoryの`.venv`とGAR用Python依存を準備し、未登録なら`scripts`のユーザーPATHと
+PowerShell／Bash／ZshのTab補完をそれぞれ`[Y/n]`で登録します。補完候補は現在のCLI parserから
+取得するため、機能追加時の再登録は不要です。永続設定は起動済みterminalへ反映されないため、
+PowerShell／Windows Terminal／VS Code／ChatGPT Appをいったん終了して開き直します。`config`がworkspace、
 Target、Build、Simulation等を設定します。Linux／macOSでは`scripts/gar setup`、`scripts/gar config`です。
 Product workspaceには、少なくとも次を置きます。
 

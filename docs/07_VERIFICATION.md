@@ -13,7 +13,7 @@
 - Target prepare／deploy／configure／lifecycle／preflightの契約
 - system topology、hardware contract、Golden scenario schema
 - simulation process identity、diagnostic、Bridge adapter
-- Windowsからimport可能なCLI、`.cmd` launcher smoke test、Windows process lifecycle adapter
+- Windowsからimport可能なCLI、`.cmd` launcher smoke test、PowerShell Tab補完、Windows process lifecycle adapter
 - Docker BuildEnvironmentのargv／mount／artifact capture契約
 - VirtualBox Sim Host providerのVM state／start／ACPI stop／SSH composition
 - host native UUU command channel、pyserial pattern verification、SIM artifactのarchitecture整合性
@@ -26,7 +26,7 @@
 | 経路 | 確認内容 | 段階 |
 |---|---|---|
 | Local Docker／Codespaces build | Product hookから用途別artifact snapshotを生成 | adapter自動test／従来経路の実運用 |
-| Windows native CLI | `scripts\\gar.cmd`、Python import、host-native processのOS分岐 | Windows CI smoke／unit test |
+| Windows native CLI | `scripts\\gar.cmd`、Python import、PowerShell `TabExpansion2`、host-native processのOS分岐 | Windows CI smoke／unit test |
 | VirtualBox Ubuntu Linux simulation | `VBoxManage` lifecycle、SSH host composition、architecture guard | controller unit test。実VM E2Eは未実施 |
 | EC2 Graviton Linux simulation | CUSE I2C/SPI、gpio-sim、Web Bridge、application deploy | 実機会話で確認済み |
 | Raspberry Pi 5 | SSH、Raspberry Pi OS systemd recipe、boot service、real GPIO/SPI/video | 実機確認済み |
@@ -56,7 +56,7 @@ workflow固有のsecret、runner、成果物契約は[workflow README](../.githu
 
 | 領域 | 現在の状態 |
 |---|---|
-| Windows統合経路 | launcher、cross-platform process／serial／UUU adapterを実装。実Windows machineでのGAR E2Eは未実施 |
+| Windows統合経路 | launcher、PowerShell補完、cross-platform process／serial／UUU adapterを実装。補完候補はWindows CIで検証するが、実ChatGPT App／Windows Terminalのprofile読込みはmachine E2E未実施 |
 | Local Docker build | Docker executorと既定imageを実装。Docker DesktopのWindows bind mount／socket mount／大規模I/O性能は未計測 |
 | VirtualBox Sim Host | provider、共通Ubuntu bootstrap、architecture guardを実装。実VMの`gpio_sim`／CUSE／Bridge E2Eは未実施 |
 | Renode MCU | setup／installerとerror-only runtimeまで。`.resc`生成と共通lifecycleは未実装 |

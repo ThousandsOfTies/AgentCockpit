@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 from scripts.gar_lib.commands import code, completion, hw, setup, sim, system, target, terminal, usb
 from scripts.gar_lib.commands.completion import completion_bash_script as completion_bash_script
+from scripts.gar_lib.commands.completion import completion_powershell_script as completion_powershell_script
+from scripts.gar_lib.commands.completion import completion_zsh_script as completion_zsh_script
 
 
 @dataclass(frozen=True)

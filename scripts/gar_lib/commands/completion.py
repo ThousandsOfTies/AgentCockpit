@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 from argparse import Namespace
 from collections.abc import Callable, Sequence
 
@@ -15,8 +16,17 @@ def add_completion_parser(
         help="shell completion script を出力します",
     )
     commands = parser.add_subparsers(dest="completion_shell", metavar="shell")
-    commands.add_parser("bash", help="bash completion script を出力します")
-    words_parser = commands.add_parser("words", help=argparse.SUPPRESS)
+    for shell in ("bash", "zsh", "powershell"):
+        shell_parser = commands.add_parser(shell, help=f"{shell} completion script を出力します")
+        shell_parser.add_argument(
+            "--command",
+            dest="completion_command",
+            default="gar",
+            help=argparse.SUPPRESS,
+        )
+    words_parser = commands.add_parser("words")
+    words_parser._gar_hidden_completion = True
+    commands._choices_actions = [choice for choice in commands._choices_actions if choice.dest != "words"]
     words_parser.add_argument("--cword", type=int, required=True)
     words_parser.add_argument("words", nargs=argparse.REMAINDER)
     return {"completion": parser}
@@ -29,7 +39,13 @@ def run_completion_command(
     help_parser: argparse.ArgumentParser,
 ) -> int:
     if args.completion_shell == "bash":
-        print(completion_bash_script(), end="")
+        print(completion_bash_script(args.completion_command), end="")
+        return 0
+    if args.completion_shell == "zsh":
+        print(completion_zsh_script(args.completion_command), end="")
+        return 0
+    if args.completion_shell == "powershell":
+        print(completion_powershell_script(args.completion_command), end="")
         return 0
     if args.completion_shell == "words":
         words = args.words[1:] if args.words[:1] == ["--"] else args.words
@@ -39,17 +55,48 @@ def run_completion_command(
     return 1
 
 
-def completion_bash_script() -> str:
-    return """# Gapless Agent Runtime bash completion.
-if command -v register-python-argcomplete >/dev/null 2>&1 && python -c 'import argcomplete' >/dev/null 2>&1; then
-  eval "$(register-python-argcomplete gar)"
-else
-  _gar_completion() {
-    local IFS=$'\\n'
-    COMPREPLY=($(COMP_LINE="$COMP_LINE" COMP_POINT="$COMP_POINT" "$1" completion words --cword "$COMP_CWORD" -- "${COMP_WORDS[@]}"))
-  }
-  complete -o nosort -F _gar_completion gar
+def completion_bash_script(command: str = "gar") -> str:
+    launcher = shlex.quote(command)
+    return f"""# Gapless Agent Runtime bash completion.
+_gar_completion() {{
+  local IFS=$'\\n'
+  COMPREPLY=($({launcher} completion words --cword "$COMP_CWORD" -- "${{COMP_WORDS[@]}}"))
+}}
+complete -o nosort -F _gar_completion gar
+"""
+
+
+def completion_zsh_script(command: str = "gar") -> str:
+    launcher = shlex.quote(command)
+    return f"""# Gapless Agent Runtime zsh completion.
+if (( ! $+functions[compdef] )); then
+  autoload -Uz compinit
+  compinit
 fi
+_gar_completion() {{
+  local -a candidates
+  candidates=("${{(@f)$({launcher} completion words --cword "$((CURRENT - 1))" -- "${{words[@]}}")}}")
+  compadd -Q -- "${{candidates[@]}}"
+}}
+compdef _gar_completion gar
+"""
+
+
+def completion_powershell_script(command: str = "gar") -> str:
+    launcher = command.replace("'", "''")
+    return f"""# Gapless Agent Runtime PowerShell completion.
+Register-ArgumentCompleter -Native -CommandName gar -ScriptBlock {{
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $words = @($commandAst.CommandElements | ForEach-Object {{ $_.Extent.Text }})
+    if ($commandAst.Extent.EndOffset -lt $cursorPosition) {{
+        $words += ''
+    }}
+    $cword = [Math]::Max(0, $words.Count - 1)
+    & '{launcher}' completion words --cword $cword -- @words | ForEach-Object {{
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }}
+}}
 """
 
 
@@ -82,7 +129,13 @@ def parser_completion_words(
     candidates = _parser_options(parser)
     subparsers = _subparser_action(parser)
     if subparsers:
-        candidates.extend(subparsers.choices)
+        hidden = {choice.dest for choice in subparsers._choices_actions if choice.help == argparse.SUPPRESS}
+        hidden.update(
+            name
+            for name, choice_parser in subparsers.choices.items()
+            if getattr(choice_parser, "_gar_hidden_completion", False)
+        )
+        candidates.extend(name for name in subparsers.choices if name not in hidden)
 
     return sorted(candidate for candidate in candidates if candidate.startswith(current))
 
@@ -97,5 +150,6 @@ def _subparser_action(parser: argparse.ArgumentParser) -> argparse._SubParsersAc
 def _parser_options(parser: argparse.ArgumentParser) -> list[str]:
     options: list[str] = []
     for action in parser._actions:
-        options.extend(action.option_strings)
+        if action.help != argparse.SUPPRESS:
+            options.extend(action.option_strings)
     return options

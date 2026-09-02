@@ -131,6 +131,7 @@ deploy時にmetadataのarchitectureと選択中のSim Hostを照合する。
 | `.gar/config.json` | workspace、選択environment、接続alias |
 | `.gar/tools/` | `gar config`が取得したgar-tools checkout |
 | `.gar/artifacts/` | immutable artifact snapshots |
+| `.gar/completion/` | `gar setup`が生成するPowerShell／Bash／Zsh completion script |
 | `.gar/terminal-requests/` | visible terminalへの要求 |
 | `.gar/terminal-status/` | request実行状態 |
 | `.gar/wokwi/`／`.gar/mujoco/` | local runtime workspace／state |
