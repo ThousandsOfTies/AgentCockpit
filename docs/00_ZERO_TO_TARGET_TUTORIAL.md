@@ -1,7 +1,6 @@
 # 0から実機動作までのチュートリアル
 
-この文書は、WindowsをGARの操作面にし、Dockerでbuild、VirtualBoxまたはAWSの
-Ubuntu Sim Hostでsimulation、Windows nativeのUSB／COM／UUUでNXP実機へ進む標準経路を示す。
+この文書は、WindowsをGARの操作面にし、Dockerでbuild、VirtualBoxまたはAWSのでsimulation、Windows nativeのUSB／COM／UUUでNXP実機へ進む標準経路を示す。
 個々のoptionは[コマンドリファレンス](01_COMMAND_REFERENCE.md)、役割分担は
 [開発環境](03_DEVELOPMENT_ENVIRONMENT.md)、simulationの詳細は[シミュレーション](06_SIMULATION.md)を参照する。
 
@@ -82,19 +81,26 @@ Docker Desktopのdaemon起動、workspaceのfile sharing、VirtualBoxのnetwork�
 Windowsでrepository rootから実行する。
 
 ```powershell
-scripts\gar.cmd setup
-scripts\gar.cmd config
-scripts\gar.cmd --help
+.\scripts\setup.cmd
+.\scripts\gar.cmd config
+.\scripts\gar.cmd --help
 ```
 
-`setup`はlauncherだけが処理し、repository内の`.venv\Scripts\python.exe`とGAR用Python依存を
+Linux／macOSでは次を実行する。
+
+```bash
+./scripts/setup
+./scripts/gar config
+./scripts/gar --help
+```
+
+`setup.cmd`はGAR CLIとは独立した初期準備launcherで、repository内の`.venv\Scripts\python.exe`とGAR用Python依存を
 必要に応じて用意する。`scripts`がPATHに無ければユーザーPATHへ登録するか`[Y/n]`で確認する。
 続けてWindowsではPowerShell、LinuxではBash、macOSではZshのTab補完登録を`[Y/n]`で確認する。
 登録済みならmarkerを検出してSKIPし、機能追加後の候補は現在のCLI parserから自動取得する。
-変更はPowerShell／Windows Terminal／VS Code／ChatGPT Appをいったん終了して開き直した後に
-有効になる。workspace／environment設定は行わず、
-続く`config`が担当する。PATH登録後は以下を`gar ...`と表記する。Linux／macOSのhostでは
-`scripts/gar ...`を使う。公開commandと引数は同じである。
+変更はterminal hostを完全終了して起動し直した後に有効になる。ChatGPT Appではwindowの×ではなく、
+「ファイル」→「終了」でApp自体を終了する。workspace／environment設定は行わず、
+続く`config`が担当する。PATH登録後は以下を`gar ...`と表記する。公開commandと引数はOS間で同じである。
 
 ## 2. Workspaceとenvironmentを設定する
 

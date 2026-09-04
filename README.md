@@ -49,19 +49,20 @@ GARからはDocker Engineとして扱います。
 
 ## 最初の起動
 
-Windowsではrepository rootから次を実行します。launcherが`.venv`とGAR用Python依存を
+Windowsではrepository rootから次を実行します。setup launcherが`.venv`とGAR用Python依存を
 用意します。
 
 ```powershell
-scripts\gar.cmd setup
-scripts\gar.cmd config
+.\scripts\setup.cmd
+.\scripts\gar.cmd config
 ```
 
-`setup`はrepositoryの`.venv`とGAR用Python依存を準備し、未登録なら`scripts`のユーザーPATHと
+`setup.cmd`はrepositoryの`.venv`とGAR用Python依存を準備し、未登録なら`scripts`のユーザーPATHと
 PowerShell／Bash／ZshのTab補完をそれぞれ`[Y/n]`で登録します。補完候補は現在のCLI parserから
 取得するため、機能追加時の再登録は不要です。永続設定は起動済みterminalへ反映されないため、
-PowerShell／Windows Terminal／VS Code／ChatGPT Appをいったん終了して開き直します。`config`がworkspace、
-Target、Build、Simulation等を設定します。Linux／macOSでは`scripts/gar setup`、`scripts/gar config`です。
+terminal hostを完全終了して起動し直します。ChatGPT Appではwindowの×ではなく、「ファイル」→「終了」で
+App自体を終了します。`config`がworkspace、Target、Build、Simulation等を設定します。
+Linux／macOSでは`./scripts/setup`、`./scripts/gar config`です。
 Product workspaceには、少なくとも次を置きます。
 
 ```text

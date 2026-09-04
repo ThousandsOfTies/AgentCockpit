@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Prepare the repository-local GAR runtime and shell integration."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def main() -> int:
+    if sys.argv[1:]:
+        print("usage: setup", file=sys.stderr)
+        return 2
+
+    sys.path.insert(0, str(ROOT))
+    from scripts.gar_lib.bootstrap import VENV, ensure_venv, relaunch_in_venv
+
+    relaunched = relaunch_in_venv(Path(__file__).resolve(), [])
+    if relaunched is not None:
+        return relaunched
+
+    # A manually activated repository venv bypasses the relaunch above, so
+    # explicitly verify/install its runtime dependencies too.
+    if os.environ.get("GAR_VENV") != str(VENV):
+        result = ensure_venv()
+        if result != 0:
+            return result
+
+    print(f"GAR runtimeの準備が完了しました: {VENV}")
+    from scripts.gar_lib.launcher_setup import (
+        offer_scripts_path_registration,
+        offer_shell_completion_registration,
+    )
+
+    result = offer_scripts_path_registration(ROOT / "scripts")
+    if result != 0:
+        return result
+    return offer_shell_completion_registration(ROOT / "scripts")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

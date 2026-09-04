@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from scripts.gar_lib.bootstrap import VENV, VENV_PYTHON, relaunch_in_venv
 from scripts.gar_lib.launcher_setup import (
     COMPLETION_BLOCK_END,
     COMPLETION_BLOCK_START,
@@ -61,7 +63,8 @@ class GarLauncherSetupTest(unittest.TestCase):
         self.assertEqual(0, result)
         write_path.assert_not_called()
         self.assertIn("ユーザーPATHには登録済みですが、現在のterminalには未反映", output.getvalue())
-        self.assertIn("PowerShell／Windows Terminal／VS Codeをいったん終了", output.getvalue())
+        self.assertIn("terminal hostを完全終了", output.getvalue())
+        self.assertIn("「ファイル」→「終了」", output.getvalue())
         self.assertNotIn("[Y/n]", output.getvalue())
 
     def test_windows_default_yes_appends_user_path_and_broadcasts(self) -> None:
@@ -290,6 +293,38 @@ class GarLauncherSetupTest(unittest.TestCase):
         self.assertEqual(0, result)
         self.assertFalse((home / ".bashrc").exists())
         self.assertIn("非対話実行のためBash補完登録をSKIP", output.getvalue())
+
+
+class GarBootstrapTest(unittest.TestCase):
+    def test_relaunch_skips_when_repository_venv_is_active(self) -> None:
+        with mock.patch("scripts.gar_lib.bootstrap.subprocess.run") as run:
+            result = relaunch_in_venv(
+                Path("launcher"),
+                ["--help"],
+                environ={"VIRTUAL_ENV": str(VENV)},
+            )
+
+        self.assertIsNone(result)
+        run.assert_not_called()
+
+    def test_relaunch_uses_repository_python_and_preserves_arguments(self) -> None:
+        completed = subprocess.CompletedProcess([], 7)
+        with (
+            mock.patch("scripts.gar_lib.bootstrap.ensure_venv", return_value=0),
+            mock.patch("scripts.gar_lib.bootstrap.subprocess.run", return_value=completed) as run,
+        ):
+            result = relaunch_in_venv(
+                Path("launcher"),
+                ["config", "--no-install"],
+                environ={"PATH": "tools"},
+            )
+
+        self.assertEqual(7, result)
+        run.assert_called_once_with(
+            [str(VENV_PYTHON), "launcher", "config", "--no-install"],
+            env={"PATH": "tools", "GAR_VENV": str(VENV)},
+            check=False,
+        )
 
 
 if __name__ == "__main__":

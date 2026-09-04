@@ -157,7 +157,12 @@ def offer_shell_completion_registration(
         return 1
 
     print(f"{shell_name}補完を登録しました: {completion_path}", file=output_stream)
-    print("terminal hostをいったん終了して開き直すとTab補完を使用できます。", file=output_stream)
+    print("terminal hostを完全終了して起動し直すとTab補完を使用できます。", file=output_stream)
+    if platform_name == "nt":
+        print(
+            "ChatGPT Appではwindowの×ではなく、「ファイル」→「終了」でApp自体を終了してください。",
+            file=output_stream,
+        )
     return 0
 
 
@@ -262,7 +267,11 @@ def _print_path_activation_notice(scripts: str, *, platform: str, output: TextIO
     print(f"ユーザーPATHには登録済みですが、現在のterminalには未反映です: {scripts}", file=output)
     if platform == "nt":
         print(
-            "PowerShell／Windows Terminal／VS Codeをいったん終了して開き直すと `gar` を使用できます。",
+            "terminal hostを完全終了して起動し直すと `gar` を使用できます。",
+            file=output,
+        )
+        print(
+            "ChatGPT Appではwindowの×ではなく、「ファイル」→「終了」でApp自体を終了してください。",
             file=output,
         )
         print(r"開き直すまでは `.\scripts\gar.cmd <command>` を使用してください。", file=output)

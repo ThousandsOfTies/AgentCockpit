@@ -74,13 +74,6 @@ class GarCliRootParserTest(GarCliDispatchAssertions, unittest.TestCase):
             }.issubset(bundle.help_parsers)
         )
 
-    def test_setup_is_not_a_public_cli_command(self) -> None:
-        with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit) as exc:
-                main(["setup"])
-
-        self.assertEqual(2, exc.exception.code)
-
     def test_config_is_the_public_configuration_command(self) -> None:
         with mock.patch("scripts.gar_lib.commands.setup.run_config_cli", return_value=0) as run_config:
             result = main(["config", "--no-install"])

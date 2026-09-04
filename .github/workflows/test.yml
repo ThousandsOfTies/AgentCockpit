@@ -69,7 +69,7 @@ jobs:
         run: |
           python -m scripts.gar_lib --help
           python -m scripts.gar_lib target --help
-          cmd /c scripts\gar.cmd setup
+          cmd /c scripts\setup.cmd
           cmd /c scripts\gar.cmd --help
           $completionScript = (& .\scripts\gar.cmd completion powershell --command "$PWD\scripts\gar.cmd") | Out-String
           Invoke-Expression $completionScript
